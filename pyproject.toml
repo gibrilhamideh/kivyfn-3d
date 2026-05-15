@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "kivyfn-3d"
+version = "0.0.1"
+description = "3D library built on top of kivyfn."
+readme = "README.md"
+requires-python = ">=3.10"
+
+authors = [
+    { name = "Gibril Hamideh", email = "gibrilhamideh@gmail.com" }
+]
+
+dependencies = [
+    "kivy>=2.3.0",
+    "kivyfn"
+]
+
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+
+
+[project.optional-dependencies]
+dev = [
+    "kivy-stubs>=0.1.0"
+]
