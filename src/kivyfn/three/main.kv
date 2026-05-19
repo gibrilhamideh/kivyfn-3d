@@ -1,0 +1,53 @@
+# kivyfn/three/main.kv
+
+BoxLayout:
+    orientation: "vertical"
+
+    GridLayout:
+        size_hint_y: None
+        height: dp(140)
+        cols: 5
+
+        Button:
+            text: "Zoom In"
+            on_release: app.zoom_in()
+
+        Button:
+            text: "Pan Left"
+            on_release: app.pan_left()
+
+        Button:
+            text: "Pan Right"
+            on_release: app.pan_right()
+
+        Button:
+            text: "Pan Up"
+            on_release: app.pan_up()
+
+        Button:
+            text: "Pan Down"
+            on_release: app.pan_down()
+
+        Button:
+            text: "Zoom Out"
+            on_release: app.zoom_out()
+
+        Button:
+            text: "Orbit Left"
+            on_release: app.orbit_left()
+
+        Button:
+            text: "Orbit Right"
+            on_release: app.orbit_right()
+
+        Button:
+            text: "Orbit Up"
+            on_release: app.orbit_up()
+
+        Button:
+            text: "Orbit Down"
+            on_release: app.orbit_down()
+
+    FloatLayout:
+        id: viewport
+

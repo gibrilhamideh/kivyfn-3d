@@ -16,7 +16,9 @@ authors = [
 
 dependencies = [
     "kivy>=2.3.0",
-    "kivyfn"
+    "kivyfn",
+    "numpy>=1.26.0",
+    "pygltflib>=1.16.0"
 ]
 
 
