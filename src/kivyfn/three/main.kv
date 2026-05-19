@@ -48,6 +48,18 @@ BoxLayout:
             text: "Orbit Down"
             on_release: app.orbit_down()
 
+        Button:
+            text: "Rotate Monkey Left"
+            on_release: app.rotate_monkey_left()
+
+        Button:
+            text: "Rotate Monkey Right"
+            on_release: app.rotate_monkey_right()
+
+        Button:
+            text: "Auto Rotate Monkey"
+            on_release: app.toggle_monkey_rotation()
+
     FloatLayout:
         id: viewport
 

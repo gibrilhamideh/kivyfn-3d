@@ -12,6 +12,9 @@ from kivy.uix.widget import Widget
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.scene.cameranode import CameraNode
 from kivyfn.three.scene.node import Node3D
+from kivyfn.three.scene.interaction import Interaction
+from kivyfn.three.scene.viewport import Viewport
+
 
 
 class Scene(Widget):
@@ -32,6 +35,9 @@ class Scene(Widget):
         self.root_node = root_node or Node3D(name="root")
         self.camera = camera or CameraNode()
         self.renderer = renderer or Renderer()
+
+        self.interaction = Interaction(self)
+        self.viewport = Viewport(self)
 
         self.bind(size=self._on_viewport_changed)
         self.bind(pos=self._on_viewport_changed)
@@ -75,6 +81,9 @@ class Scene(Widget):
     def _on_viewport_changed(self, *args) -> None:
         self.render()
 
+    # =================================== #
+    # Canvas properties
+    # =================================== #
     @property
     def aspect(self) -> float:
         return (
@@ -82,3 +91,24 @@ class Scene(Widget):
             if self.height
             else 1.0
         )
+
+    @property
+    def modelview_mat(self):
+        return self.canvas["modelview_mat"]
+
+    @property
+    def projection_mat(self):
+        return self.canvas["projection_mat"]
+
+    # =================================== #
+    # Events
+    # =================================== #
+    def on_touch_down(self, touch):
+        return self.interaction.on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        return self.interaction.on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        return self.interaction.on_touch_up(touch)
+

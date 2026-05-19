@@ -14,7 +14,7 @@ class CameraNode(Node3D):
     target = ObjectProperty(None, allownone=True)
     up = ObjectProperty(None, allownone=True)
 
-    fov_y_degrees = NumericProperty(45.0)
+    fov = NumericProperty(45.0)
     near = NumericProperty(1.0)
     far = NumericProperty(1000.0)
     perspective = NumericProperty(1.0)
@@ -74,7 +74,7 @@ class CameraNode(Node3D):
         import math
 
         return math.tan(
-            math.radians(self.fov_y_degrees) / 2.0
+            math.radians(self.fov) / 2.0
         )
 
     def set_look_at(

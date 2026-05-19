@@ -70,6 +70,28 @@ class Quaternion:
             Matrix3(matrix.values[:3, :3])
         )
 
+    @classmethod
+    def from_axis_angle(
+        cls,
+        axis,
+        angle_degrees: float,
+    ) -> "Quaternion":
+        axis = axis.normalize()
+
+        half_angle = math.radians(angle_degrees) / 2.0
+
+        sine = math.sin(half_angle)
+        cosine = math.cos(half_angle)
+
+        return cls(
+            axis.x * sine,
+            axis.y * sine,
+            axis.z * sine,
+            cosine,
+        )
+
+
+
     def normalize(self) -> "Quaternion":
         magnitude = math.sqrt(
             self.x * self.x

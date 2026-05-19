@@ -1,4 +1,5 @@
 # kivyfn/three/scene/node.py
+
 from __future__ import annotations
 
 from kivy.event import EventDispatcher
@@ -11,6 +12,7 @@ from kivy.properties import (
 
 from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.transform import Transform
+from kivyfn.three.scene.interaction import InteractionEvent
 
 
 class Node3D(EventDispatcher):
@@ -21,6 +23,12 @@ class Node3D(EventDispatcher):
     children = ListProperty([])
 
     transform = ObjectProperty(None, allownone=True)
+
+    __events__ = (
+        "on_press",
+        "on_release",
+        "on_drag",
+    )
 
     def __init__(
         self,
@@ -42,15 +50,9 @@ class Node3D(EventDispatcher):
         if self.parent is None:
             return self.local_matrix
 
-        return (
-            self.parent.world_matrix
-            @ self.local_matrix
-        )
+        return self.parent.world_matrix @ self.local_matrix
 
-    def add_child(
-        self,
-        child: "Node3D",
-    ) -> None:
+    def add_child(self, child: "Node3D") -> None:
         if child in self.children:
             return
 
@@ -60,10 +62,7 @@ class Node3D(EventDispatcher):
         child.parent = self
         self.children.append(child)
 
-    def remove_child(
-        self,
-        child: "Node3D",
-    ) -> None:
+    def remove_child(self, child: "Node3D") -> None:
         if child not in self.children:
             return
 
@@ -79,6 +78,15 @@ class Node3D(EventDispatcher):
 
         for child in self.children:
             yield from child.traverse()
+
+    def on_press(self, event: InteractionEvent) -> None:
+        pass
+
+    def on_release(self, event: InteractionEvent) -> None:
+        pass
+
+    def on_drag(self, event: InteractionEvent) -> None:
+        pass
 
     def __repr__(self) -> str:
         return (

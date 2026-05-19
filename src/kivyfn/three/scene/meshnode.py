@@ -155,20 +155,45 @@ class MeshNode(Node3D):
     ):
         closest = None
 
+        ray_origin_tuple = tuple(ray_origin)
+        ray_direction_tuple = tuple(ray_direction)
+
         for v0, v1, v2 in self.iter_triangles():
             distance, point = triangle_intersect(
-                ray_origin,
-                ray_direction,
+                ray_origin_tuple,
+                ray_direction_tuple,
                 tuple(v0),
                 tuple(v1),
                 tuple(v2),
             )
 
-            if distance is not None:
+            if distance is not None and point is not None:
                 if closest is None or distance < closest[0]:
-                    closest = (distance, point)
+                    closest = (
+                        distance,
+                        Vector3(*point),
+                    )
 
         return closest or (None, None)
+
+    def intersects_ray(
+        self,
+        ray_origin,
+        ray_direction,
+    ):
+        if not self.intersects_bounds(ray_origin, ray_direction):
+            return None
+
+        distance, point = self.intersects_geometry(
+            ray_origin,
+            ray_direction,
+        )
+
+        if distance is None:
+            return None
+
+        return distance, point
+
 
     def __repr__(self) -> str:
         return (
