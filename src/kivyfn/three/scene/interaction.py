@@ -33,7 +33,7 @@ class Interaction:
 
         closest = None
 
-        for node in self.scene.root_node.traverse():
+        for node in self.scene.root.traverse():
             hit = getattr(node, "intersects_ray", lambda *_: None)(
                 origin,
                 direction,

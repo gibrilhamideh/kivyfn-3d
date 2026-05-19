@@ -11,18 +11,27 @@ from kivyfn.three.controls.orbit import OrbitCameraController
 from kivyfn.three.loaders import GlbLoader
 from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.vector import Vector3
+from kivyfn.three.render.material import Material
 from kivyfn.three.scene import Scene
 from kivyfn.three.scene.meshnode import MeshNode
 
+import random
+def random_color() -> list[float]:
+    return [
+        random.random(),
+        random.random(),
+        random.random(),
+        1.0,
+    ]
 
 class MainApp(App):
     def on_start(self):
         resources_path = Path(__file__).parent / "resources"
 
-        model_path = resources_path / "models" / "glb" / "monkey.glb"
+        model_path = resources_path / "models" / "glb" / "dashboard.glb"
         shader_path = resources_path / "shaders" / "basic" / "lambert.glsl"
 
-        self.scene = Scene(shader_path=shader_path)
+        self.scene = Scene(shader_path)
         self.monkey_nodes: list[MeshNode] = []
         self.monkey_angle = 0.0
         self.monkey_rotating = False
@@ -30,14 +39,12 @@ class MainApp(App):
         loader = GlbLoader()
         objects = loader.load(model_path)
 
-        self.monkey = None
         for name, mesh_data in objects.items():
-            node = MeshNode(name=name, mesh_data=mesh_data)
-            self.monkey = node
-            self.scene.root_node.add_child(node)
+            material = Material(name, color=random_color())
+            node = MeshNode(name, mesh_data, material)
+            self.scene.root.add_child(node)
             self.monkey_nodes.append(node)
 
-        self.monkey.bind(on_press=self.on_test) # pyright: ignore
 
         viewport = self.root.ids.viewport  # pyright: ignore
         viewport.add_widget(self.scene)

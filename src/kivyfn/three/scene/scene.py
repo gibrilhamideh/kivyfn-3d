@@ -9,6 +9,7 @@ from kivy.graphics import Callback, RenderContext
 from kivy.graphics.opengl import GL_DEPTH_TEST, glDisable, glEnable, glViewport
 from kivy.uix.widget import Widget
 
+from kivyfn.three.render.shader import Shader
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.scene.cameranode import CameraNode
 from kivyfn.three.scene.node import Node3D
@@ -20,21 +21,21 @@ from kivyfn.three.scene.viewport import Viewport
 class Scene(Widget):
     def __init__(
         self,
-        root_node: Node3D | None = None,
+        shader_path: Path,
+        root: Node3D | None = None,
         camera: CameraNode | None = None,
-        renderer: Renderer | None = None,
-        shader_path: Path | None = None,
+        renderer_cls: type[Renderer] = Renderer,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
         self.canvas = RenderContext(compute_normal_mat=True)
-        if shader_path is not None:
-            self.canvas.shader.source = str(shader_path)
+        self.canvas.shader.source = str(shader_path)
+        self.shader = Shader(shader_path)
 
-        self.root_node = root_node or Node3D(name="root")
+        self.root = root or Node3D(name="root")
         self.camera = camera or CameraNode()
-        self.renderer = renderer or Renderer()
+        self.renderer = renderer_cls(render_ctx=self.canvas, shader=self.shader)
 
         self.interaction = Interaction(self)
         self.viewport = Viewport(self)
@@ -50,8 +51,9 @@ class Scene(Widget):
 
         with self.canvas:
             Callback(self.setup_gl_context)
-            self.renderer.render(self.root_node)
+            self.renderer.render(self.root)
             Callback(self.reset_gl_context)
+
 
     def setup_gl_context(self, *args) -> None:
         glEnable(GL_DEPTH_TEST)

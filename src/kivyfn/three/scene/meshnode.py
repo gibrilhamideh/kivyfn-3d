@@ -5,10 +5,15 @@ from __future__ import annotations
 import math
 from typing import Iterator
 
-from kivy.properties import NumericProperty, ObjectProperty, OptionProperty
+from kivy.properties import (
+        NumericProperty,
+        ObjectProperty,
+        OptionProperty,
+)
 
 from kivyfn.three.collision.intersections import sphere_intersect, triangle_intersect
 from kivyfn.three.math.vector import Vector3
+from kivyfn.three.render.material import Material
 from kivyfn.three.render.meshdata import MeshData
 from kivyfn.three.scene.node import Node3D
 
@@ -29,8 +34,9 @@ class MeshNode(Node3D):
 
     def __init__(
         self,
-        name: str = "",
-        mesh_data: MeshData | None = None,
+        name: str,
+        mesh_data: MeshData,
+        material: Material,
         origin_mode: str = "center",
         **kwargs,
     ):
@@ -41,6 +47,7 @@ class MeshNode(Node3D):
 
         self.origin_mode = origin_mode
         self.mesh_data = mesh_data
+        self.material = material
 
         self.origin = Vector3.zero()
         self.bounds_min = Vector3.zero()

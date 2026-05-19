@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from functools import partial
+
 from kivy.graphics import (
+    Callback,
     PopMatrix,
     PushMatrix,
     Rotate,
@@ -12,17 +15,28 @@ from kivy.graphics import (
 )
 
 from kivyfn.three.math.quaternion import Quaternion
+from kivyfn.three.render.material import Material
 from kivyfn.three.render.mesh import RenderMesh
+from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.meshnode import MeshNode
 from kivyfn.three.scene.node import Node3D
 
 
 class Renderer:
-    def __init__(self):
-        self.render_meshes: dict[MeshNode, RenderMesh] = {}
+    def __init__(
+        self,
+        render_ctx,
+        shader: Shader,
+    ):
+        self.render_ctx = render_ctx
+        self.shader = shader
+        self._active_shader: Shader | None = None
+
+    def __repr__(self) -> str:
+        return f"Renderer(shader={self.shader!r})"
 
     def render(self, root: Node3D) -> None:
-        self.render_meshes.clear()
+        self._active_shader = None
         self._render_node(root)
 
     def _render_node(self, node: Node3D) -> None:
@@ -62,8 +76,20 @@ class Renderer:
         if node.mesh_data is None:
             return
 
-        render_mesh = RenderMesh(mesh_data=node.mesh_data)
-        self.render_meshes[node] = render_mesh
+        material = node.material
+        shader = material.shader or self.shader
 
-    def __repr__(self) -> str:
-        return f"Renderer(render_meshes={len(self.render_meshes)})"
+        self._use_shader(shader)
+
+        Callback(partial(self._apply_material, material))
+        RenderMesh(mesh_data=node.mesh_data)
+
+    def _use_shader(self, shader: Shader) -> None:
+        if shader is self._active_shader:
+            return
+
+        shader.apply_to(self.render_ctx)
+        self._active_shader = shader
+
+    def _apply_material(self, material: Material, *args) -> None:
+        material.apply_to(self.render_ctx)
