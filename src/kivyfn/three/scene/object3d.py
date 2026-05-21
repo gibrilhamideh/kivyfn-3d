@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Iterator
+from typing import Iterator, Literal
 
 from kivy.properties import (
         NumericProperty,
@@ -17,15 +17,48 @@ from kivyfn.three.render.material import Material
 from kivyfn.three.render.meshdata import MeshData
 from kivyfn.three.scene.node import Node3D
 
+RenderModes = Literal[
+    "points",
+    "line_strip",
+    "line_loop",
+    "lines",
+    "triangles",
+    "triangle_strip",
+    "triangle_fan"
+]
+
+OriginModes = Literal[
+    "center",
+    "bottom",
+    "top",
+    "left",
+    "right"
+]
 
 class Object3D(Node3D):
     mesh_data = ObjectProperty(None, allownone=True)
     render_mesh = ObjectProperty(None, allownone=True)
 
-    origin_mode = OptionProperty(
+    render_mode = OptionProperty(
+        "triangles",
+        options=(
+            "points",
+            "line_strip",
+            "line_loop",
+            "lines",
+            "triangles",
+            "triangle_strip",
+            "triangle_fan",
+        ),
+    )
+
+
+    origin_mode: OriginModes = OptionProperty(
         "center",
         options=("center", "bottom", "top", "left", "right"),
     )
+
+
 
     origin = ObjectProperty(None, allownone=True)
     radius = NumericProperty(0.0)
@@ -35,10 +68,11 @@ class Object3D(Node3D):
 
     def __init__(
         self,
-        name: str,
         mesh_data: MeshData,
         material: Material,
-        origin_mode: str = "center",
+        name: str = "",
+        render_mode: RenderModes = "triangles",
+        origin_mode: OriginModes = "center",
         **kwargs,
     ):
         super().__init__(
@@ -46,9 +80,10 @@ class Object3D(Node3D):
             **kwargs,
         )
 
-        self.origin_mode = origin_mode
         self.mesh_data = mesh_data
         self.material = material
+        self.render_mode = render_mode
+        self.origin_mode = origin_mode
 
         self.origin = Vector3.zero()
         self.bounds_min = Vector3.zero()
@@ -72,6 +107,9 @@ class Object3D(Node3D):
     ) -> None:
         if self.mesh_data is not None:
             self.recalculate_bounds()
+
+    def render(self, renderer):
+        renderer.render_object(self)
 
     def recalculate_bounds(self) -> None:
         if self.mesh_data is None or not self.mesh_data.vertices:

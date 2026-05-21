@@ -1,0 +1,87 @@
+# kivyfn/three/primitives/plane.py
+
+from __future__ import annotations
+
+from kivy.properties import OptionProperty
+
+from kivyfn.three.render.material import Material
+from kivyfn.three.render.meshdata import MeshData
+from kivyfn.three.scene.object3d import Object3D
+
+
+class Plane(Object3D):
+    axis = OptionProperty(
+        "xy",
+        options=("xy", "xz", "yz"),
+    )
+
+    def __init__(
+        self,
+        width: float = 1.0,
+        height: float = 1.0,
+        axis: str = "xy",
+        material: Material | None = None,
+        **kwargs,
+    ):
+        self.axis = axis
+
+        mesh_data = self._create_mesh_data(
+            width=width,
+            height=height,
+            axis=axis,
+        )
+
+        super().__init__(
+            mesh_data=mesh_data,
+            material=material or Material(),
+            **kwargs,
+        )
+
+    def _create_mesh_data(
+        self,
+        width: float,
+        height: float,
+        axis: str,
+    ) -> MeshData:
+        hw = width / 2.0
+        hh = height / 2.0
+
+        if axis == "xy":
+            vertices = [
+                -hw, -hh, 0.0,  0, 0, 1,  0, 0,
+                 hw, -hh, 0.0,  0, 0, 1,  1, 0,
+                 hw,  hh, 0.0,  0, 0, 1,  1, 1,
+                -hw,  hh, 0.0,  0, 0, 1,  0, 1,
+            ]
+
+        elif axis == "xz":
+            vertices = [
+                -hw, 0.0, -hh,  0, 1, 0,  0, 0,
+                 hw, 0.0, -hh,  0, 1, 0,  1, 0,
+                 hw, 0.0,  hh,  0, 1, 0,  1, 1,
+                -hw, 0.0,  hh,  0, 1, 0,  0, 1,
+            ]
+
+        elif axis == "yz":
+            vertices = [
+                0.0, -hw, -hh,  1, 0, 0,  0, 0,
+                0.0,  hw, -hh,  1, 0, 0,  1, 0,
+                0.0,  hw,  hh,  1, 0, 0,  1, 1,
+                0.0, -hw,  hh,  1, 0, 0,  0, 1,
+            ]
+
+        else:
+            raise ValueError(
+                f"Invalid plane axis {axis!r}. "
+                "Expected 'xy', 'xz', or 'yz'."
+            )
+
+        indices = [
+            0, 1, 2,
+            2, 3, 0,
+        ]
+
+        return MeshData(
+            vertices=vertices,
+            indices=indices,
+        )

@@ -1,6 +1,7 @@
 # kivyfn/three/scene/node.py
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 
 from kivy.event import EventDispatcher
 from kivy.properties import (
@@ -12,15 +13,20 @@ from kivy.properties import (
 
 from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.transform import Transform
-from kivyfn.three.scene.interaction import InteractionEvent
 
+if TYPE_CHECKING:
+    from kivyfn.three.render.renderer import Renderer
+    from kivyfn.three.controls.interaction import InteractionEvent
 
 class Node3D(EventDispatcher):
     name = StringProperty("")
     visible = BooleanProperty(True)
 
-    parent = ObjectProperty(None, allownone=True)
-    children = ListProperty([])
+    parent: Node3D | None = ObjectProperty(None, allownone=True)
+    children: list[Node3D] = ListProperty([])
+
+
+    pickable: bool = BooleanProperty(False)
 
     transform = ObjectProperty(None, allownone=True)
 
@@ -52,7 +58,7 @@ class Node3D(EventDispatcher):
 
         return self.parent.world_matrix @ self.local_matrix
 
-    def add_child(self, child: "Node3D") -> None:
+    def add_child(self, child: Node3D) -> None:
         if child in self.children:
             return
 
@@ -62,7 +68,7 @@ class Node3D(EventDispatcher):
         child.parent = self
         self.children.append(child)
 
-    def remove_child(self, child: "Node3D") -> None:
+    def remove_child(self, child: Node3D) -> None:
         if child not in self.children:
             return
 
@@ -78,6 +84,9 @@ class Node3D(EventDispatcher):
 
         for child in self.children:
             yield from child.traverse()
+
+    def render(self, renderer: Renderer):
+        pass
 
     def on_press(self, event: InteractionEvent) -> None:
         pass

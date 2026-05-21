@@ -47,15 +47,14 @@ class Renderer:
         PushMatrix()
         self._apply_transform(node)
 
-        if isinstance(node, Object3D):
-            self._render_object(node)
+        node.render(self)
 
         for child in node.children:
             self._render(child)
 
         PopMatrix()
 
-    def _render_object(self, object3d: Object3D) -> None:
+    def render_object(self, object3d: Object3D) -> None:
         if object3d.mesh_data is None:
             return
 
@@ -67,7 +66,7 @@ class Renderer:
         Callback(partial(self._apply_material, material))
 
         if object3d.render_mesh is None:
-            object3d.render_mesh = RenderMesh(mesh_data=object3d.mesh_data)
+            object3d.render_mesh = RenderMesh(mesh_data=object3d.mesh_data, mode=object3d.render_mode)
         else:
             object3d.render_mesh.update_mesh_data(object3d.mesh_data)
 
