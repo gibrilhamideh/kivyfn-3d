@@ -49,8 +49,7 @@ class Scene(Widget):
     def render(self) -> None:
         self.canvas.clear()
 
-        self.canvas["projection_mat"] = self.camera.get_projection_matrix(self.aspect)
-        self.canvas["modelview_mat"] = self.camera.get_view_matrix()
+        self.update_camera()
 
         with self.canvas:
             Callback(self.setup_gl_context)
@@ -84,11 +83,17 @@ class Scene(Widget):
         )
 
     def _on_viewport_changed(self, *args) -> None:
-        self.render()
+        self.update_camera()
 
     # =================================== #
-    # Canvas properties
+    # Camera
     # =================================== #
+    def update_camera(self) -> None:
+        self.renderer.update_view(
+            self.camera,
+            self.aspect,
+        )
+
     @property
     def aspect(self) -> float:
         return (
@@ -96,15 +101,6 @@ class Scene(Widget):
             if self.height
             else 1.0
         )
-
-    @property
-    def modelview_mat(self):
-        return self.canvas["modelview_mat"]
-
-    @property
-    def projection_mat(self):
-        return self.canvas["projection_mat"]
-
 
     # =================================== #
     # Controllers

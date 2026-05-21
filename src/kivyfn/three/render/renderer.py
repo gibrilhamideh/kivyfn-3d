@@ -99,3 +99,22 @@ class Renderer:
 
         shader.apply_to(self.render_ctx)
         self._active_shader = shader
+
+    # =================================== #
+    # View
+    # =================================== #
+    def update_view(self, camera, aspect) -> None:
+        self.render_ctx["projection_mat"] = camera.get_projection_matrix(aspect)
+        self.render_ctx["modelview_mat"] = camera.get_view_matrix()
+
+    @property
+    def projection_mat(self):
+        return self.render_ctx["projection_mat"]
+
+    @property
+    def modelview_mat(self):
+        return self.render_ctx["modelview_mat"]
+
+
+
+    

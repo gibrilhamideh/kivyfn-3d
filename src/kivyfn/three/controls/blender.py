@@ -1,3 +1,5 @@
+# kivyfn/three/controls/blender.py
+
 """
 Blender-style camera controls for navigating a 3D scene.
 
@@ -54,6 +56,21 @@ class BlenderCameraControls(SceneController):
         self._mode: str | None = None
         self._last_pos: tuple[float, float] | None = None
 
+    def update(self):
+        if self.scene is None:
+            return
+
+        self.scene.update_camera()
+
+
+    @property
+    def camera(self):
+        assert self.scene is not None
+        return self.scene.camera
+
+    # =================================== #
+    # Events
+    # =================================== #
     def on_touch_down(self, touch) -> bool:
         if self.scene is None:
             return False
@@ -121,11 +138,12 @@ class BlenderCameraControls(SceneController):
 
         return True
 
+    # =================================== #
+    # Camera Contorls
+    # =================================== #
     def _orbit(self, dx: float, dy: float) -> None:
-        if self.scene is None:
-            return
 
-        camera = self.scene.camera
+        camera = self.camera
 
         eye, target, up = OrbitCameraController.orbit(
             camera.eye,
@@ -136,13 +154,11 @@ class BlenderCameraControls(SceneController):
         )
 
         camera.set_look_at(eye, target, up)
-        self.scene.render()
+        self.update()
 
     def _pan(self, dx: float, dy: float) -> None:
-        if self.scene is None:
-            return
 
-        camera = self.scene.camera
+        camera = self.camera
 
         eye, target, up = OrbitCameraController.move_local(
             camera.eye,
@@ -153,13 +169,11 @@ class BlenderCameraControls(SceneController):
         )
 
         camera.set_look_at(eye, target, up)
-        self.scene.render()
+        self.update()
 
     def _zoom(self, amount: float) -> None:
-        if self.scene is None:
-            return
 
-        camera = self.scene.camera
+        camera = self.camera
 
         eye, target, up = OrbitCameraController.dolly(
             camera.eye,
@@ -169,4 +183,4 @@ class BlenderCameraControls(SceneController):
         )
 
         camera.set_look_at(eye, target, up)
-        self.scene.render()
+        self.update()
