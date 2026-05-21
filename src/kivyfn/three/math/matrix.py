@@ -56,6 +56,22 @@ class Matrix4:
 
         return Matrix3(normal.astype(np.float32))
 
+    def transform_point(self, x: float, y: float, z: float):
+        result = self.values @ np.array([x, y, z, 1.0], dtype=np.float32)
+
+        w = result[3]
+        if w != 0.0 and w != 1.0:
+            result = result / w
+
+        return result[0], result[1], result[2]
+
+
+    def transform_direction(self, x: float, y: float, z: float):
+        result = self.values @ np.array([x, y, z, 0.0], dtype=np.float32)
+
+        return result[0], result[1], result[2]
+
+
     def tolist(self):
         return self.values.tolist()
 

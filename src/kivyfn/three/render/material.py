@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from kivy.event import EventDispatcher
+from kivy.graphics import RenderContext
 from kivy.properties import ColorProperty, DictProperty, ObjectProperty, StringProperty
 
 from kivyfn.three.render.shader import Shader
@@ -12,7 +13,7 @@ from kivyfn.three.render.shader import Shader
 
 class Material(EventDispatcher):
     name = StringProperty("")
-    color = ColorProperty([1.0, 0.0, 0.0, 1.0])
+    color = ColorProperty(None, allownone=True)
     texture = ObjectProperty(None, allownone=True)
 
     # Optional override shader.
@@ -60,7 +61,10 @@ class Material(EventDispatcher):
         self._sync_color_uniform()
 
     def _sync_color_uniform(self) -> None:
-        self.uniforms["object_color"] = list(self.color)
+        if self.color is None:
+            self.uniforms["object_color"] = [1.0, 1.0, 1.0, 1.0]
+        else:
+            self.uniforms["object_color"] = list(self.color)
 
     def set_uniform(self, name: str, value: Any) -> None:
         self.uniforms[name] = value
@@ -72,7 +76,7 @@ class Material(EventDispatcher):
         self.uniforms.clear()
         self._sync_color_uniform()
 
-    def apply_to(self, render_ctx) -> None:
+    def apply_to(self, render_ctx: RenderContext) -> None:
         """
         Apply material/object-level values only.
 

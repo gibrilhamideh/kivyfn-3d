@@ -4,23 +4,36 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from dataclasses import dataclass
-from typing import Any
 
+
+from kivy.input.providers.mouse import MouseMotionEvent
 from kivyfn.three.math.vector import Vector3
+from kivyfn.three.scene import object3d
 
 if TYPE_CHECKING:
     from kivyfn.three.scene import Scene
     from kivyfn.three.scene.node import Node3D
+    from kivyfn.three.scene.object3d import Object3D
 
 @dataclass(slots=True)
 class InteractionEvent:
-    node: Node3D
-    touch: Any
+    object3d: Object3D | Node3D
+    touch: MouseMotionEvent
     origin: Vector3
     direction: Vector3
     distance: float | None = None
     point: Vector3 | None = None
 
+    def __repr__(self) -> str:
+        return (
+            "InteractionEvent("
+            f"object3d={self.object3d.name!r}, "
+            f"touch=({self.touch.x:.1f}, {self.touch.y:.1f}), "
+            f"origin={self.origin}, "
+            f"direction={self.direction}, "
+            f"distance={self.distance}"
+            ")"
+        )
 
 class Interaction:
     def __init__(self, scene: Scene):
@@ -46,7 +59,7 @@ class Interaction:
 
             if closest is None or distance < closest.distance:
                 closest = InteractionEvent(
-                    node=node,
+                    object3d=node,
                     touch=touch,
                     origin=origin,
                     direction=direction,
@@ -62,8 +75,8 @@ class Interaction:
         if event is None:
             return False
 
-        self.pressed_node = event.node
-        event.node.dispatch("on_press", event)
+        self.pressed_node = event.object3d
+        event.object3d.dispatch("on_press", event)
 
         return True
 
@@ -78,7 +91,7 @@ class Interaction:
         )
 
         event = InteractionEvent(
-            node=self.pressed_node,
+            object3d=self.pressed_node,
             touch=touch,
             origin=origin,
             direction=direction,
@@ -99,7 +112,7 @@ class Interaction:
         )
 
         event = InteractionEvent(
-            node=self.pressed_node,
+            object3d=self.pressed_node,
             touch=touch,
             origin=origin,
             direction=direction,

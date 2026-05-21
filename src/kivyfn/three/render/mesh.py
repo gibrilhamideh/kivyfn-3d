@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from kivy.graphics import Mesh as KivyMesh
+from kivy.graphics import Mesh
 from kivyfn.three.render.meshdata import MeshData
 
 
@@ -15,7 +15,7 @@ class RenderMesh:
         self.mode = mode
         self.texture = texture
 
-        self.instruction = KivyMesh(
+        self.instruction = Mesh(
             vertices=mesh_data.vertices,
             indices=mesh_data.indices,
             fmt=mesh_data.vertex_format,
@@ -31,7 +31,6 @@ class RenderMesh:
 
         self.instruction.vertices = mesh_data.vertices
         self.instruction.indices = mesh_data.indices
-        self.instruction.fmt = mesh_data.vertex_format
 
     def update_texture(
         self,

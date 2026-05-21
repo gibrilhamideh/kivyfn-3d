@@ -106,11 +106,24 @@ class Scene(Widget):
     # Events
     # =================================== #
     def on_touch_down(self, touch):
-        return self.interaction.on_touch_down(touch)
+        if not self.collide_point(*touch.pos):
+            return super().on_touch_down(touch)
+
+        if self.interaction.on_touch_down(touch):
+            return True
+
+        return super().on_touch_down(touch)
 
     def on_touch_move(self, touch):
-        return self.interaction.on_touch_move(touch)
+        if self.interaction.on_touch_move(touch):
+            return True
+
+        return super().on_touch_move(touch)
+
 
     def on_touch_up(self, touch):
-        return self.interaction.on_touch_up(touch)
+        if self.interaction.on_touch_up(touch):
+            return True
+
+        return super().on_touch_up(touch)
 

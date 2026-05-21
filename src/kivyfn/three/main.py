@@ -13,7 +13,7 @@ from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.render.material import Material
 from kivyfn.three.scene import Scene
-from kivyfn.three.scene.meshnode import MeshNode
+from kivyfn.three.scene.object3d import Object3D
 
 import random
 def random_color() -> list[float]:
@@ -32,7 +32,7 @@ class MainApp(App):
         shader_path = resources_path / "shaders" / "basic" / "lambert.glsl"
 
         self.scene = Scene(shader_path)
-        self.monkey_nodes: list[MeshNode] = []
+        self.objects: list[Object3D] = []
         self.monkey_angle = 0.0
         self.monkey_rotating = False
 
@@ -40,10 +40,11 @@ class MainApp(App):
         objects = loader.load(model_path)
 
         for name, mesh_data in objects.items():
-            material = Material(name, color=random_color())
-            node = MeshNode(name, mesh_data, material)
+            material = Material(name)
+            node = Object3D(name, mesh_data, material)
+            node.bind(on_release=self.on_test)
             self.scene.root.add_child(node)
-            self.monkey_nodes.append(node)
+            self.objects.append(node)
 
 
         viewport = self.root.ids.viewport  # pyright: ignore
@@ -53,7 +54,11 @@ class MainApp(App):
 
     _counter = 0
     def on_test(self, instance, event):
-        print("hit: ", self._counter)
+        for mesh in self.objects:
+            mesh.material.color = [0, 0, 0, 0]
+        self.scene.render()
+        
+        print("hit: ", self._counter, event)
         self._counter += 1
 
     def _update_camera(
@@ -73,7 +78,7 @@ class MainApp(App):
             self.monkey_angle,
         )
 
-        for node in self.monkey_nodes:
+        for node in self.objects:
             node.transform.rotation = rotation
 
         self.scene.render()

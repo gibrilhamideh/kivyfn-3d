@@ -18,8 +18,9 @@ from kivyfn.three.render.meshdata import MeshData
 from kivyfn.three.scene.node import Node3D
 
 
-class MeshNode(Node3D):
+class Object3D(Node3D):
     mesh_data = ObjectProperty(None, allownone=True)
+    render_mesh = ObjectProperty(None, allownone=True)
 
     origin_mode = OptionProperty(
         "center",
@@ -183,28 +184,63 @@ class MeshNode(Node3D):
 
         return closest or (None, None)
 
-    def intersects_ray(
-        self,
-        ray_origin,
-        ray_direction,
-    ):
-        if not self.intersects_bounds(ray_origin, ray_direction):
-            return None
-
-        distance, point = self.intersects_geometry(
+    def intersects_ray(self, ray_origin, ray_direction):
+        local_origin, local_direction = self._local_ray(
             ray_origin,
             ray_direction,
         )
 
-        if distance is None:
+        if not self.intersects_bounds(local_origin, local_direction):
             return None
 
-        return distance, point
+        distance, point = self.intersects_geometry(
+            local_origin,
+            local_direction,
+        )
+
+        if distance is None or point is None:
+            return None
+
+        world_point_raw = self.world_matrix.transform_point(
+            point.x,
+            point.y,
+            point.z,
+        )
+
+        world_point = Vector3(*world_point_raw)
+
+        world_distance = (world_point - ray_origin).length
+
+        return world_distance, world_point
+
+
+    def _local_ray(self, ray_origin, ray_direction):
+        inverse = self.world_matrix.inverse()
+
+        local_origin = inverse.transform_point(
+            ray_origin.x,
+            ray_origin.y,
+            ray_origin.z,
+        )
+
+        world_target = ray_origin + ray_direction
+        local_target = inverse.transform_point(
+            world_target.x,
+            world_target.y,
+            world_target.z,
+        )
+
+        local_origin = Vector3(*local_origin)
+        local_target = Vector3(*local_target)
+
+        local_direction = (local_target - local_origin).normalize()
+
+        return local_origin, local_direction
 
 
     def __repr__(self) -> str:
         return (
-            f"MeshNode("
+            f"Object3D("
             f"name={self.name!r}, "
             f"mesh_data={self.mesh_data is not None}, "
             f"children={len(self.children)})"

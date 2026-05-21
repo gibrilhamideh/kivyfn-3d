@@ -12,20 +12,21 @@ from kivy.graphics import (
     Scale,
     Translate,
     UpdateNormalMatrix,
+    RenderContext
 )
 
 from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.render.material import Material
 from kivyfn.three.render.mesh import RenderMesh
 from kivyfn.three.render.shader import Shader
-from kivyfn.three.scene.meshnode import MeshNode
+from kivyfn.three.scene.object3d import Object3D
 from kivyfn.three.scene.node import Node3D
 
 
 class Renderer:
     def __init__(
         self,
-        render_ctx,
+        render_ctx: RenderContext,
         shader: Shader,
     ):
         self.render_ctx = render_ctx
@@ -37,22 +38,43 @@ class Renderer:
 
     def render(self, root: Node3D) -> None:
         self._active_shader = None
-        self._render_node(root)
+        self._render(root)
 
-    def _render_node(self, node: Node3D) -> None:
+    def _render(self, node: Node3D) -> None:
         if not node.visible:
             return
 
         PushMatrix()
         self._apply_transform(node)
 
-        if isinstance(node, MeshNode):
-            self._render_mesh_node(node)
+        if isinstance(node, Object3D):
+            self._render_object(node)
 
         for child in node.children:
-            self._render_node(child)
+            self._render(child)
 
         PopMatrix()
+
+    def _render_object(self, object3d: Object3D) -> None:
+        if object3d.mesh_data is None:
+            return
+
+        material = object3d.material
+        shader = material.shader or self.shader
+
+        self._use_shader(shader)
+
+        Callback(partial(self._apply_material, material))
+
+        if object3d.render_mesh is None:
+            object3d.render_mesh = RenderMesh(mesh_data=object3d.mesh_data)
+        else:
+            object3d.render_mesh.update_mesh_data(object3d.mesh_data)
+
+        self.render_ctx.add(object3d.render_mesh.instruction)
+
+    def _apply_material(self, material: Material, *args) -> None:
+        material.apply_to(self.render_ctx)
 
     def _apply_transform(self, node: Node3D) -> None:
         transform = node.transform
@@ -72,24 +94,9 @@ class Renderer:
 
         UpdateNormalMatrix()
 
-    def _render_mesh_node(self, node: MeshNode) -> None:
-        if node.mesh_data is None:
-            return
-
-        material = node.material
-        shader = material.shader or self.shader
-
-        self._use_shader(shader)
-
-        Callback(partial(self._apply_material, material))
-        RenderMesh(mesh_data=node.mesh_data)
-
     def _use_shader(self, shader: Shader) -> None:
         if shader is self._active_shader:
             return
 
         shader.apply_to(self.render_ctx)
         self._active_shader = shader
-
-    def _apply_material(self, material: Material, *args) -> None:
-        material.apply_to(self.render_ctx)
