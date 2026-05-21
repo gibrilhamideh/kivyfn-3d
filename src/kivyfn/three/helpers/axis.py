@@ -13,7 +13,7 @@ class _AxisLine(Object3D):
         self,
         start: tuple[float, float, float],
         end: tuple[float, float, float],
-        color,
+        material: Material,
         **kwargs,
     ):
         vertices = [
@@ -37,7 +37,7 @@ class _AxisLine(Object3D):
 
         super().__init__(
             mesh_data=mesh_data,
-            material=Material(color=color),
+            material=material,
             **kwargs,
         )
 
@@ -48,6 +48,7 @@ class _AxisLine(Object3D):
 class AxisHelper(Node3D):
     def __init__(
         self,
+        material: Material,
         size: float = 1.0,
         **kwargs,
     ):
@@ -58,7 +59,10 @@ class AxisHelper(Node3D):
             _AxisLine(
                 start=(0.0, 0.0, 0.0),
                 end=(size, 0.0, 0.0),
-                color=[1.0, 0.0, 0.0, 1.0],
+                material=Material(
+                    color=[1.0, 0.0, 0.0, 1.0],
+                    shader=material.shader,
+                ),
                 name="XAxis",
             )
         )
@@ -68,7 +72,10 @@ class AxisHelper(Node3D):
             _AxisLine(
                 start=(0.0, 0.0, 0.0),
                 end=(0.0, size, 0.0),
-                color=[0.0, 1.0, 0.0, 1.0],
+                material=Material(
+                    color=[0.0, 1.0, 0.0, 1.0],
+                    shader=material.shader,
+                ),
                 name="YAxis",
             )
         )
@@ -78,7 +85,11 @@ class AxisHelper(Node3D):
             _AxisLine(
                 start=(0.0, 0.0, 0.0),
                 end=(0.0, 0.0, size),
-                color=[0.0, 0.0, 1.0, 1.0],
+                material=Material(
+                    color=[0.0, 0.0, 1.0, 1.0],
+                    shader=material.shader,
+                ),
                 name="ZAxis",
             )
         )
+

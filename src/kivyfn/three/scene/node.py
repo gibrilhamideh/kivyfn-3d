@@ -15,26 +15,33 @@ from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.transform import Transform
 
 if TYPE_CHECKING:
+    from kivyfn.three.scene import Scene
     from kivyfn.three.render.renderer import Renderer
+    from kivyfn.three.render.render_pass import RenderPass
     from kivyfn.three.controls.interaction import InteractionEvent
 
 class Node3D(EventDispatcher):
     name = StringProperty("")
     visible = BooleanProperty(True)
-
     parent: Node3D | None = ObjectProperty(None, allownone=True)
     children: list[Node3D] = ListProperty([])
-
-
     pickable: bool = BooleanProperty(False)
-
-    transform = ObjectProperty(None, allownone=True)
+    scene: Scene | None = ObjectProperty(None, allownone=True)
+    transform: Transform = ObjectProperty()
 
     __events__ = (
         "on_press",
         "on_release",
         "on_drag",
     )
+
+
+    def __repr__(self) -> str:
+        return (
+            f"Node3D("
+            f"name={self.name!r}, "
+            f"children={len(self.children)})"
+        )
 
     def __init__(
         self,
@@ -58,22 +65,20 @@ class Node3D(EventDispatcher):
 
         return self.parent.world_matrix @ self.local_matrix
 
-    def add_child(self, child: Node3D) -> None:
-        if child in self.children:
-            return
-
-        if child.parent is not None:
-            child.parent.remove_child(child)
-
-        child.parent = self
+    def add_child(self, child):
         self.children.append(child)
+        child.parent = self
 
-    def remove_child(self, child: Node3D) -> None:
-        if child not in self.children:
-            return
+        if self.scene is not None:
+            child.attach_scene(self.scene)
 
-        self.children.remove(child)
-        child.parent = None
+    def remove_child(self, child):
+        if child in self.children:
+            if child.scene is not None:
+                child.detach_scene()
+
+            self.children.remove(child)
+            child.parent = None
 
     def clear_children(self) -> None:
         for child in list(self.children):
@@ -85,9 +90,15 @@ class Node3D(EventDispatcher):
         for child in self.children:
             yield from child.traverse()
 
-    def render(self, renderer: Renderer):
+    # =================================== #
+    # Render
+    # =================================== #
+    def render(self, renderer: Renderer, render_pass: RenderPass):
         pass
 
+    # =================================== #
+    # Interaction Evenets
+    # =================================== #
     def on_press(self, event: InteractionEvent) -> None:
         pass
 
@@ -97,9 +108,30 @@ class Node3D(EventDispatcher):
     def on_drag(self, event: InteractionEvent) -> None:
         pass
 
-    def __repr__(self) -> str:
-        return (
-            f"Node3D("
-            f"name={self.name!r}, "
-            f"children={len(self.children)})"
-        )
+    # =================================== #
+    # Events
+    # =================================== #
+    def attach_scene(self, scene):
+        self.scene = scene
+        self.on_attach_scene(scene)
+
+        for child in self.children:
+            child.attach_scene(scene)
+
+    def detach_scene(self):
+        scene = self.scene
+
+        for child in list(self.children):
+            child.detach_scene()
+
+        if scene is not None:
+            self.on_detach_scene(scene)
+
+        self.scene = None
+
+    def on_attach_scene(self, scene):
+        pass
+
+    def on_detach_scene(self, scene):
+        pass
+

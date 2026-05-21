@@ -1,4 +1,5 @@
 # kivyfn/three/render/shader.py
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,18 +27,7 @@ class Shader(EventDispatcher):
         if uniforms is not None:
             self.uniforms = dict(uniforms)
 
-    def apply_to(self, render_ctx) -> None:
-        """
-        Apply the shader program and shader-level uniforms.
-
-        Shader uniforms should be scene/pass/global values:
-        camera position, light position, projection matrix, etc.
-        """
-        source = str(self.path) if self.path is not None else None
-
-        if source is not None and render_ctx.shader.source != source:
-            render_ctx.shader.source = source
-
+    def apply_uniforms(self, render_ctx) -> None:
         for name, value in self.uniforms.items():
             render_ctx[name] = value
 
@@ -51,10 +41,6 @@ class Shader(EventDispatcher):
         self.uniforms.clear()
 
     def reload(self) -> None:
-        """
-        Re-apply/reload support can be added later by the renderer.
-        For now this exists as API placeholder.
-        """
         pass
 
     def __repr__(self) -> str:

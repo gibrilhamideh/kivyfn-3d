@@ -3,21 +3,24 @@
 from __future__ import annotations
 
 from functools import partial
+from typing import Callable
 
+from kivy.graphics.transformation import Matrix
 from kivy.graphics import (
     Callback,
+    Canvas,
     PopMatrix,
     PushMatrix,
     Rotate,
     Scale,
     Translate,
     UpdateNormalMatrix,
-    RenderContext
 )
 
 from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.render.material import Material
 from kivyfn.three.render.mesh import RenderMesh
+from kivyfn.three.render.render_pass import RenderPass
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.object3d import Object3D
 from kivyfn.three.scene.node import Node3D
@@ -26,56 +29,147 @@ from kivyfn.three.scene.node import Node3D
 class Renderer:
     def __init__(
         self,
-        render_ctx: RenderContext,
-        shader: Shader,
+        canvas: Canvas,
     ):
-        self.render_ctx = render_ctx
-        self.shader = shader
-        self._active_shader: Shader | None = None
+        self.canvas = canvas
+
+        self.passes: dict[Shader, RenderPass] = {}
+        self.buckets: dict[Shader, set[Object3D]] = {}
+        self.objects: set[Object3D] = set()
+
+        self._modelview_mat: Matrix | None = None
+        self._projection_mat: Matrix | None = None
 
     def __repr__(self) -> str:
-        return f"Renderer(shader={self.shader!r})"
+        return f"Renderer(passes={len(self.passes)})"
 
-    def render(self, root: Node3D) -> None:
-        self._active_shader = None
-        self._render(root)
+    # =================================== #
+    # Passes
+    # =================================== #
+    def clear(self) -> None:
+        for render_pass in self.passes.values():
+            render_pass.clear()
 
-    def _render(self, node: Node3D) -> None:
+    def register_object(self, obj: Object3D) -> None:
+        if obj in self.objects:
+            return
+
+        if obj.mesh_data is None or obj.material is None:
+            return
+
+        shader = obj.material.shader
+
+        self.objects.add(obj)
+        self.buckets.setdefault(shader, set()).add(obj)
+        self.get_pass(shader)
+
+
+    def unregister_object(self, obj: Object3D) -> None:
+        self.objects.discard(obj)
+
+        for shader, bucket in list(self.buckets.items()):
+            bucket.discard(obj)
+
+            if not bucket:
+                self.buckets.pop(shader, None)
+
+
+    def rebucket_object(self, obj: Object3D) -> None:
+        self.unregister_object(obj)
+        self.register_object(obj)
+
+
+    def get_pass(
+        self,
+        shader: Shader,
+    ) -> RenderPass:
+        if shader in self.passes:
+            return self.passes[shader]
+
+        render_pass = RenderPass(shader)
+        self.passes[shader] = render_pass
+        self.canvas.add(render_pass.context)
+
+        return render_pass
+
+    # =================================== #
+    # Render
+    # =================================== #
+    def render(
+        self,
+        root: Node3D,
+        setup_gl_context: Callable,
+        reset_gl_context: Callable,
+    ) -> None:
+        for shader in list(self.buckets.keys()):
+            render_pass = self.get_pass(shader)
+
+            with render_pass.context:
+                Callback(setup_gl_context)
+                self.do_render(root, render_pass)
+                Callback(reset_gl_context)
+
+    def do_render(
+        self,
+        node: Node3D,
+        render_pass: RenderPass,
+    ) -> None:
         if not node.visible:
             return
 
         PushMatrix()
         self._apply_transform(node)
 
-        node.render(self)
-
+        node.render(self, render_pass)
         for child in node.children:
-            self._render(child)
+            self.do_render(child, render_pass)
 
         PopMatrix()
 
-    def render_object(self, object3d: Object3D) -> None:
+    def render_object(
+        self,
+        object3d: Object3D,
+        render_pass: RenderPass,
+    ) -> None:
         if object3d.mesh_data is None:
             return
 
-        material = object3d.material
-        shader = material.shader or self.shader
+        material: Material = object3d.material
+        shader: Shader = material.shader
 
-        self._use_shader(shader)
+        if self.get_pass(shader) is not render_pass:
+            return
 
-        Callback(partial(self._apply_material, material))
+        Callback(partial(self._apply_material, material, render_pass))
 
         if object3d.render_mesh is None:
-            object3d.render_mesh = RenderMesh(mesh_data=object3d.mesh_data, mode=object3d.render_mode)
+            object3d.render_mesh = RenderMesh(
+                mesh_data=object3d.mesh_data,
+                mode=object3d.render_mode,
+            )
         else:
             object3d.render_mesh.update_mesh_data(object3d.mesh_data)
 
-        self.render_ctx.add(object3d.render_mesh.instruction)
+        render_pass.context.add(object3d.render_mesh.instruction)
 
-    def _apply_material(self, material: Material, *args) -> None:
-        material.apply_to(self.render_ctx)
+    # =================================== #
+    # Material
+    # =================================== #
+    def _apply_material(
+        self,
+        material: Material,
+        render_pass: RenderPass,
+        *args,
+    ) -> None:
+        material.apply_to(render_pass.context)
 
-    def _apply_transform(self, node: Node3D) -> None:
+    # =================================== #
+    # Transform
+    # =================================== #
+    def _apply_transform(
+        self,
+        node: Node3D,
+    ) -> None:
         transform = node.transform
 
         tx, ty, tz = transform.translation
@@ -93,28 +187,26 @@ class Renderer:
 
         UpdateNormalMatrix()
 
-    def _use_shader(self, shader: Shader) -> None:
-        if shader is self._active_shader:
-            return
-
-        shader.apply_to(self.render_ctx)
-        self._active_shader = shader
-
     # =================================== #
     # View
     # =================================== #
-    def update_view(self, camera, aspect) -> None:
-        self.render_ctx["projection_mat"] = camera.get_projection_matrix(aspect)
-        self.render_ctx["modelview_mat"] = camera.get_view_matrix()
+    def update_view(
+        self,
+        camera,
+        aspect: float,
+    ) -> None:
+        self._projection_mat = camera.get_projection_matrix(aspect)
+        self._modelview_mat = camera.get_view_matrix()
 
-    @property
-    def projection_mat(self):
-        return self.render_ctx["projection_mat"]
+        for render_pass in self.passes.values():
+            render_pass.update_view(camera, aspect)
 
     @property
     def modelview_mat(self):
-        return self.render_ctx["modelview_mat"]
+        assert self._modelview_mat is not None
+        return self._modelview_mat
 
-
-
-    
+    @property
+    def projection_mat(self):
+        assert self._projection_mat is not None
+        return self._projection_mat

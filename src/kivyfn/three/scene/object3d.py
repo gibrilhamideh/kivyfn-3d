@@ -38,6 +38,7 @@ OriginModes = Literal[
 class Object3D(Node3D):
     mesh_data = ObjectProperty(None, allownone=True)
     render_mesh = ObjectProperty(None, allownone=True)
+    material = ObjectProperty(None, allownone=True)
 
     render_mode = OptionProperty(
         "triangles",
@@ -65,6 +66,14 @@ class Object3D(Node3D):
 
     bounds_min = ObjectProperty(None, allownone=True)
     bounds_max = ObjectProperty(None, allownone=True)
+
+    def __repr__(self) -> str:
+        return (
+            f"Object3D("
+            f"name={self.name!r}, "
+            f"mesh_data={self.mesh_data is not None}, "
+            f"children={len(self.children)})"
+        )
 
     def __init__(
         self,
@@ -108,8 +117,8 @@ class Object3D(Node3D):
         if self.mesh_data is not None:
             self.recalculate_bounds()
 
-    def render(self, renderer):
-        renderer.render_object(self)
+    def render(self, renderer, render_pass):
+        renderer.render_object(self, render_pass)
 
     def recalculate_bounds(self) -> None:
         if self.mesh_data is None or not self.mesh_data.vertices:
@@ -275,11 +284,14 @@ class Object3D(Node3D):
 
         return local_origin, local_direction
 
+    # =================================== #
+    # Scene Attachments
+    # =================================== #
+    def on_attach_scene(self, scene) -> None:
+        scene.renderer.register_object(self)
 
-    def __repr__(self) -> str:
-        return (
-            f"Object3D("
-            f"name={self.name!r}, "
-            f"mesh_data={self.mesh_data is not None}, "
-            f"children={len(self.children)})"
-        )
+
+    def on_detach_scene(self, scene) -> None:
+        scene.renderer.unregister_object(self)
+
+

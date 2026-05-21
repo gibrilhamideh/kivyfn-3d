@@ -10,10 +10,10 @@ from kivyfn.three.scene.object3d import Object3D
 class GridHelper(Object3D):
     def __init__(
         self,
+        material: Material,
         size: float = 10.0,
         divisions: int = 10,
         axis: str = "xz",
-        material: Material | None = None,
         **kwargs,
     ):
         divisions = max(1, divisions)
@@ -27,7 +27,7 @@ class GridHelper(Object3D):
 
         super().__init__(
             mesh_data=mesh_data,
-            material=material or Material(color=[0.5, 0.5, 0.5, 1.0]),
+            material=material,
             render_mode="lines",
             **kwargs,
         )

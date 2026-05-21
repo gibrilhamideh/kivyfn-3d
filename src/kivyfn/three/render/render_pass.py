@@ -5,7 +5,7 @@ from __future__ import annotations
 from kivy.graphics import RenderContext
 
 from kivyfn.three.render.shader import Shader
-from kivyfn.three.scene.cameranode import CameraNode
+from kivyfn.three.scene.camera import Camera
 
 
 class RenderPass:
@@ -33,7 +33,7 @@ class RenderPass:
 
     def update_view(
         self,
-        camera: CameraNode,
+        camera: Camera,
         aspect: float,
     ) -> None:
         self.context["projection_mat"] = (

@@ -3,16 +3,14 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from pathlib import Path
-
 from kivy.core.window import Window
-from kivy.graphics import Callback, RenderContext
+from kivy.graphics import Canvas
 from kivy.graphics.opengl import GL_DEPTH_TEST, glDisable, glEnable, glViewport
+from kivy.properties import ObjectProperty
 from kivy.uix.widget import Widget
 
-from kivyfn.three.render.shader import Shader
 from kivyfn.three.render.renderer import Renderer
-from kivyfn.three.scene.cameranode import CameraNode
+from kivyfn.three.scene.camera import Camera
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.scene.viewport import Viewport
 
@@ -20,42 +18,34 @@ if TYPE_CHECKING:
     from kivyfn.three.controls.base import SceneController
 
 
-
 class Scene(Widget):
-    def __init__(
-        self,
-        shader_path: Path,
-        root: Node3D | None = None,
-        camera: CameraNode | None = None,
-        renderer_cls: type[Renderer] = Renderer,
-        **kwargs,
-    ):
+
+    root: Node3D = ObjectProperty(None, allownone=True)
+
+    def __init__(self, root: Node3D | None = None, **kwargs):
         super().__init__(**kwargs)
 
-        self.canvas = RenderContext(compute_normal_mat=True)
-        self.canvas.shader.source = str(shader_path)
-        self.shader = Shader(shader_path)
+        self.canvas = Canvas()
+        self.camera = Camera()
+        self.renderer = Renderer(self.canvas)
+        self.viewport = Viewport(self)
+        self.controllers = []
 
         self.root = root or Node3D(name="root")
-        self.camera = camera or CameraNode()
-        self.renderer = renderer_cls(render_ctx=self.canvas, shader=self.shader)
-
-        self.controllers = []
-        self.viewport = Viewport(self)
+        self.root.attach_scene(self)
 
         self.bind(size=self._on_viewport_changed)
         self.bind(pos=self._on_viewport_changed)
 
     def render(self) -> None:
-        self.canvas.clear()
-
+        self.renderer.clear()
         self.update_camera()
 
-        with self.canvas:
-            Callback(self.setup_gl_context)
-            self.renderer.render(self.root)
-            Callback(self.reset_gl_context)
-
+        self.renderer.render(
+            self.root,
+            setup_gl_context=self.setup_gl_context,
+            reset_gl_context=self.reset_gl_context,
+        )
 
     def setup_gl_context(self, *args) -> None:
         glEnable(GL_DEPTH_TEST)
@@ -102,6 +92,14 @@ class Scene(Widget):
             else 1.0
         )
 
+    @property
+    def modelview_mat(self):
+        return self.renderer.modelview_mat
+
+    @property
+    def projection_mat(self):
+        return self.renderer.projection_mat
+
     # =================================== #
     # Controllers
     # =================================== #
@@ -120,7 +118,6 @@ class Scene(Widget):
 
         return controller
 
-
     def detach(
         self,
         controller: SceneController,
@@ -131,10 +128,10 @@ class Scene(Widget):
             if current is controller:
                 current.detach()
                 self.controllers.remove(item)
-                return    
+                return
 
     # =================================== #
-    # Events
+    # Touch Events
     # =================================== #
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos):
@@ -146,14 +143,12 @@ class Scene(Widget):
 
         return super().on_touch_down(touch)
 
-
     def on_touch_move(self, touch):
         for _, controller in self.controllers:
             if controller.on_touch_move(touch):
                 return True
 
         return super().on_touch_move(touch)
-
 
     def on_touch_up(self, touch):
         for _, controller in self.controllers:

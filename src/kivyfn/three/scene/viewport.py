@@ -28,8 +28,11 @@ class Viewport:
         x: float,
         y: float,
     ) -> tuple[float, float]:
-        ndc_x = (2.0 * (x - self.scene.x) / self.width) - 1.0
-        ndc_y = (2.0 * (y - self.scene.y) / self.height) - 1.0
+        local_x, local_y = self.scene.to_widget(x, y)
+
+        ndc_x = (2.0 * local_x / self.width) - 1.0
+        ndc_y = (2.0 * local_y / self.height) - 1.0
+
         return ndc_x, ndc_y
 
     def screen_to_camera_space(

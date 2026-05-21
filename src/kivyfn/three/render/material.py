@@ -15,19 +15,14 @@ class Material(EventDispatcher):
     name = StringProperty("")
     color = ColorProperty(None, allownone=True)
     texture = ObjectProperty(None, allownone=True)
-
-    # Optional override shader.
-    # If None, renderer should use scene.default_shader.
-    shader = ObjectProperty(None, allownone=True)
-
-    # Per-object / per-material values.
+    shader = ObjectProperty()
     uniforms = DictProperty({})
 
     def __repr__(self) -> str:
         return (
             f"Material("
             f"name={self.name!r}, "
-            f"color={list(self.color)}, "
+            f"color={list(self.color) if self.color is not None else None}, "
             f"texture={self.texture is not None}, "
             f"shader={self.shader!r}, "
             f"uniforms={len(self.uniforms)}"
@@ -36,24 +31,19 @@ class Material(EventDispatcher):
 
     def __init__(
         self,
+        shader: Shader,
         name: str = "",
         color=None,
         texture=None,
-        shader: Shader | None = None,
         uniforms: dict[str, Any] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
         self.name = name
-
-        if color is not None:
-            self.color = color
-
+        self.color = color
         self.texture = texture
-
-        if shader is not None:
-            self.shader = shader
+        self.shader = shader
 
         if uniforms is not None:
             self.uniforms = dict(uniforms)

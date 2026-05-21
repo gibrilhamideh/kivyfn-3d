@@ -9,7 +9,7 @@ from kivyfn.three.math.vector import Vector3
 from kivyfn.three.scene.node import Node3D
 
 
-class CameraNode(Node3D):
+class Camera(Node3D):
     eye = ObjectProperty(None, allownone=True)
     target = ObjectProperty(None, allownone=True)
     up = ObjectProperty(None, allownone=True)
@@ -91,7 +91,7 @@ class CameraNode(Node3D):
 
     def __repr__(self) -> str:
         return (
-            f"CameraNode("
+            f"Camera("
             f"name={self.name!r}, "
             f"eye={self.eye}, "
             f"target={self.target})"
