@@ -70,7 +70,7 @@ class MainApp(App):
 
         self.scene.root.add_child(axis)
         self.scene.root.add_child(grid)
-        self.scene.render()
+        self.scene.build()
 
         self.root.add_widget(self.scene)  # pyright: ignore
 

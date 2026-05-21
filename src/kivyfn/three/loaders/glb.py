@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 from pygltflib import GLTF2
 
+from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.math.matrix import Matrix3, Matrix4
 from kivyfn.three.render.meshdata import MeshData
@@ -176,10 +177,19 @@ class GlbLoader:
                     np.array(node.matrix, dtype=np.float32).reshape((4, 4))
                 )
             else:
+                scale = getattr(node, "scale", None)
+                translation = getattr(node, "translation", None)
+                rotation = getattr(node, "rotation", None)
+                rotation=(
+                        Quaternion(*rotation)
+                        if rotation is not None
+                        else Quaternion.identity()
+                    )
+
                 matrix = Transform(
-                    translation=getattr(node, "translation", None),
-                    rotation=getattr(node, "rotation", None),
-                    scale=getattr(node, "scale", None),
+                    translation=translation,
+                    rotation=rotation,
+                    scale=scale,
                 ).to_matrix4()            
 
                 node_local.append(matrix)

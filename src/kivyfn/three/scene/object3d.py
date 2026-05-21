@@ -118,7 +118,7 @@ class Object3D(Node3D):
             self.recalculate_bounds()
 
     def render(self, renderer, render_pass):
-        renderer.render_object(self, render_pass)
+        renderer.build_object(self, render_pass)
 
     def recalculate_bounds(self) -> None:
         if self.mesh_data is None or not self.mesh_data.vertices:

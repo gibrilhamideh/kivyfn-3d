@@ -22,12 +22,7 @@ class Transform:
 
         self.rotation = (
             rotation
-            if isinstance(rotation, Quaternion)
-            else (
-                Quaternion(*rotation)
-                if rotation is not None
-                else Quaternion.identity()
-            )
+            or Quaternion.identity()
         )
 
         self.scale = (

@@ -37,11 +37,11 @@ class Scene(Widget):
         self.bind(size=self._on_viewport_changed)
         self.bind(pos=self._on_viewport_changed)
 
-    def render(self) -> None:
+    def build(self) -> None:
         self.renderer.clear()
         self.update_camera()
 
-        self.renderer.render(
+        self.renderer.build(
             self.root,
             setup_gl_context=self.setup_gl_context,
             reset_gl_context=self.reset_gl_context,

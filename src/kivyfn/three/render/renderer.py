@@ -17,7 +17,6 @@ from kivy.graphics import (
     UpdateNormalMatrix,
 )
 
-from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.render.material import Material
 from kivyfn.three.render.mesh import RenderMesh
 from kivyfn.three.render.render_pass import RenderPass
@@ -95,7 +94,7 @@ class Renderer:
     # =================================== #
     # Render
     # =================================== #
-    def render(
+    def build(
         self,
         root: Node3D,
         setup_gl_context: Callable,
@@ -106,10 +105,10 @@ class Renderer:
 
             with render_pass.context:
                 Callback(setup_gl_context)
-                self.do_render(root, render_pass)
+                self._build(root, render_pass)
                 Callback(reset_gl_context)
 
-    def do_render(
+    def _build(
         self,
         node: Node3D,
         render_pass: RenderPass,
@@ -122,11 +121,11 @@ class Renderer:
 
         node.render(self, render_pass)
         for child in node.children:
-            self.do_render(child, render_pass)
+            self._build(child, render_pass)
 
         PopMatrix()
 
-    def render_object(
+    def build_object(
         self,
         object3d: Object3D,
         render_pass: RenderPass,
@@ -176,8 +175,6 @@ class Renderer:
         sx, sy, sz = transform.scale
 
         rotation = transform.rotation
-        if not isinstance(rotation, Quaternion):
-            rotation = Quaternion(*rotation)
 
         axis_x, axis_y, axis_z, angle = rotation.to_axis_angle()
 
