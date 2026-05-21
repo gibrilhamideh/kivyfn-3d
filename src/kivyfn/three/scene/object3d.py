@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Iterator, Literal
+from typing import Iterator, Literal, TYPE_CHECKING
 
 from kivy.properties import (
         NumericProperty,
@@ -16,6 +16,11 @@ from kivyfn.three.math.vector import Vector3
 from kivyfn.three.render.material import Material
 from kivyfn.three.render.meshdata import MeshData
 from kivyfn.three.scene.node import Node3D
+
+if TYPE_CHECKING:
+    from kivyfn.three.render.mesh import RenderMesh
+    from kivyfn.three.render.context import RenderContext
+    from kivyfn.three.render.instructions import Instructions
 
 RenderModes = Literal[
     "points",
@@ -36,11 +41,12 @@ OriginModes = Literal[
 ]
 
 class Object3D(Node3D):
-    mesh_data = ObjectProperty(None, allownone=True)
-    render_mesh = ObjectProperty(None, allownone=True)
-    material = ObjectProperty(None, allownone=True)
-
-    render_mode = OptionProperty(
+    mesh_data: MeshData = ObjectProperty()
+    render_mesh: RenderMesh = ObjectProperty()
+    material: Material = ObjectProperty()
+    instructions: Instructions = ObjectProperty()
+    ctx: RenderContext = ObjectProperty()
+    render_mode: RenderModes = OptionProperty(
         "triangles",
         options=(
             "points",
@@ -117,8 +123,8 @@ class Object3D(Node3D):
         if self.mesh_data is not None:
             self.recalculate_bounds()
 
-    def render(self, renderer, render_pass):
-        renderer.build_object(self, render_pass)
+    def build(self, renderer):
+        self.instructions = renderer.build_object(self)
 
     def recalculate_bounds(self) -> None:
         if self.mesh_data is None or not self.mesh_data.vertices:
@@ -284,14 +290,6 @@ class Object3D(Node3D):
 
         return local_origin, local_direction
 
-    # =================================== #
-    # Scene Attachments
-    # =================================== #
-    def on_attach_scene(self, scene) -> None:
-        scene.renderer.register_object(self)
 
-
-    def on_detach_scene(self, scene) -> None:
-        scene.renderer.unregister_object(self)
 
 

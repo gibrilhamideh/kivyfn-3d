@@ -9,12 +9,15 @@ from kivy.graphics.opengl import GL_DEPTH_TEST, glDisable, glEnable, glViewport
 from kivy.properties import ObjectProperty
 from kivy.uix.widget import Widget
 
+from kivyfn.three.render.context import RenderContext
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.scene.camera import Camera
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.scene.viewport import Viewport
+from kivyfn.three.scene.object3d import Object3D
 
 if TYPE_CHECKING:
+    from kivyfn.three.render.shader import Shader
     from kivyfn.three.controls.base import SceneController
 
 
@@ -32,11 +35,13 @@ class Scene(Widget):
         self.controllers = []
 
         self.root = root or Node3D(name="root")
-        self.root.attach_scene(self)
 
         self.bind(size=self._on_viewport_changed)
         self.bind(pos=self._on_viewport_changed)
 
+    # =================================== #
+    # API
+    # =================================== #
     def build(self) -> None:
         self.renderer.clear()
         self.update_camera()
@@ -47,6 +52,46 @@ class Scene(Widget):
             reset_gl_context=self.reset_gl_context,
         )
 
+    def create_context(self, name: str, shader: Shader) -> RenderContext:
+        return self.renderer.create_context(name, shader)
+
+    def remove_context(self, name: str) -> None:
+        self.renderer.remove_context(name)
+
+
+    def add(
+        self,
+        child: Node3D,
+        parent: Node3D | None = None,
+        context: RenderContext | None = None,
+    ) -> None:
+        # TODO: might need to inhance this:width
+        parent = parent or self.root
+        parent.add_child(child)
+
+        inherited_context = context
+
+        if inherited_context is None and isinstance(parent, Object3D):
+            inherited_context = parent.ctx
+
+        for node in child.traverse():
+            if not isinstance(node, Object3D):
+                continue
+
+            if context is not None:
+                node.ctx = context
+            elif node.ctx is None:
+                node.ctx = inherited_context
+
+    def remove(self, child: Node3D) -> None:
+        if child.parent is not None:
+            child.parent.remove_child(child)
+
+
+
+    # =================================== #
+    # gl Context
+    # =================================== #
     def setup_gl_context(self, *args) -> None:
         glEnable(GL_DEPTH_TEST)
 
@@ -103,7 +148,7 @@ class Scene(Widget):
     # =================================== #
     # Controllers
     # =================================== #
-    def attach(
+    def attach_controller(
         self,
         controller: SceneController,
         priority: int = 0,
@@ -118,7 +163,7 @@ class Scene(Widget):
 
         return controller
 
-    def detach(
+    def detach_controller(
         self,
         controller: SceneController,
     ) -> None:

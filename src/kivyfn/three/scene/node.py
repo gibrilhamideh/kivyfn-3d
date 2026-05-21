@@ -15,9 +15,8 @@ from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.transform import Transform
 
 if TYPE_CHECKING:
-    from kivyfn.three.scene import Scene
     from kivyfn.three.render.renderer import Renderer
-    from kivyfn.three.render.render_pass import RenderPass
+    from kivyfn.three.render.context import RenderContext
     from kivyfn.three.controls.interaction import InteractionEvent
 
 class Node3D(EventDispatcher):
@@ -26,7 +25,6 @@ class Node3D(EventDispatcher):
     parent: Node3D | None = ObjectProperty(None, allownone=True)
     children: list[Node3D] = ListProperty([])
     pickable: bool = BooleanProperty(False)
-    scene: Scene | None = ObjectProperty(None, allownone=True)
     transform: Transform = ObjectProperty()
 
     __events__ = (
@@ -69,16 +67,9 @@ class Node3D(EventDispatcher):
         self.children.append(child)
         child.parent = self
 
-        if self.scene is not None:
-            child.attach_scene(self.scene)
-
     def remove_child(self, child):
-        if child in self.children:
-            if child.scene is not None:
-                child.detach_scene()
-
-            self.children.remove(child)
-            child.parent = None
+        self.children.remove(child)
+        child.parent = None
 
     def clear_children(self) -> None:
         for child in list(self.children):
@@ -93,7 +84,7 @@ class Node3D(EventDispatcher):
     # =================================== #
     # Render
     # =================================== #
-    def render(self, renderer: Renderer, render_pass: RenderPass):
+    def build(self, renderer: Renderer):
         pass
 
     # =================================== #
@@ -108,30 +99,4 @@ class Node3D(EventDispatcher):
     def on_drag(self, event: InteractionEvent) -> None:
         pass
 
-    # =================================== #
-    # Events
-    # =================================== #
-    def attach_scene(self, scene):
-        self.scene = scene
-        self.on_attach_scene(scene)
-
-        for child in self.children:
-            child.attach_scene(scene)
-
-    def detach_scene(self):
-        scene = self.scene
-
-        for child in list(self.children):
-            child.detach_scene()
-
-        if scene is not None:
-            self.on_detach_scene(scene)
-
-        self.scene = None
-
-    def on_attach_scene(self, scene):
-        pass
-
-    def on_detach_scene(self, scene):
-        pass
 

@@ -2,27 +2,19 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import Callable
 
+from kivy.graphics import Callback, Canvas
 from kivy.graphics.transformation import Matrix
-from kivy.graphics import (
-    Callback,
-    Canvas,
-    PopMatrix,
-    PushMatrix,
-    Rotate,
-    Scale,
-    Translate,
-    UpdateNormalMatrix,
-)
 
-from kivyfn.three.render.material import Material
-from kivyfn.three.render.mesh import RenderMesh
-from kivyfn.three.render.render_pass import RenderPass
+from kivyfn.three.render.context import RenderContext
+from kivyfn.three.render.instructions import Instructions
 from kivyfn.three.render.shader import Shader
-from kivyfn.three.scene.object3d import Object3D
 from kivyfn.three.scene.node import Node3D
+from kivyfn.three.scene.object3d import Object3D
+
+
+GLCallback = Callable[..., None]
 
 
 class Renderer:
@@ -32,157 +24,121 @@ class Renderer:
     ):
         self.canvas = canvas
 
-        self.passes: dict[Shader, RenderPass] = {}
-        self.buckets: dict[Shader, set[Object3D]] = {}
-        self.objects: set[Object3D] = set()
+        self.contexts: dict[str, RenderContext] = {}
 
         self._modelview_mat: Matrix | None = None
         self._projection_mat: Matrix | None = None
 
     def __repr__(self) -> str:
-        return f"Renderer(passes={len(self.passes)})"
+        return (
+            f"Renderer("
+            f"contexts={len(self.contexts)}, "
+            f")"
+        )
 
     # =================================== #
-    # Passes
+    # Contexts
     # =================================== #
-    def clear(self) -> None:
-        for render_pass in self.passes.values():
-            render_pass.clear()
-
-    def register_object(self, obj: Object3D) -> None:
-        if obj in self.objects:
-            return
-
-        if obj.mesh_data is None or obj.material is None:
-            return
-
-        shader = obj.material.shader
-
-        self.objects.add(obj)
-        self.buckets.setdefault(shader, set()).add(obj)
-        self.get_pass(shader)
-
-
-    def unregister_object(self, obj: Object3D) -> None:
-        self.objects.discard(obj)
-
-        for shader, bucket in list(self.buckets.items()):
-            bucket.discard(obj)
-
-            if not bucket:
-                self.buckets.pop(shader, None)
-
-
-    def rebucket_object(self, obj: Object3D) -> None:
-        self.unregister_object(obj)
-        self.register_object(obj)
-
-
-    def get_pass(
+    def create_context(
         self,
+        name: str,
         shader: Shader,
-    ) -> RenderPass:
-        if shader in self.passes:
-            return self.passes[shader]
+    ) -> RenderContext:
+        if name in self.contexts:
+            raise ValueError(f"Render context already exists: {name!r}")
 
-        render_pass = RenderPass(shader)
-        self.passes[shader] = render_pass
-        self.canvas.add(render_pass.context)
+        context = RenderContext(
+            name=name,
+            shader=shader,
+        )
 
-        return render_pass
+        self.contexts[name] = context
+        self.canvas.add(context.ctx)
+
+        self.sync_context_view(context)
+
+        return context
+
+    def remove_context(
+        self,
+        name: str,
+    ) -> None:
+        context = self.contexts.pop(name, None)
+
+        if context is None:
+            return
+
+        context.clear()
+
+        try:
+            self.canvas.remove(context.ctx)
+        except ValueError:
+            pass
+
+    def get_context(
+        self,
+        name: str,
+    ) -> RenderContext:
+        return self.contexts[name]
+
+    def clear_contexts(
+        self,
+    ) -> None:
+        for name in list(self.contexts.keys()):
+            self.remove_context(name)
 
     # =================================== #
-    # Render
+    # Objects
     # =================================== #
+    def add_object3d(self, object3d: Object3D):
+        with object3d.ctx:
+            object3d.instructions = Instructions(object3d, ctx=object3d.ctx)
+
+    def remove_object3d(self, object3d: Object3D):
+        context = object3d.ctx
+        context.ctx.remove(object3d.instructions.group)
+
+    # =================================== #
+    # Build
+    # =================================== #
+    def clear(self):
+        for ctx in self.contexts.values():
+            ctx.clear()
+
     def build(
         self,
         root: Node3D,
-        setup_gl_context: Callable,
-        reset_gl_context: Callable,
+        setup_gl_context: GLCallback,
+        reset_gl_context: GLCallback,
     ) -> None:
-        for shader in list(self.buckets.keys()):
-            render_pass = self.get_pass(shader)
+        for context in self.contexts.values():
+            context.clear()
 
-            with render_pass.context:
+            with context:
                 Callback(setup_gl_context)
-                self._build(root, render_pass)
+                self._build_node(root)
                 Callback(reset_gl_context)
 
-    def _build(
+    def _build_node(
         self,
         node: Node3D,
-        render_pass: RenderPass,
     ) -> None:
         if not node.visible:
             return
 
-        PushMatrix()
-        self._apply_transform(node)
-
-        node.render(self, render_pass)
+        node.build(self)
         for child in node.children:
-            self._build(child, render_pass)
-
-        PopMatrix()
+            self._build_node(child)
 
     def build_object(
         self,
-        object3d: Object3D,
-        render_pass: RenderPass,
-    ) -> None:
-        if object3d.mesh_data is None:
-            return
+        obj: Object3D,
+    ) -> Instructions:
 
-        material: Material = object3d.material
-        shader: Shader = material.shader
-
-        if self.get_pass(shader) is not render_pass:
-            return
-
-        Callback(partial(self._apply_material, material, render_pass))
-
-        if object3d.render_mesh is None:
-            object3d.render_mesh = RenderMesh(
-                mesh_data=object3d.mesh_data,
-                mode=object3d.render_mode,
-            )
-        else:
-            object3d.render_mesh.update_mesh_data(object3d.mesh_data)
-
-        render_pass.context.add(object3d.render_mesh.instruction)
-
-    # =================================== #
-    # Material
-    # =================================== #
-    def _apply_material(
-        self,
-        material: Material,
-        render_pass: RenderPass,
-        *args,
-    ) -> None:
-        material.apply_to(render_pass.context)
-
-    # =================================== #
-    # Transform
-    # =================================== #
-    def _apply_transform(
-        self,
-        node: Node3D,
-    ) -> None:
-        transform = node.transform
-
-        tx, ty, tz = transform.translation
-        sx, sy, sz = transform.scale
-
-        rotation = transform.rotation
-
-        axis_x, axis_y, axis_z, angle = rotation.to_axis_angle()
-
-        Translate(tx, ty, tz)
-        Rotate(angle=angle, axis=(axis_x, axis_y, axis_z))
-        Scale(sx, sy, sz)
-
-        UpdateNormalMatrix()
+        return Instructions(
+            object3d=obj,
+            ctx=obj.ctx,
+        )
 
     # =================================== #
     # View
@@ -195,15 +151,29 @@ class Renderer:
         self._projection_mat = camera.get_projection_matrix(aspect)
         self._modelview_mat = camera.get_view_matrix()
 
-        for render_pass in self.passes.values():
-            render_pass.update_view(camera, aspect)
+        for ctx in self.contexts.values():
+            self.sync_context_view(ctx)
+
+    def sync_context_view(
+        self,
+        context: RenderContext,
+    ) -> None:
+        if self._projection_mat is not None:
+            context.ctx["projection_mat"] = self._projection_mat
+
+        if self._modelview_mat is not None:
+            context.ctx["modelview_mat"] = self._modelview_mat
 
     @property
-    def modelview_mat(self):
+    def modelview_mat(
+        self,
+    ) -> Matrix:
         assert self._modelview_mat is not None
         return self._modelview_mat
 
     @property
-    def projection_mat(self):
+    def projection_mat(
+        self,
+    ) -> Matrix:
         assert self._projection_mat is not None
         return self._projection_mat

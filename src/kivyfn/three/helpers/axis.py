@@ -48,7 +48,6 @@ class _AxisLine(Object3D):
 class AxisHelper(Node3D):
     def __init__(
         self,
-        material: Material,
         size: float = 1.0,
         **kwargs,
     ):
@@ -60,10 +59,9 @@ class AxisHelper(Node3D):
                 start=(0.0, 0.0, 0.0),
                 end=(size, 0.0, 0.0),
                 material=Material(
-                    color=[1.0, 0.0, 0.0, 1.0],
-                    shader=material.shader,
+                    name="XAxis",
+                    uniforms={"object_color": [1.0, 0.0, 0.0, 1.0]}
                 ),
-                name="XAxis",
             )
         )
 
@@ -73,10 +71,9 @@ class AxisHelper(Node3D):
                 start=(0.0, 0.0, 0.0),
                 end=(0.0, size, 0.0),
                 material=Material(
-                    color=[0.0, 1.0, 0.0, 1.0],
-                    shader=material.shader,
+                    name="YAxis",
+                    uniforms={"object_color": [1.0, 0.0, 0.0, 1.0]}
                 ),
-                name="YAxis",
             )
         )
 
@@ -86,10 +83,9 @@ class AxisHelper(Node3D):
                 start=(0.0, 0.0, 0.0),
                 end=(0.0, 0.0, size),
                 material=Material(
-                    color=[0.0, 0.0, 1.0, 1.0],
-                    shader=material.shader,
+                    name="ZAxis",
+                    uniforms={"object_color": [1.0, 0.0, 0.0, 1.0]}
                 ),
-                name="ZAxis",
             )
         )
 
