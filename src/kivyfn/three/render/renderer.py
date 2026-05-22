@@ -87,16 +87,6 @@ class Renderer:
         for name in list(self.contexts.keys()):
             self.remove_context(name)
 
-    # =================================== #
-    # Objects
-    # =================================== #
-    def add_object3d(self, object3d: Object3D):
-        with object3d.ctx:
-            object3d.instructions = Instructions(object3d, ctx=object3d.ctx)
-
-    def remove_object3d(self, object3d: Object3D):
-        context = object3d.ctx
-        context.ctx.remove(object3d.instructions.group)
 
     # =================================== #
     # Build
@@ -105,40 +95,31 @@ class Renderer:
         for ctx in self.contexts.values():
             ctx.clear()
 
-    def build(
+    def remove(self, node: Node3D):
+        self.detach(node)
+
+    def add(
         self,
-        root: Node3D,
+        node: Node3D,
+        context: str,
         setup_gl_context: GLCallback,
         reset_gl_context: GLCallback,
     ) -> None:
-        for context in self.contexts.values():
-            context.clear()
 
-            with context:
-                Callback(setup_gl_context)
-                self._build_node(root)
-                Callback(reset_gl_context)
+        ctx = self.get_context(context)
 
-    def _build_node(
-        self,
-        node: Node3D,
-    ) -> None:
-        if not node.visible:
-            return
+        with ctx:
+            Callback(setup_gl_context)
+            self.attach(node, ctx)
+            Callback(reset_gl_context)
 
-        node.build(self)
-        for child in node.children:
-            self._build_node(child)
+    def attach(self, node: Node3D, ctx: RenderContext):
+        for child in node.traverse():
+            child.attach(ctx)
 
-    def build_object(
-        self,
-        obj: Object3D,
-    ) -> Instructions:
-
-        return Instructions(
-            object3d=obj,
-            ctx=obj.ctx,
-        )
+    def detach(self, node: Node3D):
+        for child in node.traverse():
+            child.detach()
 
     # =================================== #
     # View

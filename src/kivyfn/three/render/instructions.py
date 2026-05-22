@@ -1,9 +1,10 @@
 # kivyfn/three/render/object.py
 
 from __future__ import annotations
-
+from typing import TYPE_CHECKING
 from functools import partial
 
+from kivy.event import EventDispatcher
 from kivy.graphics import (
     Callback,
     InstructionGroup,
@@ -15,21 +16,23 @@ from kivy.graphics import (
     UpdateNormalMatrix,
 )
 
-from kivyfn.three.render.material import Material
 from kivyfn.three.render.mesh import RenderMesh
-from kivyfn.three.render.context import RenderContext
-from kivyfn.three.scene.object3d import Object3D
+
+if TYPE_CHECKING:
+    from kivyfn.three.render.material import Material
+    from kivyfn.three.render.context import RenderContext
+    from kivyfn.three.scene.object3d import Object3D
 
 
-class Instructions:
+class Instructions(EventDispatcher):
     def __init__(
         self,
         object3d: Object3D,
         ctx: RenderContext,
     ):
-        self.object3d = object3d
         self.ctx = ctx
         self.group = InstructionGroup()
+        self.object3d = object3d
 
         self.push = PushMatrix()
         self.translate = Translate(0.0, 0.0, 0.0)
@@ -38,7 +41,7 @@ class Instructions:
         self.normal_matrix = UpdateNormalMatrix()
         self.material_callback = Callback(
             partial(
-                self._apply_material,
+                self.apply_material,
                 object3d.material,
                 ctx,
             )
@@ -58,19 +61,19 @@ class Instructions:
         self.group.add(self.mesh.instruction)
         self.group.add(self.pop)
 
-    def update_material(self) -> None:
-        self.material_callback = Callback(
-            partial(
-                self._apply_material,
-                self.object3d.material,
-                self.ctx,
-            )
-        )
 
-    def _apply_material(
+        self.object3d.material.bind(uniforms=self.update_uniforms)
+
+
+    def apply_material(
         self,
         material: Material,
         ctx: RenderContext,
-        *args,
+        callback: Callback,
     ) -> None:
-        material.apply_to(ctx=ctx)
+        for key, value in material.uniforms.items():
+            ctx[key] = value
+
+
+    def update_uniforms(self, *_):
+        self.material_callback.ask_update()

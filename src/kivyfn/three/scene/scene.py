@@ -14,7 +14,6 @@ from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.scene.camera import Camera
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.scene.viewport import Viewport
-from kivyfn.three.scene.object3d import Object3D
 
 if TYPE_CHECKING:
     from kivyfn.three.render.shader import Shader
@@ -42,52 +41,32 @@ class Scene(Widget):
     # =================================== #
     # API
     # =================================== #
-    def build(self) -> None:
-        self.renderer.clear()
-        self.update_camera()
-
-        self.renderer.build(
-            self.root,
-            setup_gl_context=self.setup_gl_context,
-            reset_gl_context=self.reset_gl_context,
-        )
-
     def create_context(self, name: str, shader: Shader) -> RenderContext:
         return self.renderer.create_context(name, shader)
 
     def remove_context(self, name: str) -> None:
         self.renderer.remove_context(name)
 
-
     def add(
         self,
-        child: Node3D,
+        node: Node3D,
+        context: str,
         parent: Node3D | None = None,
-        context: RenderContext | None = None,
     ) -> None:
-        # TODO: might need to inhance this:width
         parent = parent or self.root
-        parent.add_child(child)
+        parent.add_child(node)
 
-        inherited_context = context
+        self.renderer.add(
+            node,
+            context,
+            setup_gl_context=self.setup_gl_context,
+            reset_gl_context=self.reset_gl_context,
+        )
 
-        if inherited_context is None and isinstance(parent, Object3D):
-            inherited_context = parent.ctx
-
-        for node in child.traverse():
-            if not isinstance(node, Object3D):
-                continue
-
-            if context is not None:
-                node.ctx = context
-            elif node.ctx is None:
-                node.ctx = inherited_context
-
-    def remove(self, child: Node3D) -> None:
-        if child.parent is not None:
-            child.parent.remove_child(child)
-
-
+    def remove(self, node: Node3D) -> None:
+        assert node.parent is not None
+        node.parent.remove_child(node)
+        self.renderer.remove(node)
 
     # =================================== #
     # gl Context

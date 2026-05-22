@@ -7,6 +7,7 @@ from kivy.properties import DictProperty, ObjectProperty, StringProperty
 from kivy.graphics import RenderContext as KivyRenderContext
 from kivy.event import EventDispatcher
 
+from kivyfn.three.controls import interaction
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.camera import Camera
 
@@ -38,6 +39,9 @@ class RenderContext(EventDispatcher):
         for key, value in self.uniforms.items():
             self.ctx[key] = value
 
+    # =================================== #
+    # Context Mirroring
+    # =================================== #
     def __enter__(self):
         return self.ctx.__enter__()
 
@@ -53,6 +57,15 @@ class RenderContext(EventDispatcher):
     def clear(self) -> None:
         self.ctx.clear()
 
+    def add(self, instruction):
+        self.ctx.add(instruction)
+
+    def remove(self, instruction):
+        self.ctx.remove(instruction)
+
+    # =================================== #
+    # View & Projections
+    # =================================== #
     def update_view(
         self,
         camera: Camera,

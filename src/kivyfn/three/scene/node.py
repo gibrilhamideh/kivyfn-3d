@@ -52,6 +52,9 @@ class Node3D(EventDispatcher):
         self.name = name
         self.transform = transform or Transform()
 
+    # =================================== #
+    # Locations
+    # =================================== #
     @property
     def local_matrix(self) -> Matrix4:
         return self.transform.to_matrix4()
@@ -63,6 +66,9 @@ class Node3D(EventDispatcher):
 
         return self.parent.world_matrix @ self.local_matrix
 
+    # =================================== #
+    # Relationships
+    # =================================== #
     def add_child(self, child):
         self.children.append(child)
         child.parent = self
@@ -84,8 +90,14 @@ class Node3D(EventDispatcher):
     # =================================== #
     # Render
     # =================================== #
-    def build(self, renderer: Renderer):
-        pass
+    def attach(self, ctx: RenderContext) -> bool:
+        """ meant to be overiden in Object3d """
+        return False
+
+    def detach(self) -> bool:
+        """ meant to be overiden in Object3d """
+        return False
+
 
     # =================================== #
     # Interaction Evenets

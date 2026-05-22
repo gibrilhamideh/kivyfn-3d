@@ -16,11 +16,11 @@ from kivyfn.three.math.vector import Vector3
 from kivyfn.three.render.material import Material
 from kivyfn.three.render.meshdata import MeshData
 from kivyfn.three.scene.node import Node3D
+from kivyfn.three.render.instructions import Instructions
 
 if TYPE_CHECKING:
     from kivyfn.three.render.mesh import RenderMesh
     from kivyfn.three.render.context import RenderContext
-    from kivyfn.three.render.instructions import Instructions
 
 RenderModes = Literal[
     "points",
@@ -44,8 +44,13 @@ class Object3D(Node3D):
     mesh_data: MeshData = ObjectProperty()
     render_mesh: RenderMesh = ObjectProperty()
     material: Material = ObjectProperty()
-    instructions: Instructions = ObjectProperty()
-    ctx: RenderContext = ObjectProperty()
+    instructions: Instructions | None = ObjectProperty()
+    ctx: RenderContext | None = ObjectProperty()
+
+    origin = ObjectProperty(None, allownone=True)
+    radius = NumericProperty(0.0)
+    bounds_min = ObjectProperty(None, allownone=True)
+    bounds_max = ObjectProperty(None, allownone=True)
     render_mode: RenderModes = OptionProperty(
         "triangles",
         options=(
@@ -56,22 +61,20 @@ class Object3D(Node3D):
             "triangles",
             "triangle_strip",
             "triangle_fan",
-        ),
+        )
     )
 
 
     origin_mode: OriginModes = OptionProperty(
         "center",
-        options=("center", "bottom", "top", "left", "right"),
+        options=(
+            "center",
+            "bottom",
+            "top",
+            "left",
+            "right"
+        )
     )
-
-
-
-    origin = ObjectProperty(None, allownone=True)
-    radius = NumericProperty(0.0)
-
-    bounds_min = ObjectProperty(None, allownone=True)
-    bounds_max = ObjectProperty(None, allownone=True)
 
     def __repr__(self) -> str:
         return (
@@ -107,6 +110,9 @@ class Object3D(Node3D):
         if self.mesh_data is not None:
             self.recalculate_bounds()
 
+    # =================================== #
+    # Property Events
+    # =================================== #
     def on_mesh_data(
         self,
         instance,
@@ -123,9 +129,26 @@ class Object3D(Node3D):
         if self.mesh_data is not None:
             self.recalculate_bounds()
 
-    def build(self, renderer):
-        self.instructions = renderer.build_object(self)
+    # =================================== #
+    # Rendering
+    # =================================== #
+    def attach(self, ctx):
+        self.ctx = ctx
+        self.instructions = Instructions(self, ctx)
+        return True
 
+    def detach(self):
+        assert self.ctx is not None
+        assert self.instructions is not None
+        self.ctx.remove(self.instructions.group)
+
+        self.ctx = None
+        self.instructions = None
+        return True
+
+    # =================================== #
+    # Intersects
+    # =================================== #
     def recalculate_bounds(self) -> None:
         if self.mesh_data is None or not self.mesh_data.vertices:
             self.origin = Vector3.zero()

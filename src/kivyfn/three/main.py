@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from kivy.config import Config
-
 Config.set("input", "mouse", "mouse,disable_multitouch")
 
 from kivy.app import App
+from kivy.clock import Clock
 
 from kivyfn.three.controls import BlenderCameraControls, InteractionController
 from kivyfn.three.helpers import AxisHelper, GridHelper
@@ -21,6 +21,7 @@ from kivyfn.three.utils.color import random_color
 
 
 class MainApp(App):
+
     def on_start(self):
         resources_path = Path(__file__).parent / "resources"
         model_path = resources_path / "models" / "glb" / "dashboard.glb"
@@ -29,6 +30,7 @@ class MainApp(App):
         objects = loader.load(model_path)
 
         self.scene = Scene()
+        self.pending_objects = list(objects.items())
 
         # --- Shaders
         lambert_shader = Shader(
@@ -42,12 +44,12 @@ class MainApp(App):
         )
 
         # --- Contexts
-        main_context = self.scene.create_context(
+        self.scene.create_context(
             name="main",
             shader=lambert_shader,
         )
 
-        helper_context = self.scene.create_context(
+        self.scene.create_context(
             name="helper",
             shader=helper_shader,
         )
@@ -56,30 +58,7 @@ class MainApp(App):
         self.scene.attach_controller(InteractionController())
         self.scene.attach_controller(BlenderCameraControls(), priority=100)
 
-        # --- Dashboard objects
-        for name, mesh_data in objects.items():
-            material = Material(
-                name=name,
-                uniforms={
-                    "object_color": random_color(),
-                },
-            )
-
-            node = Object3D(
-                mesh_data=mesh_data,
-                material=material,
-                name=name,
-                pickable=True,
-            )
-
-            node.bind(on_release=self.on_test)
-
-            self.scene.add(
-                node,
-                context=main_context,
-            )
-
-        # --- Helpers
+        # --- Helpers load immediately
         axis = AxisHelper()
 
         grid = GridHelper(
@@ -93,15 +72,57 @@ class MainApp(App):
             ),
         )
 
-        self.scene.add(axis, context=helper_context)
-        self.scene.add(grid, context=helper_context)
-
-        self.scene.build()
+        self.scene.add(axis, context="helper")
+        self.scene.add(grid, context="helper")
 
         self.root.add_widget(self.scene)  # pyright: ignore
 
-    def on_test(self, instance, event):
+        # --- Lazy load dashboard objects
+        self.lazy_load_event = Clock.schedule_interval(
+            self.lazy_load_next_object,
+            0.2,
+        )
+
+    def lazy_load_next_object(self, dt):
+        if not self.pending_objects:
+            self.lazy_load_event.cancel()
+            return False
+
+        name, mesh_data = self.pending_objects.pop(0)
+
+        material = Material(
+            name=name,
+            uniforms={
+                "object_color": random_color(),
+            },
+        )
+
+        object3d = Object3D(
+            mesh_data=mesh_data,
+            material=material,
+            name=name,
+            pickable=True,
+        )
+
+        object3d.bind(on_release=self.on_release)
+
+        self.scene.add(
+            object3d,
+            context="main",
+        )
+
+
+        return True
+
+    def on_release(self, instance, event):
         print("event: ", event)
+        self.change_color(event.node)
+
+    def change_color(self, object3d):
+        object3d.material.set_uniform(
+            "object_color",
+            random_color(),
+        )
 
 
 if __name__ == "__main__":
