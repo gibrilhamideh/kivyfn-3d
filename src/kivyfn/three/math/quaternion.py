@@ -187,6 +187,14 @@ class Quaternion:
 
         return self.conjugate() / length_squared
 
+    def copy(self) -> Quaternion:
+        return Quaternion(
+            self.x,
+            self.y,
+            self.z,
+            self.w,
+        )
+
     # =================================== #
     # Conversions
     # =================================== #

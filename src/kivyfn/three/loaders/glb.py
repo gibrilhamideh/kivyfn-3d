@@ -10,9 +10,11 @@ from typing import Any
 import numpy as np
 from pygltflib import GLTF2
 
+from kivyfn.three.loaders.asset import AssetObject, SceneAsset
+from kivyfn.three.math.matrix import Matrix3, Matrix4
 from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.transform import Transform
-from kivyfn.three.math.matrix import Matrix3, Matrix4
+from kivyfn.three.math.vector import Vector3
 from kivyfn.three.objects.geometry import Geometry
 
 
@@ -25,35 +27,40 @@ class GlbLoader:
         self.flip_v = flip_v
         self.flip_winding = flip_winding
 
-        self.objects: dict[str, Geometry] = {}
+        self.scene: SceneAsset = SceneAsset()
         self._gltf: Any = None
         self._buffer_bytes: bytes | None = None
 
-    def load(self, filename: str | Path) -> dict[str, Geometry]:
+    def load(
+        self,
+        filename: str | Path,
+    ) -> SceneAsset:
         path = Path(filename)
 
-        self.objects = {}
+        self.scene = SceneAsset()
         self._gltf = GLTF2().load_binary(str(path))
         self._buffer_bytes = self._load_buffer_bytes(path)
 
-        node_world = self._build_node_world_matrices()
+        node_world_matrices = self._build_node_world_matrices()
 
         for node_index, node in enumerate(self._gltf.nodes or []):
             if node.mesh is None:
                 continue
 
-            world_matrix = node_world[node_index]
-            normal_matrix = world_matrix.compute_normal_matrix()
-
             mesh_object = self._gltf.meshes[node.mesh]
-            node_name = node.name or mesh_object.name or f"mesh_{node.mesh}"
+
+            node_name = (
+                node.name
+                or mesh_object.name
+                or f"mesh_{node.mesh}"
+            )
+
+            world_transform = self._transform_from_matrix4(
+                node_world_matrices[node_index]
+            )
 
             for primitive_index, primitive in enumerate(mesh_object.primitives or []):
-                geometry = self._process_primitive(
-                    primitive=primitive,
-                    world_matrix=world_matrix,
-                    normal_matrix=normal_matrix,
-                )
+                geometry = self._process_primitive(primitive)
 
                 if geometry is None:
                     continue
@@ -65,11 +72,170 @@ class GlbLoader:
                 )
 
                 geometry.name = key
-                self.objects[key] = geometry
 
-        return self.objects
+                self.scene.objects[key] = AssetObject(
+                    name=key,
+                    geometry=geometry,
+                    transform=world_transform.copy(),
+                    material=None,
+                )
 
-    def _load_buffer_bytes(self, filename: Path) -> bytes:
+        return self.scene
+
+    # =================================== #
+    # Node Transforms
+    # =================================== #
+    def _build_node_world_matrices(self) -> list[Matrix4]:
+        nodes = self._gltf.nodes or []
+
+        node_local_matrices = [
+            self._get_node_local_matrix(node)
+            for node in nodes
+        ]
+
+        node_world_matrices = [
+            Matrix4.identity()
+            for _ in nodes
+        ]
+
+        visited: set[int] = set()
+
+        def walk(
+            node_index: int,
+            parent_matrix: Matrix4,
+        ) -> None:
+            if node_index in visited:
+                return
+
+            visited.add(node_index)
+
+            world_matrix = parent_matrix @ node_local_matrices[node_index]
+            node_world_matrices[node_index] = world_matrix
+
+            node = nodes[node_index]
+
+            for child_index in node.children or []:
+                walk(
+                    child_index,
+                    world_matrix,
+                )
+
+        if self._gltf.scenes and self._gltf.scene is not None:
+            scene = self._gltf.scenes[self._gltf.scene]
+
+            for root_index in scene.nodes or []:
+                walk(
+                    root_index,
+                    Matrix4.identity(),
+                )
+        else:
+            for node_index in range(len(nodes)):
+                walk(
+                    node_index,
+                    Matrix4.identity(),
+                )
+
+        return node_world_matrices
+
+    def _get_node_local_matrix(
+        self,
+        node: Any,
+    ) -> Matrix4:
+        if getattr(node, "matrix", None):
+            return Matrix4(
+                np.array(
+                    node.matrix,
+                    dtype=np.float32,
+                ).reshape((4, 4))
+            )
+
+        translation_data = getattr(node, "translation", None)
+        rotation_data = getattr(node, "rotation", None)
+        scale_data = getattr(node, "scale", None)
+
+        translation = (
+            Vector3(
+                float(translation_data[0]),
+                float(translation_data[1]),
+                float(translation_data[2]),
+            )
+            if translation_data is not None
+            else Vector3(0.0, 0.0, 0.0)
+        )
+
+        rotation = (
+            Quaternion(
+                float(rotation_data[0]),
+                float(rotation_data[1]),
+                float(rotation_data[2]),
+                float(rotation_data[3]),
+            )
+            if rotation_data is not None
+            else Quaternion.identity()
+        )
+
+        scale = (
+            Vector3(
+                float(scale_data[0]),
+                float(scale_data[1]),
+                float(scale_data[2]),
+            )
+            if scale_data is not None
+            else Vector3(1.0, 1.0, 1.0)
+        )
+
+        return Transform(
+            translation=translation,
+            rotation=rotation,
+            scale=scale,
+        ).to_matrix4()
+
+    def _transform_from_matrix4(
+        self,
+        matrix: Matrix4,
+    ) -> Transform:
+        values = matrix.values
+
+        translation = Vector3(
+            float(values[0, 3]),
+            float(values[1, 3]),
+            float(values[2, 3]),
+        )
+
+        scale = Vector3(
+            float(np.linalg.norm(values[:3, 0])),
+            float(np.linalg.norm(values[:3, 1])),
+            float(np.linalg.norm(values[:3, 2])),
+        )
+
+        rotation_values = values[:3, :3].copy()
+
+        if scale.x != 0.0:
+            rotation_values[:, 0] /= scale.x
+
+        if scale.y != 0.0:
+            rotation_values[:, 1] /= scale.y
+
+        if scale.z != 0.0:
+            rotation_values[:, 2] /= scale.z
+
+        rotation = Quaternion.from_matrix3(
+            Matrix3(rotation_values.astype(np.float32))
+        )
+
+        return Transform(
+            translation=translation,
+            rotation=rotation,
+            scale=scale,
+        )
+
+    # =================================== #
+    # Buffer Reading
+    # =================================== #
+    def _load_buffer_bytes(
+        self,
+        filename: Path,
+    ) -> bytes:
         buffer_bytes = self._gltf.binary_blob()
 
         if buffer_bytes is not None:
@@ -92,7 +258,10 @@ class GlbLoader:
 
         raise ValueError("No binary buffer found in GLB file.")
 
-    def _read_accessor(self, accessor_index: int | None):
+    def _read_accessor(
+        self,
+        accessor_index: int | None,
+    ):
         if accessor_index is None:
             return None
 
@@ -100,7 +269,6 @@ class GlbLoader:
             raise RuntimeError("GLB buffer bytes were not loaded.")
 
         buffer_bytes = self._buffer_bytes
-
         accessor = self._gltf.accessors[accessor_index]
 
         if accessor.bufferView is None:
@@ -139,7 +307,11 @@ class GlbLoader:
         start = view_offset + accessor_offset
 
         if stride and stride != element_size:
-            output = np.empty((count, component_count), dtype=dtype)
+            output = np.empty(
+                (count, component_count),
+                dtype=dtype,
+            )
+
             position = start
 
             for index in range(count):
@@ -163,60 +335,12 @@ class GlbLoader:
 
         return array.reshape((count, component_count))
 
-    def _build_node_world_matrices(self) -> list[Matrix4]:
-        node_world = [
-            Matrix4.identity()
-            for _ in (self._gltf.nodes or [])
-        ]
-
-        node_local: list[Matrix4] = []
-
-        for node in self._gltf.nodes or []:
-            if getattr(node, "matrix", None):
-                matrix = Matrix4(
-                    np.array(node.matrix, dtype=np.float32).reshape((4, 4))
-                )
-            else:
-                scale = getattr(node, "scale", None)
-                translation = getattr(node, "translation", None)
-                rotation = getattr(node, "rotation", None)
-                rotation=(
-                        Quaternion(*rotation)
-                        if rotation is not None
-                        else Quaternion.identity()
-                    )
-
-                matrix = Transform(
-                    translation=translation,
-                    rotation=rotation,
-                    scale=scale,
-                ).to_matrix4()            
-
-                node_local.append(matrix)
-
-        def walk(node_index: int, parent_matrix: Matrix4) -> None:
-            world_matrix = parent_matrix @ node_local[node_index]
-            node_world[node_index] = world_matrix
-
-            for child_index in self._gltf.nodes[node_index].children or []:
-                walk(child_index, world_matrix)
-
-        if self._gltf.scenes and self._gltf.scene is not None:
-            scene = self._gltf.scenes[self._gltf.scene]
-
-            for root_index in scene.nodes or []:
-                walk(root_index, Matrix4.identity())
-        else:
-            for node_index in range(len(self._gltf.nodes or [])):
-                walk(node_index, Matrix4.identity())
-
-        return node_world
-
+    # =================================== #
+    # Geometry
+    # =================================== #
     def _process_primitive(
         self,
         primitive: Any,
-        world_matrix: Matrix4,
-        normal_matrix: Matrix3,
     ) -> Geometry | None:
         position_index = getattr(primitive.attributes, "POSITION", None)
         normal_index = getattr(primitive.attributes, "NORMAL", None)
@@ -234,24 +358,25 @@ class GlbLoader:
         if positions is None or indices is None:
             return None
 
+        positions = positions.astype(np.float32)
+
         if normals is None or normals.shape[1] < 3:
-            normals = np.zeros_like(positions, dtype=np.float32)
+            normals = np.zeros_like(
+                positions,
+                dtype=np.float32,
+            )
+        else:
+            normals = normals.astype(np.float32)
 
         if uvs is None or uvs.shape[1] < 2:
-            uvs = np.zeros((positions.shape[0], 2), dtype=np.float32)
-
-        transformed_positions = self._transform_positions(
-            positions=positions,
-            world_matrix=world_matrix,
-        )
-
-        transformed_normals = self._transform_normals(
-            normals=normals,
-            normal_matrix=normal_matrix,
-        )
+            uvs = np.zeros(
+                (positions.shape[0], 2),
+                dtype=np.float32,
+            )
+        else:
+            uvs = uvs.astype(np.float32).copy()
 
         if self.flip_v:
-            uvs = uvs.astype(np.float32).copy()
             uvs[:, 1] = 1.0 - uvs[:, 1]
 
         final_indices = indices.reshape(-1).astype(np.int64)
@@ -265,52 +390,21 @@ class GlbLoader:
 
         packed_vertices = np.column_stack(
             [
-                transformed_positions,
-                transformed_normals,
+                positions,
+                normals,
                 uvs,
             ]
         ).astype(np.float32).reshape(-1)
 
-
-        vertices = packed_vertices.astype(float).tolist()
-        indices = final_indices.tolist()
-        return Geometry(vertices=vertices, indices=indices)
-
-
-    def _transform_positions(
-        self,
-        positions,
-        world_matrix: Matrix4,
-    ):
-        homogeneous_positions = np.concatenate(
-            [
-                positions.astype(np.float32),
-                np.ones((positions.shape[0], 1), dtype=np.float32),
-            ],
-            axis=1,
+        return Geometry(
+            vertices=packed_vertices.astype(float).tolist(),
+            indices=final_indices.tolist(),
         )
 
-        return (homogeneous_positions @ world_matrix.values.T)[:, :3]
-
-    def _transform_normals(
+    def _ensure_uint16_indices(
         self,
-        normals,
-        normal_matrix: Matrix3,
+        indices,
     ):
-        transformed_normals = normals.astype(np.float32) @ normal_matrix.values.T
-
-        lengths = (
-            np.linalg.norm(
-                transformed_normals,
-                axis=1,
-                keepdims=True,
-            )
-            + 1e-12
-        )
-
-        return transformed_normals / lengths
-
-    def _ensure_uint16_indices(self, indices):
         if int(indices.max()) > 65535:
             raise OverflowError(
                 "Indices exceed 65535 in a single primitive."

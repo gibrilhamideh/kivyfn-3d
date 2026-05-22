@@ -73,6 +73,7 @@ class Instructions(EventDispatcher):
     def sync_transform(self) -> None:
         self.matrix.matrix = self.object3d.world_matrix.to_kivy_matrix()
 
+
     def apply_material(
         self,
         material: Material,

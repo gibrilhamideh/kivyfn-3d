@@ -71,11 +71,12 @@ class Node3D(EventDispatcher):
 
         return self.parent.world_matrix @ self.local_matrix
 
+
     # =================================== #
     # Transform State
     # =================================== #
     @property
-    def translation(self):
+    def translation(self) -> Vector3:
         return self.transform.translation
 
     @property
@@ -83,60 +84,45 @@ class Node3D(EventDispatcher):
         return self.transform.rotation
 
     @property
-    def scale(self):
+    def scale(self) -> Vector3:
         return self.transform.scale
+
 
     # =================================== #
     # Translation
     # =================================== #
     def set_translation(
         self,
-        x: float,
-        y: float,
-        z: float,
+        translation: Vector3,
     ) -> None:
-        self.transform.translation = (x, y, z)
+        self.transform.set_translation(translation)
         self.mark_transform_dirty()
 
     def translate_by(
         self,
-        x: float,
-        y: float,
-        z: float,
+        offset: Vector3,
     ) -> None:
-        tx, ty, tz = self.transform.translation
+        self.transform.translate_by(offset)
+        self.mark_transform_dirty()
 
-        self.set_translation(
-            tx + x,
-            ty + y,
-            tz + z,
-        )
 
     # =================================== #
     # Scale
     # =================================== #
     def set_scale(
         self,
-        x: float,
-        y: float,
-        z: float,
+        scale: Vector3,
     ) -> None:
-        self.transform.scale = (x, y, z)
+        self.transform.set_scale(scale)
         self.mark_transform_dirty()
 
     def scale_by(
         self,
-        x: float,
-        y: float,
-        z: float,
+        factor: Vector3,
     ) -> None:
-        sx, sy, sz = self.transform.scale
+        self.transform.scale_by(factor)
+        self.mark_transform_dirty()
 
-        self.set_scale(
-            sx * x,
-            sy * y,
-            sz * z,
-        )
 
     # =================================== #
     # Rotation
@@ -145,25 +131,19 @@ class Node3D(EventDispatcher):
         self,
         rotation: Quaternion,
     ) -> None:
-        self.transform.rotation = rotation.normalize()
+        self.transform.set_rotation(rotation)
         self.mark_transform_dirty()
 
     def rotate_by(
         self,
         angle_degrees: float,
-        axis: Vector3 | tuple[float, float, float] = (0.0, 1.0, 0.0),
+        axis: Vector3,
     ) -> None:
-        if not isinstance(axis, Vector3):
-            axis = Vector3(*axis)
-
-        delta = Quaternion.from_axis_angle(
-            axis,
+        self.transform.rotate_by(
             angle_degrees,
+            axis,
         )
-
-        self.set_rotation(
-            (delta * self.rotation).normalize()
-        )
+        self.mark_transform_dirty()
 
 
     # =================================== #

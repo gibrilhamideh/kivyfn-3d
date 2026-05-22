@@ -48,10 +48,10 @@ class MainApp(App):
         )
 
         loader = GlbLoader()
-        objects = loader.load(model_path)
+        scene_asset = loader.load(model_path)
 
         self.scene = Scene()
-        self.pending_objects = list(objects.items())
+        self.pending_objects = list(scene_asset.objects.items())
 
         # =================================== #
         # Shaders
@@ -150,7 +150,7 @@ class MainApp(App):
             self.lazy_load_event.cancel()
             return False
 
-        name, geometry = self.pending_objects.pop(0)
+        name, asset = self.pending_objects.pop(0)
 
         material = Material(
             name=name,
@@ -160,9 +160,10 @@ class MainApp(App):
         )
 
         object3d = Object3D(
-            geometry=geometry,
+            geometry=asset.geometry,
             material=material,
             name=name,
+            transform=asset.transform.copy(),
             pickable=True,
         )
 
@@ -223,7 +224,7 @@ class MainApp(App):
         dt: float,
     ) -> None:
         object3d.rotate_by(
-            angle_degrees=90 * dt,
+            angle_degrees=20 * dt,
             axis=Vector3(0, 1, 0),
         )
 

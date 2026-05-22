@@ -4,40 +4,98 @@ from __future__ import annotations
 
 import numpy as np
 
-from kivyfn.three.math.matrix import Matrix3, Matrix4
+from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.quaternion import Quaternion
+from kivyfn.three.math.vector import Vector3
 
 
 class Transform:
     def __init__(
         self,
-        translation=None,
-        rotation=None,
-        scale=None,
+        translation: Vector3 | None = None,
+        rotation: Quaternion | None = None,
+        scale: Vector3 | None = None,
     ):
-        self.translation = (
-            translation
-            or (0.0, 0.0, 0.0)
+        self.translation = translation or Vector3(0.0, 0.0, 0.0)
+        self.rotation = rotation or Quaternion.identity()
+        self.scale = scale or Vector3(1.0, 1.0, 1.0)
+
+    def copy(self) -> Transform:
+        return Transform(
+            translation=self.translation.copy(),
+            rotation=self.rotation.copy(),
+            scale=self.scale.copy(),
         )
 
-        self.rotation = (
-            rotation
-            or Quaternion.identity()
+    # =================================== #
+    # Translation
+    # =================================== #
+    def set_translation(
+        self,
+        translation: Vector3,
+    ) -> None:
+        self.translation = translation
+
+    def translate_by(
+        self,
+        offset: Vector3,
+    ) -> None:
+        self.translation = self.translation + offset
+
+    # =================================== #
+    # Scale
+    # =================================== #
+    def set_scale(
+        self,
+        scale: Vector3,
+    ) -> None:
+        self.scale = scale
+
+    def scale_by(
+        self,
+        factor: Vector3,
+    ) -> None:
+        self.scale = Vector3(
+            self.scale.x * factor.x,
+            self.scale.y * factor.y,
+            self.scale.z * factor.z,
         )
 
-        self.scale = (
-            scale
-            or (1.0, 1.0, 1.0)
+    # =================================== #
+    # Rotation
+    # =================================== #
+    def set_rotation(
+        self,
+        rotation: Quaternion,
+    ) -> None:
+        self.rotation = rotation.normalize()
+
+    def rotate_by(
+        self,
+        angle_degrees: float,
+        axis: Vector3,
+    ) -> None:
+        delta = Quaternion.from_axis_angle(
+            axis,
+            angle_degrees,
         )
 
+        self.set_rotation(
+            (delta * self.rotation).normalize()
+        )
+
+    # =================================== #
+    # Matrix
+    # =================================== #
     def to_matrix4(self) -> Matrix4:
-        tx, ty, tz = self.translation
-        sx, sy, sz = self.scale
-
         rotation_matrix = self.rotation.to_matrix3()
 
         scale_matrix = np.diag(
-            [sx, sy, sz]
+            [
+                self.scale.x,
+                self.scale.y,
+                self.scale.z,
+            ]
         ).astype(np.float32)
 
         matrix = np.identity(
@@ -45,14 +103,12 @@ class Transform:
             dtype=np.float32,
         )
 
-        matrix[:3, :3] = (
-            rotation_matrix.values @ scale_matrix
-        )
+        matrix[:3, :3] = rotation_matrix.values @ scale_matrix
 
         matrix[:3, 3] = [
-            tx,
-            ty,
-            tz,
+            self.translation.x,
+            self.translation.y,
+            self.translation.z,
         ]
 
         return Matrix4(matrix)

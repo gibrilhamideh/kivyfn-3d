@@ -30,7 +30,13 @@ class Matrix3:
         return Matrix3(self.values @ other.values)
 
     def __repr__(self) -> str:
-        return f"Matrix3({self.values})"
+        formatted = np.array2string(
+            self.values,
+            precision=3,
+            suppress_small=True,
+        )
+
+        return f"Matrix3(\n{formatted}\n)"
 
 
 class Matrix4:
@@ -78,11 +84,19 @@ class Matrix4:
 
     def to_kivy_matrix(self) -> Matrix:
         matrix = Matrix()
-        matrix.set(array=self.values.tolist())
+        matrix.set(
+            array=self.transpose().tolist()
+        )
         return matrix
 
     def __matmul__(self, other: "Matrix4") -> "Matrix4":
         return Matrix4(self.values @ other.values)
 
     def __repr__(self) -> str:
-        return f"Matrix4({self.values})"
+        formatted = np.array2string(
+            self.values,
+            precision=3,
+            suppress_small=True,
+        )
+
+        return f"Matrix4(\n{formatted}\n)"

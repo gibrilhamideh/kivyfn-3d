@@ -1,14 +1,35 @@
+# kivyfn/three/loaders/obj.py
 
+from __future__ import annotations
+
+from pathlib import Path
+
+from kivyfn.three.loaders.asset import AssetObject, SceneAsset
+from kivyfn.three.math.transform import Transform
 from kivyfn.three.objects.geometry import Geometry
 
+
 class ObjLoader:
-    def __init__(self, swapyz=False):
+    def __init__(
+        self,
+        swapyz: bool = False,
+    ):
         self.swapyz = swapyz
 
-    def load(self, filename):
+        self.scene: SceneAsset = SceneAsset()
+        self.vertices = []
+        self.normals = []
+        self.texcoords = []
+        self.faces = []
+        self._current_object: str | None = None
+
+    def load(
+        self,
+        filename: str | Path,
+    ) -> SceneAsset:
         """Load a Wavefront OBJ file."""
 
-        self.objects = {}
+        self.scene = SceneAsset()
 
         self.vertices = []
         self.normals = []
@@ -37,20 +58,28 @@ class ObjLoader:
                     self._current_object = values[1]
 
                 elif values[0] == "v":
-                    v = list(map(float, values[1:4]))
+                    vertex = list(map(float, values[1:4]))
 
                     if self.swapyz:
-                        v = (v[0], v[2], v[1])
+                        vertex = [
+                            vertex[0],
+                            vertex[2],
+                            vertex[1],
+                        ]
 
-                    self.vertices.append(v)
+                    self.vertices.append(vertex)
 
                 elif values[0] == "vn":
-                    v = list(map(float, values[1:4]))
+                    normal = list(map(float, values[1:4]))
 
                     if self.swapyz:
-                        v = (v[0], v[2], v[1])
+                        normal = [
+                            normal[0],
+                            normal[2],
+                            normal[1],
+                        ]
 
-                    self.normals.append(v)
+                    self.normals.append(normal)
 
                 elif values[0] == "vt":
                     self.texcoords.append(
@@ -60,79 +89,131 @@ class ObjLoader:
                 elif values[0] == "f":
                     face = []
                     texcoords = []
-                    norms = []
+                    normals = []
 
-                    for v in values[1:]:
-                        w = v.split("/")
+                    for vertex_data in values[1:]:
+                        parts = vertex_data.split("/")
 
-                        face.append(int(w[0]))
+                        face.append(int(parts[0]))
 
-                        if len(w) >= 2 and len(w[1]) > 0:
-                            texcoords.append(int(w[1]))
+                        if len(parts) >= 2 and parts[1]:
+                            texcoords.append(int(parts[1]))
                         else:
                             texcoords.append(-1)
 
-                        if len(w) >= 3 and len(w[2]) > 0:
-                            norms.append(int(w[2]))
+                        if len(parts) >= 3 and parts[2]:
+                            normals.append(int(parts[2]))
                         else:
-                            norms.append(-1)
+                            normals.append(-1)
 
                     self.faces.append(
-                        (face, norms, texcoords, material)
+                        (
+                            face,
+                            normals,
+                            texcoords,
+                            material,
+                        )
                     )
 
         self.finish_object()
 
-        return self.objects
+        return self.scene
 
-    def finish_object(self):
+    def finish_object(self) -> None:
         if self._current_object is None:
             return
 
-        geometry = Geometry(name=self._current_object)
+        geometry = Geometry(
+            name=self._current_object,
+        )
 
-        idx = 0
+        index = 0
 
-        for f in self.faces:
-            verts = f[0]
-            norms = f[1]
-            tcs = f[2]
+        for face_data in self.faces:
+            vertices = face_data[0]
+            normals = face_data[1]
+            texcoords = face_data[2]
 
-            for i in range(3):
-                # normal
-                n = (0.0, 0.0, 0.0)
+            # OBJ faces can be triangles or polygons.
+            # Convert polygon faces into triangles using fan triangulation.
+            for triangle in self._triangulate_face(
+                vertices,
+                normals,
+                texcoords,
+            ):
+                triangle_vertices = triangle[0]
+                triangle_normals = triangle[1]
+                triangle_texcoords = triangle[2]
 
-                if norms[i] != -1:
-                    n = self.normals[norms[i] - 1]
+                for i in range(3):
+                    normal = (0.0, 0.0, 0.0)
 
-                # texture coordinate
-                t = (0.0, 0.0)
+                    if triangle_normals[i] != -1:
+                        normal = self.normals[triangle_normals[i] - 1]
 
-                if tcs[i] != -1:
-                    t = self.texcoords[tcs[i] - 1]
+                    texcoord = (0.0, 0.0)
 
-                # vertex
-                v = self.vertices[verts[i] - 1]
+                    if triangle_texcoords[i] != -1:
+                        texcoord = self.texcoords[triangle_texcoords[i] - 1]
 
-                geometry.vertices.extend([
-                    v[0], v[1], v[2],
-                    n[0], n[1], n[2],
-                    t[0], t[1],
-                ])
+                    vertex = self.vertices[triangle_vertices[i] - 1]
 
-            geometry.indices.extend([
-                idx,
-                idx + 1,
-                idx + 2,
-            ])
+                    geometry.vertices.extend(
+                        [
+                            vertex[0],
+                            vertex[1],
+                            vertex[2],
+                            normal[0],
+                            normal[1],
+                            normal[2],
+                            texcoord[0],
+                            texcoord[1],
+                        ]
+                    )
 
-            idx += 3
+                geometry.indices.extend(
+                    [
+                        index,
+                        index + 1,
+                        index + 2,
+                    ]
+                )
 
-        self.objects[self._current_object] = geometry
+                index += 3
 
-        # mesh.calculate_normals()
+        self.scene.objects[self._current_object] = AssetObject(
+            name=self._current_object,
+            geometry=geometry,
+            transform=Transform(),
+            material=None,
+        )
 
         self.faces = []
+
+    def _triangulate_face(
+        self,
+        vertices: list[int],
+        normals: list[int],
+        texcoords: list[int],
+    ):
+        for index in range(1, len(vertices) - 1):
+            yield (
+                [
+                    vertices[0],
+                    vertices[index],
+                    vertices[index + 1],
+                ],
+                [
+                    normals[0],
+                    normals[index],
+                    normals[index + 1],
+                ],
+                [
+                    texcoords[0],
+                    texcoords[index],
+                    texcoords[index + 1],
+                ],
+            )
 
 
 
