@@ -88,7 +88,7 @@ class MainApp(App):
             self.lazy_load_event.cancel()
             return False
 
-        name, mesh_data = self.pending_objects.pop(0)
+        name, geometry = self.pending_objects.pop(0)
 
         material = Material(
             name=name,
@@ -98,7 +98,7 @@ class MainApp(App):
         )
 
         object3d = Object3D(
-            mesh_data=mesh_data,
+            geometry=geometry,
             material=material,
             name=name,
             pickable=True,

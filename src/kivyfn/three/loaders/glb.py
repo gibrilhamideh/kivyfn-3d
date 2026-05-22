@@ -13,7 +13,7 @@ from pygltflib import GLTF2
 from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.math.matrix import Matrix3, Matrix4
-from kivyfn.three.render.meshdata import MeshData
+from kivyfn.three.render.geometry import Geometry
 
 
 class GlbLoader:
@@ -25,11 +25,11 @@ class GlbLoader:
         self.flip_v = flip_v
         self.flip_winding = flip_winding
 
-        self.objects: dict[str, MeshData] = {}
+        self.objects: dict[str, Geometry] = {}
         self._gltf: Any = None
         self._buffer_bytes: bytes | None = None
 
-    def load(self, filename: str | Path) -> dict[str, MeshData]:
+    def load(self, filename: str | Path) -> dict[str, Geometry]:
         path = Path(filename)
 
         self.objects = {}
@@ -49,13 +49,13 @@ class GlbLoader:
             node_name = node.name or mesh_object.name or f"mesh_{node.mesh}"
 
             for primitive_index, primitive in enumerate(mesh_object.primitives or []):
-                mesh_data = self._process_primitive(
+                geometry = self._process_primitive(
                     primitive=primitive,
                     world_matrix=world_matrix,
                     normal_matrix=normal_matrix,
                 )
 
-                if mesh_data is None:
+                if geometry is None:
                     continue
 
                 key = (
@@ -64,8 +64,8 @@ class GlbLoader:
                     else f"{node_name}.{primitive_index:03d}"
                 )
 
-                mesh_data.name = key
-                self.objects[key] = mesh_data
+                geometry.name = key
+                self.objects[key] = geometry
 
         return self.objects
 
@@ -217,7 +217,7 @@ class GlbLoader:
         primitive: Any,
         world_matrix: Matrix4,
         normal_matrix: Matrix3,
-    ) -> MeshData | None:
+    ) -> Geometry | None:
         position_index = getattr(primitive.attributes, "POSITION", None)
         normal_index = getattr(primitive.attributes, "NORMAL", None)
         uv_index = getattr(primitive.attributes, "TEXCOORD_0", None)
@@ -271,11 +271,11 @@ class GlbLoader:
             ]
         ).astype(np.float32).reshape(-1)
 
-        mesh_data = MeshData()
-        mesh_data.vertices = packed_vertices.astype(float).tolist()
-        mesh_data.indices = final_indices.tolist()
 
-        return mesh_data
+        vertices = packed_vertices.astype(float).tolist()
+        indices = final_indices.tolist()
+        return Geometry(vertices=vertices, indices=indices)
+
 
     def _transform_positions(
         self,

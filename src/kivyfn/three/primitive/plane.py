@@ -5,7 +5,7 @@ from __future__ import annotations
 from kivy.properties import OptionProperty
 
 from kivyfn.three.render.material import Material
-from kivyfn.three.render.meshdata import MeshData
+from kivyfn.three.render.geometry import Geometry
 from kivyfn.three.scene.object3d import Object3D
 
 
@@ -25,24 +25,24 @@ class Plane(Object3D):
     ):
         self.axis = axis
 
-        mesh_data = self._create_mesh_data(
+        geometry = self._create_geometry(
             width=width,
             height=height,
             axis=axis,
         )
 
         super().__init__(
-            mesh_data=mesh_data,
+            geometry=geometry,
             material=material or Material(),
             **kwargs,
         )
 
-    def _create_mesh_data(
+    def _create_geometry(
         self,
         width: float,
         height: float,
         axis: str,
-    ) -> MeshData:
+    ) -> Geometry:
         hw = width / 2.0
         hh = height / 2.0
 
@@ -81,7 +81,7 @@ class Plane(Object3D):
             2, 3, 0,
         ]
 
-        return MeshData(
+        return Geometry(
             vertices=vertices,
             indices=indices,
         )

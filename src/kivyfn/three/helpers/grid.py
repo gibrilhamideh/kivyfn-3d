@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from kivyfn.three.render.material import Material
-from kivyfn.three.render.meshdata import MeshData
+from kivyfn.three.render.geometry import Geometry
 from kivyfn.three.scene.object3d import Object3D
 
 
@@ -18,7 +18,7 @@ class GridHelper(Object3D):
     ):
         divisions = max(1, divisions)
 
-        mesh_data = self._create_mesh_data(
+        geometry = self._create_geometry(
             size=size,
             divisions=divisions,
             axis=axis,
@@ -26,18 +26,18 @@ class GridHelper(Object3D):
 
 
         super().__init__(
-            mesh_data=mesh_data,
+            geometry=geometry,
             material=material,
             render_mode="lines",
             **kwargs,
         )
 
-    def _create_mesh_data(
+    def _create_geometry(
         self,
         size: float,
         divisions: int,
         axis: str,
-    ) -> MeshData:
+    ) -> Geometry:
         half = size / 2.0
         step = size / divisions
 
@@ -76,7 +76,7 @@ class GridHelper(Object3D):
             else:
                 raise ValueError("axis must be 'xy', 'xz', or 'yz'")
 
-        return MeshData(
+        return Geometry(
             name="GridHelper",
             vertices=vertices,
             indices=indices,

@@ -1,5 +1,5 @@
 
-from kivyfn.three.render.meshdata import MeshData
+from kivyfn.three.render.geometry import Geometry
 
 class ObjLoader:
     def __init__(self, swapyz=False):
@@ -89,7 +89,7 @@ class ObjLoader:
         if self._current_object is None:
             return
 
-        mesh = MeshData(name=self._current_object)
+        geometry = Geometry(name=self._current_object)
 
         idx = 0
 
@@ -114,13 +114,13 @@ class ObjLoader:
                 # vertex
                 v = self.vertices[verts[i] - 1]
 
-                mesh.vertices.extend([
+                geometry.vertices.extend([
                     v[0], v[1], v[2],
                     n[0], n[1], n[2],
                     t[0], t[1],
                 ])
 
-            mesh.indices.extend([
+            geometry.indices.extend([
                 idx,
                 idx + 1,
                 idx + 2,
@@ -128,7 +128,7 @@ class ObjLoader:
 
             idx += 3
 
-        self.objects[self._current_object] = mesh
+        self.objects[self._current_object] = geometry
 
         # mesh.calculate_normals()
 

@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 
 @dataclass(slots=True)
-class MeshData:
+class Geometry:
     name: str | None = None
 
     vertex_format: list[tuple[bytes, int, str]] = field(default_factory=lambda: [

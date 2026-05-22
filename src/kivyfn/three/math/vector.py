@@ -20,11 +20,11 @@ class Vector3:
         self.z = z
 
     @classmethod
-    def zero(cls) -> "Vector3":
+    def zero(cls) -> Vector3:
         return cls(0.0, 0.0, 0.0)
 
     @classmethod
-    def one(cls) -> "Vector3":
+    def one(cls) -> Vector3:
         return cls(1.0, 1.0, 1.0)
 
     @property
@@ -39,7 +39,7 @@ class Vector3:
     def magnitude(self) -> float:
         return self.length
 
-    def normalize(self) -> "Vector3":
+    def normalize(self) -> Vector3:
         length = self.length
 
         if length < EPSILON:
@@ -51,21 +51,21 @@ class Vector3:
             self.z / length,
         )
 
-    def dot(self, other: "Vector3") -> float:
+    def dot(self, other: Vector3) -> float:
         return (
             self.x * other.x +
             self.y * other.y +
             self.z * other.z
         )
 
-    def cross(self, other: "Vector3") -> "Vector3":
+    def cross(self, other: Vector3) -> Vector3:
         return Vector3(
             (self.y * other.z) - (self.z * other.y),
             (self.z * other.x) - (self.x * other.z),
             (self.x * other.y) - (self.y * other.x),
         )
 
-    def scale(self, scalar: float) -> "Vector3":
+    def scale(self, scalar: float) -> Vector3:
         return Vector3(
             self.x * scalar,
             self.y * scalar,
@@ -74,9 +74,9 @@ class Vector3:
 
     def lerp(
         self,
-        other: "Vector3",
+        other: Vector3,
         t: float,
-    ) -> "Vector3":
+    ) -> Vector3:
         return Vector3(
             self.x + ((other.x - self.x) * t),
             self.y + ((other.y - self.y) * t),
@@ -85,9 +85,9 @@ class Vector3:
 
     def rotate(
         self,
-        axis: "Vector3",
+        axis: Vector3,
         angle_radians: float,
-    ) -> "Vector3":
+    ) -> Vector3:
         axis = axis.normalize()
 
         cosine = math.cos(angle_radians)
@@ -116,8 +116,8 @@ class Vector3:
 
     @staticmethod
     def reorthonormalize(
-        forward: "Vector3",
-        up: "Vector3",
+        forward: Vector3,
+        up: Vector3,
     ):
         forward = forward.normalize()
 
@@ -147,7 +147,7 @@ class Vector3:
             self.z,
         ]
 
-    def copy(self) -> "Vector3":
+    def copy(self) -> Vector3:
         return Vector3(
             self.x,
             self.y,
@@ -156,8 +156,8 @@ class Vector3:
 
     def __add__(
         self,
-        other: "Vector3",
-    ) -> "Vector3":
+        other: Vector3,
+    ) -> Vector3:
         return Vector3(
             self.x + other.x,
             self.y + other.y,
@@ -166,8 +166,8 @@ class Vector3:
 
     def __sub__(
         self,
-        other: "Vector3",
-    ) -> "Vector3":
+        other: Vector3,
+    ) -> Vector3:
         return Vector3(
             self.x - other.x,
             self.y - other.y,
@@ -177,13 +177,13 @@ class Vector3:
     def __mul__(
         self,
         scalar: float,
-    ) -> "Vector3":
+    ) -> Vector3:
         return self.scale(scalar)
 
     def __truediv__(
         self,
         scalar: float,
-    ) -> "Vector3":
+    ) -> Vector3:
         if abs(scalar) < EPSILON:
             raise ZeroDivisionError(
                 "Cannot divide Vector3 by zero."

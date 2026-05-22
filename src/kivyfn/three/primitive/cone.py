@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import math
 
+from kivyfn.three.render import geometry
 from kivyfn.three.render.material import Material
-from kivyfn.three.render.meshdata import MeshData
+from kivyfn.three.render.geometry import Geometry
 from kivyfn.three.scene.object3d import Object3D
 
 
@@ -92,13 +93,13 @@ class Cone(Object3D):
                 start + i,
             ])
 
-        mesh_data = MeshData(
+        geometry = Geometry(
             vertices=vertices,
             indices=indices,
         )
 
         super().__init__(
-            mesh_data=mesh_data,
+            geometry=geometry,
             material=material or Material(),
             **kwargs,
         )

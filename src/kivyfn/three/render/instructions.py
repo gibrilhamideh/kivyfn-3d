@@ -47,7 +47,7 @@ class Instructions(EventDispatcher):
             )
         )
         self.mesh = RenderMesh(
-            mesh_data=object3d.mesh_data,
+            geometry=object3d.geometry,
             mode=object3d.render_mode,
         )
         self.pop = PopMatrix()

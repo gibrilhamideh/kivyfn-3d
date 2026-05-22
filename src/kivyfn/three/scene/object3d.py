@@ -13,8 +13,8 @@ from kivy.properties import (
 
 from kivyfn.three.collision.intersections import sphere_intersect, triangle_intersect
 from kivyfn.three.math.vector import Vector3
+from kivyfn.three.render.geometry import Geometry
 from kivyfn.three.render.material import Material
-from kivyfn.three.render.meshdata import MeshData
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.render.instructions import Instructions
 
@@ -41,16 +41,16 @@ OriginModes = Literal[
 ]
 
 class Object3D(Node3D):
-    mesh_data: MeshData = ObjectProperty()
+    geometry: Geometry = ObjectProperty()
     render_mesh: RenderMesh = ObjectProperty()
     material: Material = ObjectProperty()
     instructions: Instructions | None = ObjectProperty()
     ctx: RenderContext | None = ObjectProperty()
 
-    origin = ObjectProperty(None, allownone=True)
-    radius = NumericProperty(0.0)
-    bounds_min = ObjectProperty(None, allownone=True)
-    bounds_max = ObjectProperty(None, allownone=True)
+    radius: float = NumericProperty(0.0)
+    origin: Vector3 = ObjectProperty()
+    bounds_min: Vector3 = ObjectProperty()
+    bounds_max: Vector3 = ObjectProperty()
     render_mode: RenderModes = OptionProperty(
         "triangles",
         options=(
@@ -80,13 +80,13 @@ class Object3D(Node3D):
         return (
             f"Object3D("
             f"name={self.name!r}, "
-            f"mesh_data={self.mesh_data is not None}, "
+            f"geometry={self.geometry}, "
             f"children={len(self.children)})"
         )
 
     def __init__(
         self,
-        mesh_data: MeshData,
+        geometry: Geometry,
         material: Material,
         name: str = "",
         render_mode: RenderModes = "triangles",
@@ -98,7 +98,7 @@ class Object3D(Node3D):
             **kwargs,
         )
 
-        self.mesh_data = mesh_data
+        self.geometry = geometry
         self.material = material
         self.render_mode = render_mode
         self.origin_mode = origin_mode
@@ -107,27 +107,13 @@ class Object3D(Node3D):
         self.bounds_min = Vector3.zero()
         self.bounds_max = Vector3.zero()
 
-        if self.mesh_data is not None:
-            self.recalculate_bounds()
+        self.compute_bounds()
 
     # =================================== #
     # Property Events
     # =================================== #
-    def on_mesh_data(
-        self,
-        instance,
-        value: MeshData | None,
-    ) -> None:
-        if value is not None:
-            self.recalculate_bounds()
-
-    def on_origin_mode(
-        self,
-        instance,
-        value: str,
-    ) -> None:
-        if self.mesh_data is not None:
-            self.recalculate_bounds()
+    def on_origin_mode(self, *_):
+        self.compute_bounds()
 
     # =================================== #
     # Rendering
@@ -149,15 +135,8 @@ class Object3D(Node3D):
     # =================================== #
     # Intersects
     # =================================== #
-    def recalculate_bounds(self) -> None:
-        if self.mesh_data is None or not self.mesh_data.vertices:
-            self.origin = Vector3.zero()
-            self.bounds_min = Vector3.zero()
-            self.bounds_max = Vector3.zero()
-            self.radius = 0.0
-            return
-
-        vertices = self.mesh_data.vertices
+    def compute_bounds(self) -> None:
+        vertices = self.geometry.vertices
 
         xs = vertices[0::8]
         ys = vertices[1::8]
@@ -202,11 +181,8 @@ class Object3D(Node3D):
     def iter_triangles(
         self,
     ) -> Iterator[tuple[Vector3, Vector3, Vector3]]:
-        if self.mesh_data is None:
-            return
-
-        vertices = self.mesh_data.vertices
-        indices = self.mesh_data.indices
+        vertices = self.geometry.vertices
+        indices = self.geometry.indices
 
         for index in range(0, len(indices), 3):
             i0, i1, i2 = indices[index:index + 3]
