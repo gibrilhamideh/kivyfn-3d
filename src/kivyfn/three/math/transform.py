@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from kivyfn.three.math.matrix import Matrix4
+from kivyfn.three.math.matrix import Matrix3, Matrix4
 from kivyfn.three.math.quaternion import Quaternion
 
 

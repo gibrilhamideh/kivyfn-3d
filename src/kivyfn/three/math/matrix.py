@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from kivy.graphics.transformation import Matrix
 import numpy as np
 
 
@@ -74,6 +75,11 @@ class Matrix4:
 
     def tolist(self):
         return self.values.tolist()
+
+    def to_kivy_matrix(self) -> Matrix:
+        matrix = Matrix()
+        matrix.set(array=self.values.tolist())
+        return matrix
 
     def __matmul__(self, other: "Matrix4") -> "Matrix4":
         return Matrix4(self.values @ other.values)

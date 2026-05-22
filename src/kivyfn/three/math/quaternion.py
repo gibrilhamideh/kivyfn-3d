@@ -21,11 +21,11 @@ class Quaternion:
         self.w = w
 
     @classmethod
-    def identity(cls) -> "Quaternion":
+    def identity(cls) -> Quaternion:
         return cls()
 
     @classmethod
-    def from_matrix3(cls, matrix: Matrix3) -> "Quaternion":
+    def from_matrix3(cls, matrix: Matrix3) -> Quaternion:
         m = matrix.values.flatten()
 
         m00, m01, m02 = m[0], m[1], m[2]
@@ -62,10 +62,10 @@ class Quaternion:
             y = (m12 + m21) / scale
             z = 0.25 * scale
 
-        return cls(x, y, z, w)
+        return cls(x, y, z, w).normalize()
 
     @classmethod
-    def from_matrix4(cls, matrix: Matrix4) -> "Quaternion":
+    def from_matrix4(cls, matrix: Matrix4) -> Quaternion:
         return cls.from_matrix3(
             Matrix3(matrix.values[:3, :3])
         )
@@ -75,7 +75,7 @@ class Quaternion:
         cls,
         axis,
         angle_degrees: float,
-    ) -> "Quaternion":
+    ) -> Quaternion:
         axis = axis.normalize()
 
         half_angle = math.radians(angle_degrees) / 2.0
@@ -88,28 +88,108 @@ class Quaternion:
             axis.y * sine,
             axis.z * sine,
             cosine,
+        ).normalize()
+
+    # =================================== #
+    # Operations
+    # =================================== #
+    def __mul__(
+        self,
+        other: Quaternion | float,
+    ) -> Quaternion:
+        if isinstance(other, (int, float)):
+            return Quaternion(
+                self.x * other,
+                self.y * other,
+                self.z * other,
+                self.w * other,
+            )
+
+        if not isinstance(other, Quaternion):
+            return NotImplemented
+
+        a = self
+        b = other
+
+        return Quaternion(
+            x=a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+            y=a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+            z=a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+            w=a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
         )
 
+    def __rmul__(
+        self,
+        other: float,
+    ) -> Quaternion:
+        if isinstance(other, (int, float)):
+            return self * other
 
+        return NotImplemented
 
-    def normalize(self) -> "Quaternion":
-        magnitude = math.sqrt(
-            self.x * self.x
-            + self.y * self.y
-            + self.z * self.z
-            + self.w * self.w
+    def __truediv__(
+        self,
+        value: float,
+    ) -> Quaternion:
+        if value == 0.0:
+            raise ZeroDivisionError("Cannot divide quaternion by zero.")
+
+        return Quaternion(
+            self.x / value,
+            self.y / value,
+            self.z / value,
+            self.w / value,
         )
+
+    def __neg__(self) -> Quaternion:
+        return Quaternion(
+            -self.x,
+            -self.y,
+            -self.z,
+            -self.w,
+        )
+
+    def dot(
+        self,
+        other: Quaternion,
+    ) -> float:
+        return (
+            self.x * other.x
+            + self.y * other.y
+            + self.z * other.z
+            + self.w * other.w
+        )
+
+    def magnitude(self) -> float:
+        return math.sqrt(self.dot(self))
+
+    def normalize(self) -> Quaternion:
+        magnitude = self.magnitude()
 
         if magnitude == 0.0:
             return Quaternion.identity()
 
+        return self / magnitude
+
+    def conjugate(self) -> Quaternion:
         return Quaternion(
-            self.x / magnitude,
-            self.y / magnitude,
-            self.z / magnitude,
-            self.w / magnitude,
+            -self.x,
+            -self.y,
+            -self.z,
+            self.w,
         )
 
+    def inverse(self) -> Quaternion:
+        length_squared = self.dot(self)
+
+        if length_squared == 0.0:
+            return Quaternion.identity()
+
+        return self.conjugate() / length_squared
+
+    # =================================== #
+    # Conversions
+    # =================================== #
     def to_matrix3(self) -> Matrix3:
         q = self.normalize()
 

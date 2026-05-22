@@ -30,10 +30,10 @@ Pivot = Literal[
 ]
 
 class Object3D(Node3D):
+    ctx: RenderContext | None = ObjectProperty()
     geometry: Geometry = ObjectProperty()
     material: Material = ObjectProperty()
     instructions: Instructions | None = ObjectProperty()
-    ctx: RenderContext | None = ObjectProperty()
 
     radius: float = NumericProperty(0.0)
     origin: Vector3 = ObjectProperty()
@@ -77,12 +77,24 @@ class Object3D(Node3D):
         self.pivot = pivot
         self.collider = Collider(self)
 
-        self.origin = Vector3.zero()
-        self.bounds_min = Vector3.zero()
-        self.bounds_max = Vector3.zero()
+        self.bind_collider()
 
+    # =================================== #
+    # Biners
+    # =================================== #
+    def bind_collider(self):
+
+        # ---) binders
+        self.bind(pivot=self.collider.setter("pivot"))
+
+        self.collider.bind(origin=self.setter("origin"))
+        self.collider.bind(radius=self.setter("radius"))
+        self.collider.bind(bounds_min=self.setter("bounds_min"))
+        self.collider.bind(bounds_max=self.setter("bounds_max"))
+
+        # ---) sync
+        self.collider.pivot = self.pivot
         self.collider.compute_bounds()
-
 
     # =================================== #
     # Rendering

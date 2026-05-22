@@ -1,30 +1,48 @@
 # kivyfn/collision/collider.py
 from __future__ import annotations
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Iterator, Literal
 
 from kivy.event import EventDispatcher
-from kivyfn.three.math.vector import Vector3
+from kivy.properties import ObjectProperty, OptionProperty, NumericProperty
 from kivyfn.three.collision.intersections import sphere_intersect, triangle_intersect
+from kivyfn.three.math.vector import Vector3
 
 import math
 
 if TYPE_CHECKING:
     from kivyfn.three.objects import Object3D
 
+Pivot = Literal[
+    "center",
+    "bottom",
+    "top",
+    "left",
+    "right"
+]
 
 class Collider(EventDispatcher):
 
+    radius: float = NumericProperty(0.0)
+    origin: Vector3 = ObjectProperty()
+    bounds_min: Vector3 = ObjectProperty(Vector3.zero())
+    bounds_max: Vector3 = ObjectProperty(Vector3.zero())
+    pivot: Pivot = OptionProperty(
+        "center",
+        options=(
+            "center",
+            "bottom",
+            "top",
+            "left",
+            "right"
+        )
+    )
+
     def __init__(self, object3d: Object3D) -> None:
         self.object3d = object3d
-        self.object3d.bind(pivot=self.on_pivot)
 
     @property
     def geometry(self):
         return self.object3d.geometry
-
-    @property
-    def pivot(self):
-        return self.object3d.pivot
 
     @property
     def world_matrix(self):
