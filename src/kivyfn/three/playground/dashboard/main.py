@@ -1,3 +1,4 @@
+
 # kivyfn/three/main.py
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from kivyfn.three.objects import (
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene import Scene
 from kivyfn.three.utils.color import random_color
+from kivyfn.three.paths import RESOURCES_PATH
 
 
 class MainApp(App):
@@ -38,10 +40,9 @@ class MainApp(App):
         self.rotation_events: dict[Object3D, ClockEvent] = {}
 
     def on_start(self):
-        resources_path = Path(__file__).parent / "resources"
 
         model_path = (
-            resources_path
+            RESOURCES_PATH
             / "models"
             / "glb"
             / "dashboard.glb"
@@ -59,7 +60,7 @@ class MainApp(App):
         lambert_shader = Shader(
             name="lambert",
             path=(
-                resources_path
+                RESOURCES_PATH
                 / "shaders"
                 / "basic"
                 / "lambert.glsl"
@@ -69,7 +70,7 @@ class MainApp(App):
         helper_shader = Shader(
             name="helper",
             path=(
-                resources_path
+                RESOURCES_PATH
                 / "shaders"
                 / "helper"
                 / "unlit.glsl"
@@ -225,7 +226,7 @@ class MainApp(App):
     ) -> None:
         object3d.rotate_by(
             angle_degrees=20 * dt,
-            axis=Vector3(0, 1, 0),
+            axis=Vector3(1, 0, 0),
         )
 
 

@@ -34,3 +34,9 @@ namespaces = true
 dev = [
     "kivy-stubs>=0.1.0"
 ]
+
+# NOTE: might need to add scipy & xxhash for trimesh
+modifiers = [
+    "trimesh",
+    "manifold3d",
+]
