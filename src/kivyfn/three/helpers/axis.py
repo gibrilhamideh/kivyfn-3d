@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from kivyfn.three.render import geometry
-from kivyfn.three.render.material import Material
-from kivyfn.three.render.geometry import Geometry
 from kivyfn.three.scene.node import Node3D
-from kivyfn.three.scene.object3d import Object3D
+from kivyfn.three.objects import Material, Geometry, Object3D
 
 
 class _AxisLine(Object3D):
@@ -34,6 +31,7 @@ class _AxisLine(Object3D):
         geometry = Geometry(
             vertices=vertices,
             indices=indices,
+            mode="lines"
         )
 
         super().__init__(
@@ -42,7 +40,6 @@ class _AxisLine(Object3D):
             **kwargs,
         )
 
-        self.render_mode = "lines"
         self.pickable = False
 
 

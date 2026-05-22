@@ -13,7 +13,7 @@ from pygltflib import GLTF2
 from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.math.matrix import Matrix3, Matrix4
-from kivyfn.three.render.geometry import Geometry
+from kivyfn.three.objects.geometry import Geometry
 
 
 class GlbLoader:

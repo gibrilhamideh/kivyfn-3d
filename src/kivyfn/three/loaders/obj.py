@@ -1,5 +1,5 @@
 
-from kivyfn.three.render.geometry import Geometry
+from kivyfn.three.objects.geometry import Geometry
 
 class ObjLoader:
     def __init__(self, swapyz=False):

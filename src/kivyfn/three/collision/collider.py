@@ -1,140 +1,39 @@
-# kivyfn/three/scene/meshnode.py
-
+# kivyfn/collision/collider.py
 from __future__ import annotations
+from typing import TYPE_CHECKING, Iterator
+
+from kivy.event import EventDispatcher
+from kivyfn.three.math.vector import Vector3
+from kivyfn.three.collision.intersections import sphere_intersect, triangle_intersect
 
 import math
-from typing import Iterator, Literal, TYPE_CHECKING
-
-from kivy.properties import (
-        NumericProperty,
-        ObjectProperty,
-        OptionProperty,
-)
-
-from kivyfn.three.collision.intersections import sphere_intersect, triangle_intersect
-from kivyfn.three.math.vector import Vector3
-from kivyfn.three.render.geometry import Geometry
-from kivyfn.three.render.material import Material
-from kivyfn.three.scene.node import Node3D
-from kivyfn.three.render.instructions import Instructions
 
 if TYPE_CHECKING:
-    from kivyfn.three.render.mesh import RenderMesh
-    from kivyfn.three.render.context import RenderContext
-
-RenderModes = Literal[
-    "points",
-    "line_strip",
-    "line_loop",
-    "lines",
-    "triangles",
-    "triangle_strip",
-    "triangle_fan"
-]
-
-OriginModes = Literal[
-    "center",
-    "bottom",
-    "top",
-    "left",
-    "right"
-]
-
-class Object3D(Node3D):
-    geometry: Geometry = ObjectProperty()
-    render_mesh: RenderMesh = ObjectProperty()
-    material: Material = ObjectProperty()
-    instructions: Instructions | None = ObjectProperty()
-    ctx: RenderContext | None = ObjectProperty()
-
-    radius: float = NumericProperty(0.0)
-    origin: Vector3 = ObjectProperty()
-    bounds_min: Vector3 = ObjectProperty()
-    bounds_max: Vector3 = ObjectProperty()
-    render_mode: RenderModes = OptionProperty(
-        "triangles",
-        options=(
-            "points",
-            "line_strip",
-            "line_loop",
-            "lines",
-            "triangles",
-            "triangle_strip",
-            "triangle_fan",
-        )
-    )
+    from kivyfn.three.objects import Object3D
 
 
-    origin_mode: OriginModes = OptionProperty(
-        "center",
-        options=(
-            "center",
-            "bottom",
-            "top",
-            "left",
-            "right"
-        )
-    )
+class Collider(EventDispatcher):
 
-    def __repr__(self) -> str:
-        return (
-            f"Object3D("
-            f"name={self.name!r}, "
-            f"geometry={self.geometry}, "
-            f"children={len(self.children)})"
-        )
+    def __init__(self, object3d: Object3D) -> None:
+        self.object3d = object3d
+        self.object3d.bind(pivot=self.on_pivot)
 
-    def __init__(
-        self,
-        geometry: Geometry,
-        material: Material,
-        name: str = "",
-        render_mode: RenderModes = "triangles",
-        origin_mode: OriginModes = "center",
-        **kwargs,
-    ):
-        super().__init__(
-            name=name,
-            **kwargs,
-        )
+    @property
+    def geometry(self):
+        return self.object3d.geometry
 
-        self.geometry = geometry
-        self.material = material
-        self.render_mode = render_mode
-        self.origin_mode = origin_mode
+    @property
+    def pivot(self):
+        return self.object3d.pivot
 
-        self.origin = Vector3.zero()
-        self.bounds_min = Vector3.zero()
-        self.bounds_max = Vector3.zero()
+    @property
+    def world_matrix(self):
+        return self.object3d.world_matrix
 
+    def on_pivot(self, *_):
         self.compute_bounds()
 
-    # =================================== #
-    # Property Events
-    # =================================== #
-    def on_origin_mode(self, *_):
-        self.compute_bounds()
 
-    # =================================== #
-    # Rendering
-    # =================================== #
-    def attach(self, ctx):
-        self.ctx = ctx
-        self.instructions = Instructions(self, ctx)
-        return True
-
-    def detach(self):
-        assert self.ctx is not None
-        assert self.instructions is not None
-        self.ctx.remove(self.instructions.group)
-
-        self.ctx = None
-        self.instructions = None
-        return True
-
-    # =================================== #
-    # Intersects
-    # =================================== #
     def compute_bounds(self) -> None:
         vertices = self.geometry.vertices
 
@@ -157,13 +56,13 @@ class Object3D(Node3D):
         center_y = (y_min + y_max) / 2.0
         center_z = (z_min + z_max) / 2.0
 
-        if self.origin_mode == "center":
+        if self.pivot == "center":
             origin = Vector3(center_x, center_y, center_z)
-        elif self.origin_mode == "bottom":
+        elif self.pivot == "bottom":
             origin = Vector3(center_x, y_min, center_z)
-        elif self.origin_mode == "top":
+        elif self.pivot == "top":
             origin = Vector3(center_x, y_max, center_z)
-        elif self.origin_mode == "left":
+        elif self.pivot == "left":
             origin = Vector3(x_min, center_y, center_z)
         else:
             origin = Vector3(x_max, center_y, center_z)
@@ -288,7 +187,3 @@ class Object3D(Node3D):
         local_direction = (local_target - local_origin).normalize()
 
         return local_origin, local_direction
-
-
-
-

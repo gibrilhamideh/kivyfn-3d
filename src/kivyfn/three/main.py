@@ -13,10 +13,9 @@ from kivy.clock import Clock
 from kivyfn.three.controls import BlenderCameraControls, InteractionController
 from kivyfn.three.helpers import AxisHelper, GridHelper
 from kivyfn.three.loaders import GlbLoader
-from kivyfn.three.render.material import Material
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene import Scene
-from kivyfn.three.scene.object3d import Object3D
+from kivyfn.three.objects import Object3D, Material
 from kivyfn.three.utils.color import random_color
 
 

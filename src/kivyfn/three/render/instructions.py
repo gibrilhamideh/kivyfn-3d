@@ -1,4 +1,4 @@
-# kivyfn/three/render/object.py
+# kivyfn/three/render/instructions.py
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
@@ -13,15 +13,14 @@ from kivy.graphics import (
     Rotate,
     Scale,
     Translate,
+    Mesh,
     UpdateNormalMatrix,
 )
 
-from kivyfn.three.render.mesh import RenderMesh
 
 if TYPE_CHECKING:
-    from kivyfn.three.render.material import Material
+    from kivyfn.three.objects import Object3D, Material
     from kivyfn.three.render.context import RenderContext
-    from kivyfn.three.scene.object3d import Object3D
 
 
 class Instructions(EventDispatcher):
@@ -46,9 +45,14 @@ class Instructions(EventDispatcher):
                 ctx,
             )
         )
-        self.mesh = RenderMesh(
-            geometry=object3d.geometry,
-            mode=object3d.render_mode,
+
+        geometry = object3d.geometry
+        self.mesh = Mesh(
+            vertices=geometry.vertices,
+            indices=geometry.indices,
+            fmt=geometry.fmt,
+            mode=geometry.mode,
+            texture=geometry.texture,
         )
         self.pop = PopMatrix()
 
@@ -58,7 +62,7 @@ class Instructions(EventDispatcher):
         self.group.add(self.scale)
         self.group.add(self.normal_matrix)
         self.group.add(self.material_callback)
-        self.group.add(self.mesh.instruction)
+        self.group.add(self.mesh)
         self.group.add(self.pop)
 
 

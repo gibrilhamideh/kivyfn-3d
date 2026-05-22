@@ -15,7 +15,6 @@ from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.transform import Transform
 
 if TYPE_CHECKING:
-    from kivyfn.three.render.renderer import Renderer
     from kivyfn.three.render.context import RenderContext
     from kivyfn.three.controls.interaction import InteractionEvent
 

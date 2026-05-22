@@ -7,7 +7,6 @@ from kivy.properties import DictProperty, ObjectProperty, StringProperty
 from kivy.graphics import RenderContext as KivyRenderContext
 from kivy.event import EventDispatcher
 
-from kivyfn.three.controls import interaction
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.camera import Camera
 

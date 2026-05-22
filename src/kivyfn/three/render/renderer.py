@@ -8,10 +8,8 @@ from kivy.graphics import Callback, Canvas
 from kivy.graphics.transformation import Matrix
 
 from kivyfn.three.render.context import RenderContext
-from kivyfn.three.render.instructions import Instructions
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.node import Node3D
-from kivyfn.three.scene.object3d import Object3D
 
 
 GLCallback = Callable[..., None]
