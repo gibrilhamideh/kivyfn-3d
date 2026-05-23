@@ -112,11 +112,11 @@ class Renderer:
             Callback(reset_gl_context)
 
     def attach(self, node: Node3D, ctx: RenderContext):
-        for child in node.traverse():
+        for child in node.walk_tree():
             child.attach(ctx)
 
     def detach(self, node: Node3D):
-        for child in node.traverse():
+        for child in node.walk_tree():
             child.detach()
 
     # =================================== #

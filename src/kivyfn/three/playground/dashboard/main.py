@@ -17,7 +17,7 @@ from kivyfn.three.helpers import (
     AxisHelper,
     GridHelper,
 )
-from kivyfn.three.loaders import GlbLoader
+from kivyfn.three.loaders import GlbLoader, is_renderable
 from kivyfn.three.loaders.asset import AssetObject
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.objects import (
@@ -165,7 +165,7 @@ class MainApp(App):
         parent: Node3D | None = None,
     ) -> Node3D:
 
-        if asset.geometry is not None:
+        if is_renderable(asset):
             material = Material(
                 name=asset.name,
                 uniforms={
@@ -211,7 +211,7 @@ class MainApp(App):
     def on_release(self, instance, event):
         print("event:", event)
 
-        object3d = event.node
+        object3d = event.target
 
         self.change_color(object3d)
         self.animate_rotation(object3d)

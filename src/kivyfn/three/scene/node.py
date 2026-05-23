@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator, TypeGuard
 
 from kivy.event import EventDispatcher
 from kivy.properties import (
@@ -18,26 +18,21 @@ from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.transform import Transform
 
 if TYPE_CHECKING:
+    from kivyfn.three.objects import Object3D
     from kivyfn.three.render.context import RenderContext
-    from kivyfn.three.controls.interaction import InteractionEvent
 
 
 class Node3D(EventDispatcher):
     name = StringProperty("")
     visible = BooleanProperty(True)
-    pickable: bool = BooleanProperty(False)
-    grabable: bool = BooleanProperty(False)
 
-    children: list[Node3D] = ListProperty([])
-    parent: Node3D | None = ObjectProperty(None, allownone=True)
+
+    children: list[Node3D | Object3D] = ListProperty([])
+    parent: Node3D | Object3D | None = ObjectProperty(None, allownone=True)
     transform: Transform = ObjectProperty()
 
 
-    __events__ = (
-        "on_press",
-        "on_release",
-        "on_drag",
-    )
+
 
     def __init__(
         self,
@@ -163,7 +158,7 @@ class Node3D(EventDispatcher):
     # =================================== #
     def add_child(
         self,
-        child: Node3D,
+        child: Node3D | Object3D,
     ) -> None:
         if child.parent is self:
             return
@@ -177,7 +172,7 @@ class Node3D(EventDispatcher):
 
     def remove_child(
         self,
-        child: Node3D,
+        child: Node3D | Object3D,
     ) -> None:
         self.children.remove(child)
         child.parent = None
@@ -187,11 +182,27 @@ class Node3D(EventDispatcher):
         for child in list(self.children):
             self.remove_child(child)
 
-    def traverse(self):
+    def __iter__(self) -> Iterator[Node3D | Object3D]:
+        return iter(self.children)
+
+    def walk_tree(self) -> Iterator[Node3D | Object3D]:
         yield self
 
         for child in self.children:
-            yield from child.traverse()
+            yield from child.walk_tree()
+
+    def walk_objects(self) -> Iterator[Object3D]:
+        for node in self.walk_tree():
+            if self.is_object3d(node):
+                yield node
+        return iter(self.children)
+
+    @property
+    def is_object(self) -> bool:
+        return False
+
+    def is_object3d(self, node) -> TypeGuard[Object3D]:
+        return node.is_object
 
     # =================================== #
     # Render
@@ -207,25 +218,6 @@ class Node3D(EventDispatcher):
         """Override in renderable subclasses."""
         return False
 
-    # =================================== #
-    # Interaction Events
-    # =================================== #
-    def on_press(
-        self,
-        event: InteractionEvent,
-    ) -> None:
-        pass
 
-    def on_release(
-        self,
-        event: InteractionEvent,
-    ) -> None:
-        pass
-
-    def on_drag(
-        self,
-        event: InteractionEvent,
-    ) -> None:
-        pass
 
 

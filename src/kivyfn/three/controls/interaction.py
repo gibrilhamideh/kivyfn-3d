@@ -11,12 +11,12 @@ from kivyfn.three.math.vector import Vector3
 from kivyfn.three.controls.base import SceneController
 
 if TYPE_CHECKING:
-    from kivyfn.three.scene.node import Node3D
+    from kivyfn.three.objects.object3d import Object3D
 
 
 @dataclass(slots=True)
 class InteractionEvent:
-    node: Node3D
+    target: Object3D
     touch: MouseMotionEvent
     origin: Vector3
     direction: Vector3
@@ -26,7 +26,7 @@ class InteractionEvent:
     def __repr__(self) -> str:
         return (
             "InteractionEvent("
-            f"node={self.node.name!r}, "
+            f"target={self.target.name!r}, "
             f"touch=({self.touch.x:.1f}, {self.touch.y:.1f}), "
             f"distance={self.distance}"
             ")"
@@ -36,7 +36,7 @@ class InteractionEvent:
 class InteractionController(SceneController):
     def __init__(self):
         super().__init__()
-        self.pressed_node: Node3D | None = None
+        self.pressed: Object3D | None = None
 
     def pick(self, touch: Any) -> InteractionEvent | None:
         if self.scene is None:
@@ -49,16 +49,12 @@ class InteractionController(SceneController):
 
         closest: InteractionEvent | None = None
 
-        for node in self.scene.root.traverse():
+        for object3d in self.scene.root.walk_objects():
 
-            if not node.pickable:
+            if not object3d.pickable:
                 continue
 
-            hit = getattr(node, "intersects_ray", lambda *_: None)(
-                origin,
-                direction,
-            )
-
+            hit = object3d.intersects_ray(origin,direction)
             if hit is None:
                 continue
 
@@ -66,7 +62,7 @@ class InteractionController(SceneController):
 
             if closest is None or distance < closest.distance:
                 closest = InteractionEvent(
-                    node=node,
+                    target=object3d,
                     touch=touch,
                     origin=origin,
                     direction=direction,
@@ -82,13 +78,13 @@ class InteractionController(SceneController):
         if event is None:
             return False
 
-        self.pressed_node = event.node
-        event.node.dispatch("on_press", event)
+        self.pressed = event.target
+        event.target.dispatch("on_press", event)
 
         return True
 
     def on_touch_move(self, touch) -> bool:
-        if self.scene is None or self.pressed_node is None:
+        if self.scene is None or self.pressed is None:
             return False
 
         origin, direction = self.scene.viewport.screen_to_ray(
@@ -97,18 +93,18 @@ class InteractionController(SceneController):
         )
 
         event = InteractionEvent(
-            node=self.pressed_node,
+            target=self.pressed,
             touch=touch,
             origin=origin,
             direction=direction,
         )
 
-        self.pressed_node.dispatch("on_drag", event)
+        self.pressed.dispatch("on_drag", event)
 
         return True
 
     def on_touch_up(self, touch) -> bool:
-        if self.scene is None or self.pressed_node is None:
+        if self.scene is None or self.pressed is None:
             return False
 
         origin, direction = self.scene.viewport.screen_to_ray(
@@ -117,13 +113,13 @@ class InteractionController(SceneController):
         )
 
         event = InteractionEvent(
-            node=self.pressed_node,
+            target=self.pressed,
             touch=touch,
             origin=origin,
             direction=direction,
         )
 
-        self.pressed_node.dispatch("on_release", event)
-        self.pressed_node = None
+        self.pressed.dispatch("on_release", event)
+        self.pressed = None
 
         return True

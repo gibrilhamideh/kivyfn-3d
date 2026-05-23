@@ -11,7 +11,7 @@ from kivy.app import App
 from kivyfn.three.controls import BlenderCameraControls, InteractionController
 from kivyfn.three.helpers import AxisHelper, GridHelper
 from kivyfn.three.loaders.asset import AssetObject
-from kivyfn.three.loaders.glb import GlbLoader
+from kivyfn.three.loaders import GlbLoader, is_renderable
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.objects import Material
 from kivyfn.three.objects.object3d import Object3D
@@ -86,12 +86,7 @@ class MainApp(App):
         asset: AssetObject,
         parent: Node3D | None = None,
     ) -> Node3D:
-        if asset.geometry is None:
-            node = Node3D(
-                name=asset.name,
-                transform=asset.transform,
-            )
-        else:
+        if is_renderable(asset):
             material = Material(
                 name=asset.name,
                 uniforms={
@@ -110,7 +105,11 @@ class MainApp(App):
             node.bind(
                 on_release=self._on_object_release,
             )
-
+        else:
+            node = Node3D(
+                name=asset.name,
+                transform=asset.transform,
+            )
 
         self.scene.add(
             node,
