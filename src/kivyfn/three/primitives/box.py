@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from kivyfn.three.objects import Material, Geometry, Object3D
+from kivyfn.three.objects.material import Material
+from kivyfn.three.objects.object3d import Object3D
+from kivyfn.three.objects.geometry import Geometry
 
 
 class Box(Object3D):

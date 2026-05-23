@@ -12,7 +12,7 @@ from kivyfn.three.modifiers.boolean import BooleanModifier
 from kivyfn.three.objects import Material
 from kivyfn.three.primitives.box import Box
 from kivyfn.three.render.shader import Shader
-from kivyfn.three.scene import Scene
+from kivyfn.three.scene.scene import Scene
 from kivyfn.three.paths import RESOURCES_PATH
 
 

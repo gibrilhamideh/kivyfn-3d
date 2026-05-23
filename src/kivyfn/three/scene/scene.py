@@ -9,15 +9,19 @@ from kivy.graphics.opengl import GL_DEPTH_TEST, glDisable, glEnable, glViewport
 from kivy.properties import ObjectProperty
 from kivy.uix.widget import Widget
 
-from kivyfn.three.render.context import RenderContext
+
+from kivyfn.three.scene.node import Node3D
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.scene.camera import Camera
-from kivyfn.three.scene.node import Node3D
 from kivyfn.three.scene.viewport import Viewport
+from kivyfn.three.objects.object3d import Object3D
+from kivyfn.three.objects.material import Material
 
 if TYPE_CHECKING:
+    from kivyfn.three.render.context import RenderContext
     from kivyfn.three.render.shader import Shader
     from kivyfn.three.controls.base import SceneController
+    from kivyfn.three.loaders.asset import AssetObject, SceneAsset
 
 
 class Scene(Widget):
@@ -67,6 +71,82 @@ class Scene(Widget):
         assert node.parent is not None
         node.parent.remove_child(node)
         self.renderer.remove(node)
+
+    def load_asset(
+        self,
+        asset: AssetObject,
+        context: str,
+        *,
+        parent: Node3D | None = None,
+        pickable: bool = False,
+    ) -> Node3D:
+
+        if asset.is_renderable:
+            node = Object3D(
+                geometry=asset.require_geometry(),
+                material=(
+                    asset.material
+                    or Material(
+                        name=asset.name,
+                        uniforms={
+                            "object_color": [
+                                1.0,
+                                1.0,
+                                1.0,
+                                1.0,
+                            ],
+                        },
+                    )
+                ),
+                name=asset.name,
+                transform=asset.transform.copy(),
+                pickable=pickable,
+            )
+
+        else:
+            node = Node3D(
+                name=asset.name,
+                transform=asset.transform.copy(),
+            )
+
+        self.add(
+            node,
+            parent=parent,
+            context=context,
+        )
+
+        for child_asset in asset.children:
+            self.load_asset(
+                child_asset,
+                parent=node,
+                context=context,
+                pickable=pickable,
+            )
+
+        return node
+
+
+    def load_scene(
+        self,
+        scene_asset: SceneAsset,
+        context: str,
+        *,
+        pickable: bool = False,
+    ) -> list[Node3D]:
+
+        nodes: list[Node3D] = []
+
+        for asset in scene_asset.tree:
+            node = self.load_asset(
+                asset,
+                context=context,
+                pickable=pickable,
+            )
+
+            nodes.append(node)
+
+        return nodes
+
 
     # =================================== #
     # gl Context

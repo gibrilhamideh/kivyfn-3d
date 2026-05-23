@@ -1,0 +1,17 @@
+# kivyfn/three/light/point.py
+
+from __future__ import annotations
+
+from kivyfn.three.light.base import Light3D
+
+
+class PointLight(Light3D):
+    def __init__(
+        self,
+        *,
+        radius: float = 10.0,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+
+        self.radius = radius

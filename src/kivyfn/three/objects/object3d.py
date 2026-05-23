@@ -12,13 +12,13 @@ from kivy.properties import (
 )
 
 from kivyfn.three.collision import Collider
-from kivyfn.three.math.vector import Vector3
-from kivyfn.three.objects.geometry import Geometry
-from kivyfn.three.objects.material import Material
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.render.instructions import Instructions
 
 if TYPE_CHECKING:
+    from kivyfn.three.math.vector import Vector3
+    from kivyfn.three.objects.geometry import Geometry
+    from kivyfn.three.objects.material import Material
     from kivyfn.three.render.context import RenderContext
     from kivyfn.three.controls.interaction import InteractionEvent
 

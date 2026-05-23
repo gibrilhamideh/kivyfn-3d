@@ -18,17 +18,16 @@ from kivyfn.three.helpers import (
     GridHelper,
 )
 from kivyfn.three.loaders import GlbLoader
-from kivyfn.three.loaders.asset import AssetObject
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.objects import (
     Material,
     Object3D,
 )
-from kivyfn.three.scene.node import Node3D
-from kivyfn.three.render.shader import Shader
-from kivyfn.three.scene import Scene
-from kivyfn.three.utils.color import random_color
 from kivyfn.three.paths import RESOURCES_PATH
+from kivyfn.three.render.shader import Shader
+from kivyfn.three.scene.scene import Scene
+from kivyfn.three.scene.node import Node3D
+from kivyfn.three.utils.color import random_color
 
 
 class MainApp(App):
@@ -36,7 +35,14 @@ class MainApp(App):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.rotation_events: dict[Object3D, ClockEvent] = {}
+        self.rotation_events: dict[Node3D, ClockEvent] = {}
+
+        self.fan_node: Node3D | None = None
+        self.fan_blades_node: Node3D | None = None
+
+        self.shutters: list[Node3D] = []
+        self.shutter_angles: dict[Node3D, float] = {}
+        self.shutter_directions: dict[Node3D, int] = {}
 
     def on_start(self):
 
@@ -44,18 +50,22 @@ class MainApp(App):
             RESOURCES_PATH
             / "models"
             / "glb"
-            / "dashboard.glb"
+            / "Fan.glb"
         )
 
         loader = GlbLoader()
         scene_asset = loader.load(model_path)
 
-        self.scene = Scene()
-        self.pending_assets = list(scene_asset.tree)
+        fan_asset = scene_asset.objects.get("Fan")
 
-        # =================================== #
-        # Shaders
-        # =================================== #
+        if fan_asset is None:
+            raise RuntimeError(
+                "Fan root object was not found in Fan.glb. "
+                "Make sure the root Empty in Blender is named 'Fan'."
+            )
+
+        self.scene = Scene()
+
         lambert_shader = Shader(
             name="lambert",
             path=(
@@ -76,9 +86,6 @@ class MainApp(App):
             ),
         )
 
-        # =================================== #
-        # Contexts
-        # =================================== #
         self.scene.create_context(
             name="main",
             shader=lambert_shader,
@@ -89,9 +96,6 @@ class MainApp(App):
             shader=helper_shader,
         )
 
-        # =================================== #
-        # Controllers
-        # =================================== #
         self.scene.attach_controller(
             InteractionController(),
         )
@@ -101,9 +105,6 @@ class MainApp(App):
             priority=100,
         )
 
-        # =================================== #
-        # Helpers
-        # =================================== #
         axis = AxisHelper()
 
         grid = GridHelper(
@@ -134,87 +135,61 @@ class MainApp(App):
 
         self.root.add_widget(self.scene)  # pyright: ignore
 
-        # =================================== #
-        # Lazy Load
-        # =================================== #
-        self.lazy_load_event = Clock.schedule_interval(
-            self.lazy_load_next_asset,
-            0.1,
+        fan_node = self.scene.load_asset(
+            fan_asset,
+            context="main",
+            pickable=True,
         )
 
-    # =================================== #
-    # Lazy Load
-    # =================================== #
-    def lazy_load_next_asset(self, dt):
-        if not self.pending_assets:
-            self.lazy_load_event.cancel()
-            return False
+        self.collect_nodes(fan_node)
+        self.start_fan_animation()
 
-        asset = self.pending_assets.pop(0)
-
-        self.add_asset_tree(
-            asset=asset,
-            parent=None,
-        )
-
-        return True
-
-    def add_asset_tree(
+    def collect_nodes(
         self,
-        asset: AssetObject,
-        parent: Node3D | None = None,
-    ) -> Node3D:
+        node: Node3D,
+    ) -> None:
 
-        if asset.is_renderable:
-            material = Material(
-                name=asset.name,
-                uniforms={
-                    "object_color": random_color(),
-                },
-            )
+        if node.name == "Fan":
+            self.fan_node = node
 
-            node = Object3D(
-                geometry=asset.require_geometry(),
-                material=material,
-                name=asset.name,
-                transform=asset.transform.copy(),
-                pickable=True,
-            )
+        elif node.name == "FanBlades":
+            self.fan_blades_node = node
 
+        elif node.name.startswith("Shutter."):
+            self.shutters.append(node)
+
+        if isinstance(node, Object3D):
             node.bind(
                 on_release=self.on_release,
             )
 
-        else:
-            node = Node3D(
-                name=asset.name,
-                transform=asset.transform.copy(),
+        for child in node.children:
+            self.collect_nodes(child)
+
+    def start_fan_animation(self) -> None:
+
+        if self.fan_blades_node is not None:
+            self.start_rotation(
+                node=self.fan_blades_node,
+                speed=720,
+                axis=Vector3(0, 0, 1),
             )
 
-        self.scene.add(
-            node,
-            parent=parent,
-            context="main",
-        )
-
-        for child_asset in asset.children:
-            self.add_asset_tree(
-                asset=child_asset,
-                parent=node,
+        if self.fan_node is not None:
+            self.start_rotation(
+                node=self.fan_node,
+                speed=30,
+                axis=Vector3(0, 1, 0),
             )
 
-        return node
+        self.animate_shutters()
 
-    # =================================== #
-    # Interaction
-    # =================================== #
     def on_release(self, instance, event):
         print("event:", event)
 
         object3d = event.target
 
         self.change_color(object3d)
-        self.animate_rotation(object3d)
 
     def change_color(
         self,
@@ -225,40 +200,105 @@ class MainApp(App):
             random_color(),
         )
 
-    # =================================== #
-    # Rotation Animation
-    # =================================== #
-    def animate_rotation(
+    def start_rotation(
         self,
-        object3d: Object3D,
+        node: Node3D,
+        speed: float,
+        axis: Vector3,
     ) -> None:
 
-        # --- Stop rotating
-        if object3d in self.rotation_events:
-            event = self.rotation_events.pop(object3d)
-            event.cancel()
+        if node in self.rotation_events:
             return
 
-        # --- Start rotating
         event = Clock.schedule_interval(
-            lambda dt: self.rotate_object(
-                object3d,
-                dt,
+            lambda dt: self.rotate_node(
+                node=node,
+                dt=dt,
+                speed=speed,
+                axis=axis,
             ),
             1 / 60,
         )
 
-        self.rotation_events[object3d] = event
+        self.rotation_events[node] = event
 
-    def rotate_object(
+    def rotate_node(
         self,
-        object3d: Object3D,
+        node: Node3D,
         dt: float,
+        speed: float,
+        axis: Vector3,
     ) -> None:
-        object3d.rotate_by(
-            angle_degrees=20 * dt,
-            axis=Vector3(1, 0, 0),
+
+        node.rotate_by(
+            angle_degrees=speed * dt,
+            axis=axis,
         )
+
+    def animate_shutters(self) -> None:
+
+        for shutter in self.shutters:
+            self.start_shutter_animation(shutter)
+
+    def start_shutter_animation(
+        self,
+        shutter: Node3D,
+    ) -> None:
+
+        self.shutter_angles[shutter] = 0.0
+        self.shutter_directions[shutter] = 1
+
+        Clock.schedule_interval(
+            lambda dt: self.rotate_shutter(
+                shutter=shutter,
+                dt=dt,
+                max_angle=90.0,
+                speed=120.0,
+                axis=Vector3(1, 0, 0),
+            ),
+            1 / 60,
+        )
+
+    def rotate_shutter(
+        self,
+        shutter: Node3D,
+        dt: float,
+        max_angle: float,
+        speed: float,
+        axis: Vector3,
+    ) -> bool:
+
+        current_angle = self.shutter_angles.get(
+            shutter,
+            0.0,
+        )
+
+        direction = self.shutter_directions.get(
+            shutter,
+            1,
+        )
+
+        step = speed * dt * direction
+        next_angle = current_angle + step
+
+        if next_angle >= max_angle:
+            step = max_angle - current_angle
+            next_angle = max_angle
+            self.shutter_directions[shutter] = -1
+
+        elif next_angle <= 0:
+            step = -current_angle
+            next_angle = 0.0
+            self.shutter_directions[shutter] = 1
+
+        shutter.rotate_by(
+            angle_degrees=step,
+            axis=axis,
+        )
+
+        self.shutter_angles[shutter] = next_angle
+
+        return True
 
 
 if __name__ == "__main__":

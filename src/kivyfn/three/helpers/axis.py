@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from kivyfn.three.scene.node import Node3D
-from kivyfn.three.objects import Material, Geometry, Object3D
+from kivyfn.three.objects.material import Material
+from kivyfn.three.objects.object3d import Object3D
+from kivyfn.three.objects.geometry import Geometry
 
 
 class _AxisLine(Object3D):

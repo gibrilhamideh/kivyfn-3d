@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from kivy.properties import OptionProperty
 
-from kivyfn.three.objects import Material, Geometry, Object3D
+from kivyfn.three.objects.material import Material
+from kivyfn.three.objects.object3d import Object3D
+from kivyfn.three.objects.geometry import Geometry
 
 class Plane(Object3D):
     axis = OptionProperty(

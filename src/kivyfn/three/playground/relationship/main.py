@@ -17,7 +17,7 @@ from kivyfn.three.objects import Material
 from kivyfn.three.objects.object3d import Object3D
 from kivyfn.three.paths import RESOURCES_PATH
 from kivyfn.three.render.shader import Shader
-from kivyfn.three.scene import Scene
+from kivyfn.three.scene.scene import Scene
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.utils.color import random_color
 

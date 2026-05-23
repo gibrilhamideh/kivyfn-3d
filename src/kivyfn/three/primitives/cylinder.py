@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import math
 
-from kivyfn.three.objects import Material, Geometry, Object3D
+from kivyfn.three.objects.material import Material
+from kivyfn.three.objects.object3d import Object3D
+from kivyfn.three.objects.geometry import Geometry
 
 class Cylinder(Object3D):
     def __init__(

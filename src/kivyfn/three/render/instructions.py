@@ -17,9 +17,9 @@ from kivy.graphics import (
 )
 
 if TYPE_CHECKING:
-    from kivyfn.three.objects import Object3D, Material
     from kivyfn.three.render.context import RenderContext
-
+    from kivyfn.three.objects.material import Material
+    from kivyfn.three.objects.object3d import Object3D
 
 class Instructions(EventDispatcher):
     def __init__(
