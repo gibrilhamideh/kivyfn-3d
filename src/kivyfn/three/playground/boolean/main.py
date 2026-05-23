@@ -1,3 +1,4 @@
+# kivyfn/three/playground/boolean/main.py
 from __future__ import annotations
 
 from kivy.config import Config
@@ -95,7 +96,7 @@ class MainApp(App):
             cutter=cutter,
             operation="difference",
             check_volume=False,
-            flat_shading=False,
+            flat_shading=True,
             name="box_with_round_hole",
         )
 

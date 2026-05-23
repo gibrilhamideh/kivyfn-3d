@@ -41,101 +41,160 @@ class GlbLoader:
         self._gltf = GLTF2().load_binary(str(path))
         self._buffer_bytes = self._load_buffer_bytes(path)
 
-        node_world_matrices = self._build_node_world_matrices()
+        for root_index in self._get_scene_root_indices():
+            root_asset = self._load_node(root_index)
+            self.scene.tree.append(root_asset)
 
-        for node_index, node in enumerate(self._gltf.nodes or []):
-            if node.mesh is None:
-                continue
+        return self.scene
 
-            mesh_object = self._gltf.meshes[node.mesh]
+    # =================================== #
+    # Scene / Node Tree
+    # =================================== #
+    def _get_scene_root_indices(self) -> list[int]:
+        if self._gltf.scenes and self._gltf.scene is not None:
+            scene = self._gltf.scenes[self._gltf.scene]
+            return list(scene.nodes or [])
 
-            node_name = (
-                node.name
-                or mesh_object.name
-                or f"mesh_{node.mesh}"
+        nodes = self._gltf.nodes or []
+        child_indices: set[int] = set()
+
+        for node in nodes:
+            child_indices.update(node.children or [])
+
+        return [
+            index
+            for index in range(len(nodes))
+            if index not in child_indices
+        ]
+
+    def _load_node(
+        self,
+        node_index: int,
+    ) -> AssetObject:
+        node = self._gltf.nodes[node_index]
+
+        node_name = self._get_node_name(
+            node_index=node_index,
+            node=node,
+        )
+
+        primitives = self._get_node_primitives(node)
+
+        if len(primitives) == 1:
+            geometry = self._process_primitive(primitives[0])
+
+            if geometry is not None:
+                geometry.name = node_name
+
+            asset = AssetObject(
+                name=node_name,
+                geometry=geometry,
+                transform=self._get_node_local_transform(node),
+                material=None,
             )
 
-            world_transform = self._transform_from_matrix4(
-                node_world_matrices[node_index]
+            self._register_asset(asset)
+
+        else:
+            asset = AssetObject(
+                name=node_name,
+                geometry=None,
+                transform=self._get_node_local_transform(node),
+                material=None,
             )
 
-            for primitive_index, primitive in enumerate(mesh_object.primitives or []):
+            self._register_asset(asset)
+
+            for primitive_index, primitive in enumerate(primitives):
                 geometry = self._process_primitive(primitive)
 
                 if geometry is None:
                     continue
 
-                key = (
-                    node_name
-                    if len(mesh_object.primitives) == 1
-                    else f"{node_name}.{primitive_index:03d}"
+                primitive_name = self._make_unique_name(
+                    f"{node_name}.{primitive_index:03d}"
                 )
 
-                geometry.name = key
+                geometry.name = primitive_name
 
-                self.scene.objects[key] = AssetObject(
-                    name=key,
+                primitive_asset = AssetObject(
+                    name=primitive_name,
                     geometry=geometry,
-                    transform=world_transform.copy(),
+                    transform=Transform(),
                     material=None,
                 )
 
-        return self.scene
+                self._register_asset(primitive_asset)
+                asset.children.append(primitive_asset)
+
+        for child_index in node.children or []:
+            child_asset = self._load_node(child_index)
+            asset.children.append(child_asset)
+
+        return asset
+
+    def _get_node_name(
+        self,
+        node_index: int,
+        node: Any,
+    ) -> str:
+        mesh_name = None
+
+        if node.mesh is not None:
+            mesh = self._gltf.meshes[node.mesh]
+            mesh_name = mesh.name
+
+        name = (
+            node.name
+            or mesh_name
+            or f"node_{node_index}"
+        )
+
+        return self._make_unique_name(name)
+
+    def _make_unique_name(
+        self,
+        name: str,
+    ) -> str:
+        if name not in self.scene.objects:
+            return name
+
+        counter = 1
+
+        while True:
+            candidate = f"{name}.{counter:03d}"
+
+            if candidate not in self.scene.objects:
+                return candidate
+
+            counter += 1
+
+    def _register_asset(
+        self,
+        asset: AssetObject,
+    ) -> None:
+        self.scene.objects[asset.name] = asset
+
+    def _get_node_primitives(
+        self,
+        node: Any,
+    ) -> list[Any]:
+        if node.mesh is None:
+            return []
+
+        mesh = self._gltf.meshes[node.mesh]
+        return list(mesh.primitives or [])
 
     # =================================== #
     # Node Transforms
     # =================================== #
-    def _build_node_world_matrices(self) -> list[Matrix4]:
-        nodes = self._gltf.nodes or []
-
-        node_local_matrices = [
+    def _get_node_local_transform(
+        self,
+        node: Any,
+    ) -> Transform:
+        return self._transform_from_matrix4(
             self._get_node_local_matrix(node)
-            for node in nodes
-        ]
-
-        node_world_matrices = [
-            Matrix4.identity()
-            for _ in nodes
-        ]
-
-        visited: set[int] = set()
-
-        def walk(
-            node_index: int,
-            parent_matrix: Matrix4,
-        ) -> None:
-            if node_index in visited:
-                return
-
-            visited.add(node_index)
-
-            world_matrix = parent_matrix @ node_local_matrices[node_index]
-            node_world_matrices[node_index] = world_matrix
-
-            node = nodes[node_index]
-
-            for child_index in node.children or []:
-                walk(
-                    child_index,
-                    world_matrix,
-                )
-
-        if self._gltf.scenes and self._gltf.scene is not None:
-            scene = self._gltf.scenes[self._gltf.scene]
-
-            for root_index in scene.nodes or []:
-                walk(
-                    root_index,
-                    Matrix4.identity(),
-                )
-        else:
-            for node_index in range(len(nodes)):
-                walk(
-                    node_index,
-                    Matrix4.identity(),
-                )
-
-        return node_world_matrices
+        )
 
     def _get_node_local_matrix(
         self,

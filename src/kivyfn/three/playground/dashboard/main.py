@@ -1,9 +1,6 @@
-
-# kivyfn/three/main.py
+# kivyfn/three/playground/dashboard/main.py
 
 from __future__ import annotations
-
-from pathlib import Path
 
 from kivy.config import Config
 
@@ -21,11 +18,13 @@ from kivyfn.three.helpers import (
     GridHelper,
 )
 from kivyfn.three.loaders import GlbLoader
+from kivyfn.three.loaders.asset import AssetObject
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.objects import (
     Material,
     Object3D,
 )
+from kivyfn.three.scene.node import Node3D
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene import Scene
 from kivyfn.three.utils.color import random_color
@@ -52,7 +51,7 @@ class MainApp(App):
         scene_asset = loader.load(model_path)
 
         self.scene = Scene()
-        self.pending_objects = list(scene_asset.objects.items())
+        self.pending_assets = list(scene_asset.tree)
 
         # =================================== #
         # Shaders
@@ -139,45 +138,72 @@ class MainApp(App):
         # Lazy Load
         # =================================== #
         self.lazy_load_event = Clock.schedule_interval(
-            self.lazy_load_next_object,
+            self.lazy_load_next_asset,
             0.1,
         )
 
     # =================================== #
     # Lazy Load
     # =================================== #
-    def lazy_load_next_object(self, dt):
-        if not self.pending_objects:
+    def lazy_load_next_asset(self, dt):
+        if not self.pending_assets:
             self.lazy_load_event.cancel()
             return False
 
-        name, asset = self.pending_objects.pop(0)
+        asset = self.pending_assets.pop(0)
 
-        material = Material(
-            name=name,
-            uniforms={
-                "object_color": random_color(),
-            },
-        )
-
-        object3d = Object3D(
-            geometry=asset.geometry,
-            material=material,
-            name=name,
-            transform=asset.transform.copy(),
-            pickable=True,
-        )
-
-        object3d.bind(
-            on_release=self.on_release,
-        )
-
-        self.scene.add(
-            object3d,
-            context="main",
+        self.add_asset_tree(
+            asset=asset,
+            parent=None,
         )
 
         return True
+
+    def add_asset_tree(
+        self,
+        asset: AssetObject,
+        parent: Node3D | None = None,
+    ) -> Node3D:
+
+        if asset.geometry is not None:
+            material = Material(
+                name=asset.name,
+                uniforms={
+                    "object_color": random_color(),
+                },
+            )
+
+            node = Object3D(
+                geometry=asset.geometry,
+                material=material,
+                name=asset.name,
+                transform=asset.transform.copy(),
+                pickable=True,
+            )
+
+            node.bind(
+                on_release=self.on_release,
+            )
+
+        else:
+            node = Node3D(
+                name=asset.name,
+                transform=asset.transform.copy(),
+            )
+
+        self.scene.add(
+            node,
+            parent=parent,
+            context="main",
+        )
+
+        for child_asset in asset.children:
+            self.add_asset_tree(
+                asset=child_asset,
+                parent=node,
+            )
+
+        return node
 
     # =================================== #
     # Interaction
@@ -185,10 +211,15 @@ class MainApp(App):
     def on_release(self, instance, event):
         print("event:", event)
 
-        self.change_color(event.node)
-        self.animate_rotation(event.node)
+        object3d = event.node
 
-    def change_color(self, object3d):
+        self.change_color(object3d)
+        self.animate_rotation(object3d)
+
+    def change_color(
+        self,
+        object3d: Object3D,
+    ) -> None:
         object3d.material.set_uniform(
             "object_color",
             random_color(),
