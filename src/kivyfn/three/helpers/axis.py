@@ -70,7 +70,7 @@ class AxisHelper(Node3D):
                 end=(0.0, size, 0.0),
                 material=Material(
                     name="YAxis",
-                    uniforms={"object_color": [1.0, 0.0, 0.0, 1.0]}
+                    uniforms={"object_color": [0.0, 1.0, 0.0, 1.0]}
                 ),
             )
         )
@@ -82,7 +82,7 @@ class AxisHelper(Node3D):
                 end=(0.0, 0.0, size),
                 material=Material(
                     name="ZAxis",
-                    uniforms={"object_color": [1.0, 0.0, 0.0, 1.0]}
+                    uniforms={"object_color": [0.0, 0.0, 1.0, 1.0]}
                 ),
             )
         )

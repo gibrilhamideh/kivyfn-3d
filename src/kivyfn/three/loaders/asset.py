@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Protocol, TypeGuard
 
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.objects.geometry import Geometry
@@ -25,18 +24,14 @@ class AssetObject:
         default_factory=list,
     )
 
+    @property
+    def is_renderable(self):
+        return self.geometry is not None
 
-class RenderableAsset(Protocol):
-    name: str
-    geometry: Geometry
-    transform: Transform
-    material: Material | None
-    children: list[AssetObject]
-
-
-def is_renderable(asset: AssetObject) -> TypeGuard[RenderableAsset]:
-    """Type guard to ensure the given asset has a valid geometry."""
-    return asset.geometry is not None
+    def require_geometry(self) -> Geometry:
+        if self.geometry is None:
+            raise TypeError(f"AssetObject {self.name!r} is not renderable.")
+        return self.geometry
 
 
 @dataclass(slots=True)

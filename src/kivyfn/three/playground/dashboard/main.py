@@ -17,7 +17,7 @@ from kivyfn.three.helpers import (
     AxisHelper,
     GridHelper,
 )
-from kivyfn.three.loaders import GlbLoader, is_renderable
+from kivyfn.three.loaders import GlbLoader
 from kivyfn.three.loaders.asset import AssetObject
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.objects import (
@@ -165,7 +165,7 @@ class MainApp(App):
         parent: Node3D | None = None,
     ) -> Node3D:
 
-        if is_renderable(asset):
+        if asset.is_renderable:
             material = Material(
                 name=asset.name,
                 uniforms={
@@ -174,7 +174,7 @@ class MainApp(App):
             )
 
             node = Object3D(
-                geometry=asset.geometry,
+                geometry=asset.require_geometry(),
                 material=material,
                 name=asset.name,
                 transform=asset.transform.copy(),
