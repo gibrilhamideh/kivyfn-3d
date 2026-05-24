@@ -5,7 +5,7 @@
 
 attribute vec3 v_pos;
 attribute vec3 v_normal;
-attribute vec2 v_tc0;
+attribute vec2 v_uv;
 
 uniform mat4 modelview_mat;
 uniform mat4 projection_mat;
@@ -20,7 +20,7 @@ void main(void) {
 
     vertex_pos = view_pos.xyz;
     normal_vec = normalize((normal_mat * vec4(v_normal, 0.0)).xyz);
-    texcoord_0 = v_tc0;
+    texcoord_0 = v_uv;
 
     gl_Position = projection_mat * view_pos;
 }

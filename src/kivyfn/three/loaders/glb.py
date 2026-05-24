@@ -1076,7 +1076,7 @@ class GlbLoader:
 
         if normals is None or normals.shape[1] < 3:
             normals = np.zeros_like(
-                positions,
+                positions[:, :3],
                 dtype=np.float32,
             )
         else:
@@ -1110,6 +1110,35 @@ class GlbLoader:
         if self.flip_v:
             uvs[:, 1] = 1.0 - uvs[:, 1]
 
+        tangents = self._read_accessor(
+            getattr(
+                primitive.attributes,
+                "TANGENT",
+                None,
+            )
+        )
+
+        has_source_tangents = (
+            tangents is not None
+            and tangents.shape[1] >= 4
+        )
+
+        if not has_source_tangents:
+            tangents = np.zeros(
+                (vertex_count, 4),
+                dtype=np.float32,
+            )
+
+            tangents[:, 0] = 1.0
+            tangents[:, 3] = 1.0
+
+        else:
+            assert tangents is not None
+            tangents = tangents[:, :4].astype(
+                np.float32,
+                copy=False,
+            )
+
         if self.flip_winding and len(final_indices) % 3 == 0:
             final_indices = final_indices.reshape(-1, 3)
             final_indices[:, [1, 2]] = final_indices[:, [2, 1]]
@@ -1122,12 +1151,14 @@ class GlbLoader:
                 positions[:, :3],
                 normals,
                 uvs,
+                tangents,
             ]
         ).reshape(-1)
 
         return Geometry(
             vertices=packed_vertices.tolist(),
             indices=final_indices.tolist(),
+            has_source_tangents=has_source_tangents,
         )
 
     def _ensure_uint16_indices(

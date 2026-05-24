@@ -27,7 +27,6 @@ FLAT_NORMAL_TEXTURE = create_texture(
 )
 
 
-# TODO: seperate uniforms for texture so it will be uniforms & textures
 class Material(EventDispatcher):
 
     name = StringProperty("")

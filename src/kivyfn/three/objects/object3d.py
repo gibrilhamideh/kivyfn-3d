@@ -32,12 +32,6 @@ Pivot = Literal[
 ]
 
 
-# TODO: implmenets the following:
-# print("watertight:", mesh.is_watertight)
-# print("volume:", mesh.is_volume)
-# print("winding:", mesh.is_winding_consistent)
-# print("euler:", mesh.euler_number)
-
 class Object3D(Node3D):
     ctx: RenderContext | None = ObjectProperty()
     geometry: Geometry = ObjectProperty()
