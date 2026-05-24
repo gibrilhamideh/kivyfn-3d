@@ -17,6 +17,7 @@ from kivy.graphics import (
     UpdateNormalMatrix,
 )
 
+
 if TYPE_CHECKING:
     from kivyfn.three.render.context import RenderContext
     from kivyfn.three.objects.material import Material

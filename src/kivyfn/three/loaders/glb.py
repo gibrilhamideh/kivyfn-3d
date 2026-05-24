@@ -5,11 +5,12 @@ from __future__ import annotations
 import base64
 import io
 import os
+import xxhash
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import numpy as np
-from kivy.core.image import Image as CoreImage
+from kivy.core.image import Image
 from kivy.graphics.texture import Texture
 from pygltflib import GLTF2
 
@@ -25,6 +26,52 @@ from kivyfn.three.objects.material import Material
 
 
 class GlbLoader:
+
+    _DTYPE_MAP: ClassVar[dict[int, Any]] = {
+        5120: np.int8,
+        5121: np.uint8,
+        5122: np.int16,
+        5123: np.uint16,
+        5125: np.uint32,
+        5126: np.float32,
+    }
+
+    _COMPONENT_COUNT_MAP: ClassVar[dict[str, int]] = {
+        "SCALAR": 1,
+        "VEC2": 2,
+        "VEC3": 3,
+        "VEC4": 4,
+        "MAT2": 4,
+        "MAT3": 9,
+        "MAT4": 16,
+    }
+
+    _SAMPLER_MIN_FILTER_MAP: ClassVar[dict[int, str]] = {
+        9728: "nearest",
+        9729: "linear",
+        9984: "nearest_mipmap_nearest",
+        9985: "linear_mipmap_nearest",
+        9986: "nearest_mipmap_linear",
+        9987: "linear_mipmap_linear",
+    }
+
+    _SAMPLER_MAG_FILTER_MAP: ClassVar[dict[int, str]] = {
+        9728: "nearest",
+        9729: "linear",
+    }
+
+    _SAMPLER_WRAP_MAP: ClassVar[dict[int, str]] = {
+        33071: "clamp_to_edge",
+        33648: "mirrored_repeat",
+        10497: "repeat",
+    }
+
+    _MIME_EXTENSION_MAP: ClassVar[dict[str, str]] = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+    }
+
     def __init__(
         self,
         flip_v: bool = False,
@@ -39,6 +86,17 @@ class GlbLoader:
         self._base_path: Path | None = None
 
         self._texture_cache: dict[int, Texture] = {}
+        self._image_bytes_cache: dict[int, tuple[bytes, str]] = {}
+        self._image_texture_cache: dict[
+            tuple[
+                str,
+                int | None,
+                int | None,
+                int | None,
+                int | None,
+            ],
+            Texture,
+        ] = {}
 
     def load(
         self,
@@ -50,7 +108,10 @@ class GlbLoader:
         self._gltf = GLTF2().load_binary(str(path))
         self._buffer_bytes = self._load_buffer_bytes(path)
         self._base_path = path.parent
+
         self._texture_cache.clear()
+        self._image_bytes_cache.clear()
+        self._image_texture_cache.clear()
 
         for root_index in self._get_scene_root_indices():
             root_asset = self._load_node(root_index)
@@ -297,7 +358,10 @@ class GlbLoader:
 
         rotation = Quaternion.from_matrix3(
             Matrix3(
-                rotation_values.astype(np.float32)
+                rotation_values.astype(
+                    np.float32,
+                    copy=False,
+                )
             )
         )
 
@@ -499,8 +563,10 @@ class GlbLoader:
         ):
             return None
 
-        if texture_index in self._texture_cache:
-            return self._texture_cache[texture_index]
+        cached_texture = self._texture_cache.get(texture_index)
+
+        if cached_texture is not None:
+            return cached_texture
 
         gltf_texture = self._gltf.textures[texture_index]
 
@@ -513,7 +579,14 @@ class GlbLoader:
         if image_index is None:
             return None
 
-        texture = self._load_image_texture(image_index)
+        sampler_key = self._get_sampler_cache_key(
+            gltf_texture
+        )
+
+        texture = self._load_image_texture(
+            image_index=image_index,
+            sampler_key=sampler_key,
+        )
 
         if texture is None:
             return None
@@ -530,7 +603,67 @@ class GlbLoader:
     def _load_image_texture(
         self,
         image_index: int,
+        sampler_key: tuple[
+            int | None,
+            int | None,
+            int | None,
+            int | None,
+        ],
     ) -> Texture | None:
+        image_data = self._load_image_data(image_index)
+
+        if image_data is None:
+            return None
+
+        image_bytes, extension = image_data
+
+        image_hash = xxhash.xxh3_64_hexdigest(
+            image_bytes
+        )
+
+        key = (
+            image_hash,
+            sampler_key[0],
+            sampler_key[1],
+            sampler_key[2],
+            sampler_key[3],
+        )
+
+        cached_texture = self._image_texture_cache.get(key)
+
+        if cached_texture is not None:
+            return cached_texture
+
+        image = Image(
+            io.BytesIO(image_bytes),
+            ext=extension,
+            mipmap=True,
+            nocache=True,
+        )
+
+        texture = image.texture
+        if texture is None:
+            return None
+
+        texture.min_filter = "linear_mipmap_linear"
+        texture.mag_filter = "linear"
+        texture.wrap = "repeat"
+
+        self._image_texture_cache[key] = texture
+
+        return texture
+
+    def _load_image_data(
+        self,
+        image_index: int,
+    ) -> tuple[bytes, str] | None:
+        cached_data = self._image_bytes_cache.get(
+            image_index
+        )
+
+        if cached_data is not None:
+            return cached_data
+
         if (
             not self._gltf.images
             or image_index < 0
@@ -547,24 +680,67 @@ class GlbLoader:
         if image_bytes is None:
             return None
 
-        core_image = CoreImage(
-            io.BytesIO(image_bytes),
-            ext=extension,
-            mipmap=True,
-            nocache=True,
+        image_data = (
+            image_bytes,
+            extension,
         )
 
-        texture = core_image.texture
+        self._image_bytes_cache[image_index] = image_data
 
-        if texture is None:
-            return None
+        return image_data
 
-        # TODO: fix in kivy-stubs
-        texture.min_filter = "linear_mipmap_linear" # pyright: ignore
-        texture.mag_filter = "linear" # pyright: ignore
-        texture.wrap = "repeat" # pyright: ignore
+    def _get_sampler_cache_key(
+        self,
+        gltf_texture: Any,
+    ) -> tuple[
+        int | None,
+        int | None,
+        int | None,
+        int | None,
+    ]:
+        sampler_index = getattr(
+            gltf_texture,
+            "sampler",
+            None,
+        )
 
-        return texture # pyright: ignore
+        if (
+            sampler_index is None
+            or not self._gltf.samplers
+            or sampler_index < 0
+            or sampler_index >= len(self._gltf.samplers)
+        ):
+            return (
+                None,
+                None,
+                None,
+                None,
+            )
+
+        sampler = self._gltf.samplers[sampler_index]
+
+        return (
+            getattr(
+                sampler,
+                "minFilter",
+                None,
+            ),
+            getattr(
+                sampler,
+                "magFilter",
+                None,
+            ),
+            getattr(
+                sampler,
+                "wrapS",
+                None,
+            ),
+            getattr(
+                sampler,
+                "wrapT",
+                None,
+            ),
+        )
 
     def _apply_sampler(
         self,
@@ -620,6 +796,7 @@ class GlbLoader:
         )
 
         texture_options = cast(Any, texture)
+
         if min_filter is not None:
             texture_options.min_filter = min_filter
 
@@ -643,14 +820,7 @@ class GlbLoader:
         if value is None:
             return None
 
-        return {
-            9728: "nearest",
-            9729: "linear",
-            9984: "nearest_mipmap_nearest",
-            9985: "linear_mipmap_nearest",
-            9986: "nearest_mipmap_linear",
-            9987: "linear_mipmap_linear",
-        }.get(value)
+        return self._SAMPLER_MIN_FILTER_MAP.get(value)
 
     def _sampler_mag_filter_to_kivy(
         self,
@@ -659,10 +829,7 @@ class GlbLoader:
         if value is None:
             return None
 
-        return {
-            9728: "nearest",
-            9729: "linear",
-        }.get(value)
+        return self._SAMPLER_MAG_FILTER_MAP.get(value)
 
     def _sampler_wrap_to_kivy(
         self,
@@ -671,11 +838,7 @@ class GlbLoader:
         if value is None:
             return None
 
-        return {
-            33071: "clamp_to_edge",
-            33648: "mirrored_repeat",
-            10497: "repeat",
-        }.get(value)
+        return self._SAMPLER_WRAP_MAP.get(value)
 
     def _load_image_bytes(
         self,
@@ -762,11 +925,10 @@ class GlbLoader:
         if mime_type is None:
             return "png"
 
-        return {
-            "image/jpeg": "jpg",
-            "image/png": "png",
-            "image/webp": "webp",
-        }.get(mime_type, "png")
+        return self._MIME_EXTENSION_MAP.get(
+            mime_type,
+            "png",
+        )
 
     # =================================== #
     # Buffer Reading
@@ -826,53 +988,27 @@ class GlbLoader:
         stride = view.byteStride or 0
         count = accessor.count
 
-        dtype_map = {
-            5120: np.int8,
-            5121: np.uint8,
-            5122: np.int16,
-            5123: np.uint16,
-            5125: np.uint32,
-            5126: np.float32,
-        }
-
-        component_count_map = {
-            "SCALAR": 1,
-            "VEC2": 2,
-            "VEC3": 3,
-            "VEC4": 4,
-            "MAT2": 4,
-            "MAT3": 9,
-            "MAT4": 16,
-        }
-
-        dtype = dtype_map[accessor.componentType]
-        component_count = component_count_map.get(
+        dtype = self._DTYPE_MAP[accessor.componentType]
+        component_count = self._COMPONENT_COUNT_MAP.get(
             accessor.type,
             1,
         )
 
-        element_size = np.dtype(dtype).itemsize * component_count
+        dtype_info = np.dtype(dtype)
+        element_size = dtype_info.itemsize * component_count
         start = view_offset + accessor_offset
 
         if stride and stride != element_size:
-            output = np.empty(
-                (count, component_count),
+            return np.ndarray(
+                shape=(count, component_count),
                 dtype=dtype,
+                buffer=buffer_bytes,
+                offset=start,
+                strides=(
+                    stride,
+                    dtype_info.itemsize,
+                ),
             )
-
-            position = start
-
-            for index in range(count):
-                output[index, :] = np.frombuffer(
-                    buffer_bytes,
-                    dtype=dtype,
-                    count=component_count,
-                    offset=position,
-                )
-
-                position += stride
-
-            return output
 
         array = np.frombuffer(
             buffer_bytes,
@@ -904,7 +1040,11 @@ class GlbLoader:
         if positions is None:
             return None
 
-        positions = positions.astype(np.float32)
+        positions = positions.astype(
+            np.float32,
+            copy=False,
+        )
+
         vertex_count = positions.shape[0]
 
         index_index = primitive.indices
@@ -915,7 +1055,10 @@ class GlbLoader:
             if indices is None:
                 return None
 
-            final_indices = indices.reshape(-1).astype(np.int64)
+            final_indices = indices.reshape(-1).astype(
+                np.int64,
+                copy=False,
+            )
 
         else:
             final_indices = np.arange(
@@ -937,7 +1080,10 @@ class GlbLoader:
                 dtype=np.float32,
             )
         else:
-            normals = normals.astype(np.float32)
+            normals = normals[:, :3].astype(
+                np.float32,
+                copy=False,
+            )
 
         uvs = self._read_accessor(
             getattr(
@@ -953,7 +1099,13 @@ class GlbLoader:
                 dtype=np.float32,
             )
         else:
-            uvs = uvs.astype(np.float32).copy()
+            uvs = uvs[:, :2].astype(
+                np.float32,
+                copy=False,
+            )
+
+            if self.flip_v:
+                uvs = uvs.copy()
 
         if self.flip_v:
             uvs[:, 1] = 1.0 - uvs[:, 1]
@@ -967,14 +1119,14 @@ class GlbLoader:
 
         packed_vertices = np.column_stack(
             [
-                positions,
+                positions[:, :3],
                 normals,
                 uvs,
             ]
-        ).astype(np.float32).reshape(-1)
+        ).reshape(-1)
 
         return Geometry(
-            vertices=packed_vertices.astype(float).tolist(),
+            vertices=packed_vertices.tolist(),
             indices=final_indices.tolist(),
         )
 
@@ -982,12 +1134,19 @@ class GlbLoader:
         self,
         indices: np.ndarray,
     ) -> np.ndarray:
+        if indices.size == 0:
+            return indices.astype(
+                np.uint16,
+                copy=False,
+            )
+
         if int(indices.max()) > 65535:
             raise OverflowError(
                 "Indices exceed 65535 in a single primitive. "
                 "Split the primitive before loading it."
             )
 
-        return indices.astype(np.uint16)
-
-
+        return indices.astype(
+            np.uint16,
+            copy=False,
+        )

@@ -28,6 +28,7 @@ from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.scene import Scene
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.utils.color import random_color
+from kivyfn.three.utils.stopwatch import Stopwatch
 
 
 class MainApp(App):
@@ -53,8 +54,9 @@ class MainApp(App):
             / "Fan.glb"
         )
 
-        loader = GlbLoader()
-        scene_asset = loader.load(model_path)
+        with Stopwatch.section("Loader"):
+            loader = GlbLoader()
+            scene_asset = loader.load(model_path)
 
         fan_asset = scene_asset.objects.get("Fan")
 
@@ -178,10 +180,10 @@ class MainApp(App):
         self.animate_shutters()
 
     def on_release(self, instance, event):
+
         print("event:", event)
 
         object3d = event.target
-
         self.change_color(object3d)
 
     def change_color(
