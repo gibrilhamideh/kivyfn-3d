@@ -8,6 +8,7 @@ from kivyfn.three.objects.material import Material
 from kivyfn.three.objects.object3d import Object3D
 from kivyfn.three.objects.geometry import Geometry
 
+
 class Plane(Object3D):
     axis = OptionProperty(
         "xy",
@@ -47,26 +48,26 @@ class Plane(Object3D):
 
         if axis == "xy":
             vertices = [
-                -hw, -hh, 0.0,  0, 0, 1,  0, 0,
-                 hw, -hh, 0.0,  0, 0, 1,  1, 0,
-                 hw,  hh, 0.0,  0, 0, 1,  1, 1,
-                -hw,  hh, 0.0,  0, 0, 1,  0, 1,
+                -hw, -hh, 0.0,  0, 0, 1,  0, 0,  1, 0, 0, 1,
+                 hw, -hh, 0.0,  0, 0, 1,  1, 0,  1, 0, 0, 1,
+                 hw,  hh, 0.0,  0, 0, 1,  1, 1,  1, 0, 0, 1,
+                -hw,  hh, 0.0,  0, 0, 1,  0, 1,  1, 0, 0, 1,
             ]
 
         elif axis == "xz":
             vertices = [
-                -hw, 0.0, -hh,  0, 1, 0,  0, 0,
-                 hw, 0.0, -hh,  0, 1, 0,  1, 0,
-                 hw, 0.0,  hh,  0, 1, 0,  1, 1,
-                -hw, 0.0,  hh,  0, 1, 0,  0, 1,
+                -hw, 0.0, -hh,  0, 1, 0,  0, 0,  1, 0, 0, 1,
+                 hw, 0.0, -hh,  0, 1, 0,  1, 0,  1, 0, 0, 1,
+                 hw, 0.0,  hh,  0, 1, 0,  1, 1,  1, 0, 0, 1,
+                -hw, 0.0,  hh,  0, 1, 0,  0, 1,  1, 0, 0, 1,
             ]
 
         elif axis == "yz":
             vertices = [
-                0.0, -hw, -hh,  1, 0, 0,  0, 0,
-                0.0,  hw, -hh,  1, 0, 0,  1, 0,
-                0.0,  hw,  hh,  1, 0, 0,  1, 1,
-                0.0, -hw,  hh,  1, 0, 0,  0, 1,
+                0.0, -hw, -hh,  1, 0, 0,  0, 0,  0, 1, 0, 1,
+                0.0,  hw, -hh,  1, 0, 0,  1, 0,  0, 1, 0, 1,
+                0.0,  hw,  hh,  1, 0, 0,  1, 1,  0, 1, 0, 1,
+                0.0, -hw,  hh,  1, 0, 0,  0, 1,  0, 1, 0, 1,
             ]
 
         else:
@@ -83,4 +84,5 @@ class Plane(Object3D):
         return Geometry(
             vertices=vertices,
             indices=indices,
+            has_source_tangents=False,
         )

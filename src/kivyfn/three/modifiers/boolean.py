@@ -20,41 +20,19 @@ BooleanOperation = Literal[
 
 BooleanEngine = Literal[
     "manifold",
-    "blender"
+    "blender",
 ]
 
 GeometryLike = Geometry | Object3D
 
-VERTEX_STRIDE = 8
 MAX_MESH_INDEX = 65_535
 
 
 class BooleanModifierError(RuntimeError):
-    """Raised when a boolean modifier operation fails."""
+    pass
 
 
 class BooleanModifier:
-    """
-    Boolean geometry modifier.
-
-    This modifier works in two modes:
-
-    1. apply(geometry)
-       Operates directly on raw Geometry objects.
-       In this mode, all geometry must already be in the same coordinate space.
-
-    2. apply_to_object(object3d)
-       Operates on Object3D instances.
-       Cutter objects are transformed into the base object's local space before
-       running the boolean operation.
-
-    Notes:
-        - Input geometry must be triangle mesh geometry.
-        - Input geometry should be watertight for Manifold booleans.
-        - Generated UVs are currently reset to 0,0.
-        - The output uses flat shading by default for cleaner hard edges.
-    """
-
     def __init__(
         self,
         cutter: GeometryLike | None = None,
@@ -68,7 +46,6 @@ class BooleanModifier:
         keep_texture: bool = False,
         name: str | None = None,
     ) -> None:
-
         self.engine: BooleanEngine = engine
         self.operation = operation
         self.check_volume = check_volume
@@ -88,19 +65,10 @@ class BooleanModifier:
         self._validate_operation()
         self._validate_engine()
 
-    # =================================== #
-    # Public API
-    # =================================== #
-    def add_cutter(
-        self,
-        cutter: GeometryLike,
-    ) -> None:
+    def add_cutter(self, cutter: GeometryLike) -> None:
         self.cutters.append(cutter)
 
-    def remove_cutter(
-        self,
-        cutter: GeometryLike,
-    ) -> None:
+    def remove_cutter(self, cutter: GeometryLike) -> None:
         self.cutters.remove(cutter)
 
     def clear_cutters(self) -> None:
@@ -112,12 +80,6 @@ class BooleanModifier:
         *,
         cutters: Iterable[GeometryLike] | None = None,
     ) -> Geometry:
-        """
-        Apply the boolean operation to raw geometry.
-
-        This assumes the base geometry and cutter geometry are already in the
-        same coordinate space.
-        """
         active_cutters = list(cutters) if cutters is not None else self.cutters
 
         if not active_cutters:
@@ -141,13 +103,6 @@ class BooleanModifier:
         material: Material | None = None,
         name: str | None = None,
     ) -> Object3D:
-        """
-        Apply the boolean operation to an Object3D and return a new Object3D.
-
-        Object3D cutters are converted into the base object's local space.
-        This keeps the returned geometry local to the base object and preserves
-        the base object's transform.
-        """
         active_cutters = list(cutters) if cutters is not None else self.cutters
 
         if not active_cutters:
@@ -182,9 +137,6 @@ class BooleanModifier:
             pivot=base.pivot,
         )
 
-    # =================================== #
-    # Internal Operations
-    # =================================== #
     def _apply_geometries(
         self,
         *,
@@ -268,9 +220,6 @@ class BooleanModifier:
                 "Boolean cutters must be Geometry or Object3D instances."
             )
 
-        # Convert cutter local geometry into base local space:
-        #
-        # cutter local -> world -> base local
         base_inverse = base.world_matrix.inverse()
         matrix = base_inverse @ cutter.world_matrix
 
@@ -297,9 +246,6 @@ class BooleanModifier:
             )
 
 
-# =================================== #
-# Geometry Conversion
-# =================================== #
 def _geometry_to_trimesh(
     geometry: Geometry,
     *,
@@ -312,7 +258,7 @@ def _geometry_to_trimesh(
     vertex_data = np.asarray(
         geometry.vertices,
         dtype=np.float64,
-    ).reshape((-1, VERTEX_STRIDE))
+    ).reshape((-1, geometry.stride))
 
     vertices = vertex_data[:, 0:3].copy()
 
@@ -321,13 +267,21 @@ def _geometry_to_trimesh(
         dtype=np.int64,
     ).reshape((-1, 3))
 
-
-
     mesh = trimesh.Trimesh(
         vertices=vertices,
         faces=faces,
-        process=process,
+        process=False,
     )
+
+    # Critical for your engine:
+    # render geometry has duplicated vertices per face,
+    # boolean geometry needs shared topology.
+    mesh.merge_vertices()
+    mesh.remove_unreferenced_vertices()
+    mesh.fix_normals()
+
+    if process:
+        mesh.process(validate=True)
 
     return mesh
 
@@ -341,13 +295,8 @@ def _trimesh_to_geometry(
     name: str | None,
 ) -> Geometry:
     if getattr(mesh, "is_empty", False):
-        return Geometry(
-            name=name,
-            fmt=list(template.fmt),
-            vertices=[],
-            indices=[],
-            mode="triangles",
-            texture=template.texture if keep_texture else None,
+        raise BooleanModifierError(
+            "Boolean operation produced empty geometry."
         )
 
     mesh = mesh.copy()
@@ -355,9 +304,15 @@ def _trimesh_to_geometry(
     mesh.fix_normals()
 
     if flat_shading:
-        vertices, indices = _build_flat_geometry_data(mesh)
+        vertices, indices = _build_flat_geometry_data(
+            mesh,
+            template=template,
+        )
     else:
-        vertices, indices = _build_smooth_geometry_data(mesh)
+        vertices, indices = _build_smooth_geometry_data(
+            mesh,
+            template=template,
+        )
 
     _validate_index_limit(indices)
 
@@ -373,13 +328,9 @@ def _trimesh_to_geometry(
 
 def _build_flat_geometry_data(
     mesh,
+    *,
+    template: Geometry,
 ) -> tuple[list[float], list[int]]:
-    """
-    Build geometry with duplicated vertices per triangle.
-
-    This gives cleaner hard edges for boxes, walls, cutouts, and CAD-like
-    dashboard geometry.
-    """
     faces = np.asarray(
         mesh.faces,
         dtype=np.int64,
@@ -402,23 +353,19 @@ def _build_flat_geometry_data(
 
     for face_index, face in enumerate(faces):
         normal = face_normals[face_index]
+        tangent = _fallback_tangent(normal)
 
         for source_index in face:
             position = positions[source_index]
 
             vertices.extend(
-                [
-                    float(position[0]),
-                    float(position[1]),
-                    float(position[2]),
-
-                    float(normal[0]),
-                    float(normal[1]),
-                    float(normal[2]),
-
-                    0.0,
-                    0.0,
-                ]
+                _pack_vertex(
+                    template=template,
+                    position=position,
+                    normal=normal,
+                    uv=(0.0, 0.0),
+                    tangent=tangent,
+                )
             )
 
             indices.append(vertex_index)
@@ -429,6 +376,8 @@ def _build_flat_geometry_data(
 
 def _build_smooth_geometry_data(
     mesh,
+    *,
+    template: Geometry,
 ) -> tuple[list[float], list[int]]:
     positions = np.asarray(
         mesh.vertices,
@@ -443,19 +392,16 @@ def _build_smooth_geometry_data(
     vertices: list[float] = []
 
     for position, normal in zip(positions, normals):
+        tangent = _fallback_tangent(normal)
+
         vertices.extend(
-            [
-                float(position[0]),
-                float(position[1]),
-                float(position[2]),
-
-                float(normal[0]),
-                float(normal[1]),
-                float(normal[2]),
-
-                0.0,
-                0.0,
-            ]
+            _pack_vertex(
+                template=template,
+                position=position,
+                normal=normal,
+                uv=(0.0, 0.0),
+                tangent=tangent,
+            )
         )
 
     indices = (
@@ -471,9 +417,80 @@ def _build_smooth_geometry_data(
     return vertices, indices
 
 
-# =================================== #
-# Transform Helpers
-# =================================== #
+def _pack_vertex(
+    *,
+    template: Geometry,
+    position,
+    normal,
+    uv,
+    tangent,
+) -> list[float]:
+    values: list[float] = []
+
+    for attr_name, size, _attr_type in template.fmt:
+        if attr_name == b"v_pos":
+            source = position
+        elif attr_name == b"v_normal":
+            source = normal
+        elif attr_name == b"v_uv":
+            source = uv
+        elif attr_name == b"v_tangent":
+            source = tangent
+        else:
+            source = [0.0] * size
+
+        for index in range(size):
+            if index < len(source):
+                values.append(float(source[index]))
+            else:
+                values.append(0.0)
+
+    return values
+
+
+def _fallback_tangent(
+    normal,
+) -> tuple[float, float, float, float]:
+    nx = float(normal[0])
+    ny = float(normal[1])
+    nz = float(normal[2])
+
+    if abs(ny) < 0.999:
+        up = np.array(
+            [0.0, 1.0, 0.0],
+            dtype=np.float64,
+        )
+    else:
+        up = np.array(
+            [1.0, 0.0, 0.0],
+            dtype=np.float64,
+        )
+
+    normal_vec = np.array(
+        [nx, ny, nz],
+        dtype=np.float64,
+    )
+
+    tangent = np.cross(
+        up,
+        normal_vec,
+    )
+
+    length = np.linalg.norm(tangent)
+
+    if length <= 1e-12:
+        return 1.0, 0.0, 0.0, 1.0
+
+    tangent = tangent / length
+
+    return (
+        float(tangent[0]),
+        float(tangent[1]),
+        float(tangent[2]),
+        1.0,
+    )
+
+
 def _transform_geometry(
     geometry: Geometry,
     matrix: Matrix4,
@@ -485,7 +502,7 @@ def _transform_geometry(
             geometry.vertices,
             dtype=np.float64,
         )
-        .reshape((-1, VERTEX_STRIDE))
+        .reshape((-1, geometry.stride))
         .copy()
     )
 
@@ -504,6 +521,7 @@ def _transform_geometry(
     transformed = homogeneous @ matrix.values.T
 
     w = transformed[:, 3:4]
+
     safe_w = np.where(
         np.abs(w) > 1e-12,
         w,
@@ -512,26 +530,57 @@ def _transform_geometry(
 
     data[:, 0:3] = transformed[:, 0:3] / safe_w
 
-    # Normals do not affect the boolean operation itself, but keeping them
-    # roughly correct makes this helper safer if reused elsewhere.
-    try:
-        normal_matrix = matrix.compute_normal_matrix().values.astype(np.float64)
-        normals = data[:, 3:6] @ normal_matrix.T
+    if _has_attribute(geometry, b"v_normal"):
+        normal_offset = _attribute_offset(geometry, b"v_normal")
 
-        lengths = np.linalg.norm(
-            normals,
-            axis=1,
-            keepdims=True,
-        )
+        try:
+            normal_matrix = matrix.compute_normal_matrix().values.astype(
+                np.float64
+            )
 
-        normals = np.divide(
-            normals,
-            np.where(lengths > 1e-12, lengths, 1.0),
-        )
+            normals = data[:, normal_offset:normal_offset + 3]
+            normals = normals @ normal_matrix.T
 
-        data[:, 3:6] = normals
-    except Exception:
-        pass
+            lengths = np.linalg.norm(
+                normals,
+                axis=1,
+                keepdims=True,
+            )
+
+            normals = np.divide(
+                normals,
+                np.where(lengths > 1e-12, lengths, 1.0),
+            )
+
+            data[:, normal_offset:normal_offset + 3] = normals
+        except Exception:
+            pass
+
+    if _has_attribute(geometry, b"v_tangent"):
+        tangent_offset = _attribute_offset(geometry, b"v_tangent")
+
+        try:
+            normal_matrix = matrix.compute_normal_matrix().values.astype(
+                np.float64
+            )
+
+            tangents = data[:, tangent_offset:tangent_offset + 3]
+            tangents = tangents @ normal_matrix.T
+
+            lengths = np.linalg.norm(
+                tangents,
+                axis=1,
+                keepdims=True,
+            )
+
+            tangents = np.divide(
+                tangents,
+                np.where(lengths > 1e-12, lengths, 1.0),
+            )
+
+            data[:, tangent_offset:tangent_offset + 3] = tangents
+        except Exception:
+            pass
 
     return Geometry(
         name=geometry.name,
@@ -540,12 +589,10 @@ def _transform_geometry(
         indices=list(geometry.indices),
         mode=geometry.mode,
         texture=geometry.texture,
+        has_source_tangents=geometry.has_source_tangents,
     )
 
 
-# =================================== #
-# Validation Helpers
-# =================================== #
 def _validate_geometry(
     geometry: Geometry,
 ) -> None:
@@ -554,15 +601,20 @@ def _validate_geometry(
             "BooleanModifier only supports triangle geometry."
         )
 
+    if geometry.stride <= 0:
+        raise ValueError(
+            "Geometry stride must be greater than zero."
+        )
+
     if len(geometry.vertices) == 0:
         raise ValueError(
             "BooleanModifier received empty geometry."
         )
 
-    if len(geometry.vertices) % VERTEX_STRIDE != 0:
+    if len(geometry.vertices) % geometry.stride != 0:
         raise ValueError(
-            "Geometry vertices must use stride 8: "
-            "x, y, z, nx, ny, nz, u, v."
+            f"Geometry vertices length must be divisible by stride "
+            f"{geometry.stride}."
         )
 
     if len(geometry.indices) == 0:
@@ -575,7 +627,7 @@ def _validate_geometry(
             "Geometry indices must describe triangles."
         )
 
-    vertex_count = len(geometry.vertices) // VERTEX_STRIDE
+    vertex_count = len(geometry.vertices) // geometry.stride
 
     min_index = min(geometry.indices)
     max_index = max(geometry.indices)
@@ -591,6 +643,11 @@ def _validate_geometry(
             f"{vertex_count}."
         )
 
+    if not _has_attribute(geometry, b"v_pos"):
+        raise ValueError(
+            "Geometry must contain a v_pos attribute."
+        )
+
 
 def _validate_index_limit(
     indices: list[int],
@@ -603,10 +660,36 @@ def _validate_index_limit(
     if max_index > MAX_MESH_INDEX:
         raise OverflowError(
             "Boolean result has more than 65,535 vertices. "
-            "Kivy Mesh indices are safest under this limit. "
             "Reduce cutter segments, simplify the geometry, or split the "
             "result into multiple meshes."
         )
+
+
+def _attribute_offset(
+    geometry: Geometry,
+    attr_name: bytes,
+) -> int:
+    offset = 0
+
+    for name, size, _attr_type in geometry.fmt:
+        if name == attr_name:
+            return offset
+
+        offset += size
+
+    raise ValueError(
+        f"Geometry does not contain attribute {attr_name!r}."
+    )
+
+
+def _has_attribute(
+    geometry: Geometry,
+    attr_name: bytes,
+) -> bool:
+    return any(
+        name == attr_name
+        for name, _size, _attr_type in geometry.fmt
+    )
 
 
 def _extract_geometry(
@@ -633,6 +716,7 @@ def _copy_geometry(
         indices=list(geometry.indices),
         mode=geometry.mode,
         texture=geometry.texture,
+        has_source_tangents=geometry.has_source_tangents,
     )
 
 

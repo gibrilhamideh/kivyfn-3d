@@ -39,5 +39,7 @@ dev = [
 modifiers = [
     "trimesh",
     "manifold3d",
+    "networkx",
     "scipy",
+    "xxhash",
 ]

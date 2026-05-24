@@ -8,6 +8,7 @@ from kivyfn.three.objects.material import Material
 from kivyfn.three.objects.object3d import Object3D
 from kivyfn.three.objects.geometry import Geometry
 
+
 class Cylinder(Object3D):
     def __init__(
         self,
@@ -39,11 +40,16 @@ class Cylinder(Object3D):
             ny = 0.0
             nz = sin_a
 
+            tangent_x = -sin_a
+            tangent_y = 0.0
+            tangent_z = cos_a
+
             # Bottom
             vertices.extend([
                 x, -half_height, z,
                 nx, ny, nz,
                 u, 0.0,
+                tangent_x, tangent_y, tangent_z, 1.0,
             ])
 
             # Top
@@ -51,6 +57,7 @@ class Cylinder(Object3D):
                 x, half_height, z,
                 nx, ny, nz,
                 u, 1.0,
+                tangent_x, tangent_y, tangent_z, 1.0,
             ])
 
         # ==========================================
@@ -72,12 +79,13 @@ class Cylinder(Object3D):
         # ==========================================
         # Top center vertex
         # ==========================================
-        top_center_index = len(vertices) // 8
+        top_center_index = len(vertices) // 12
 
         vertices.extend([
             0.0, half_height, 0.0,
             0.0, 1.0, 0.0,
             0.5, 0.5,
+            1.0, 0.0, 0.0, 1.0,
         ])
 
         # Top ring
@@ -96,6 +104,7 @@ class Cylinder(Object3D):
                 0.0, 1.0, 0.0,
                 (cos_a * 0.5) + 0.5,
                 (sin_a * 0.5) + 0.5,
+                1.0, 0.0, 0.0, 1.0,
             ])
 
         top_start = top_center_index + 1
@@ -110,12 +119,13 @@ class Cylinder(Object3D):
         # ==========================================
         # Bottom center vertex
         # ==========================================
-        bottom_center_index = len(vertices) // 8
+        bottom_center_index = len(vertices) // 12
 
         vertices.extend([
             0.0, -half_height, 0.0,
             0.0, -1.0, 0.0,
             0.5, 0.5,
+            1.0, 0.0, 0.0, 1.0,
         ])
 
         # Bottom ring
@@ -134,6 +144,7 @@ class Cylinder(Object3D):
                 0.0, -1.0, 0.0,
                 (cos_a * 0.5) + 0.5,
                 (sin_a * 0.5) + 0.5,
+                1.0, 0.0, 0.0, 1.0,
             ])
 
         bottom_start = bottom_center_index + 1
@@ -148,6 +159,7 @@ class Cylinder(Object3D):
         geometry = Geometry(
             vertices=vertices,
             indices=indices,
+            has_source_tangents=False,
         )
 
         super().__init__(

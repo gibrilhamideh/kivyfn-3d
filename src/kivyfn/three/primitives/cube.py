@@ -6,6 +6,7 @@ from kivyfn.three.objects.material import Material
 from kivyfn.three.objects.object3d import Object3D
 from kivyfn.three.objects.geometry import Geometry
 
+
 class Cube(Object3D):
     def __init__(
         self,
@@ -17,40 +18,40 @@ class Cube(Object3D):
 
         vertices = [
             # Front
-            -half, -half,  half,   0, 0, 1,   0, 0,
-             half, -half,  half,   0, 0, 1,   1, 0,
-             half,  half,  half,   0, 0, 1,   1, 1,
-            -half,  half,  half,   0, 0, 1,   0, 1,
+            -half, -half,  half,   0, 0, 1,   0, 0,   1, 0, 0, 1,
+             half, -half,  half,   0, 0, 1,   1, 0,   1, 0, 0, 1,
+             half,  half,  half,   0, 0, 1,   1, 1,   1, 0, 0, 1,
+            -half,  half,  half,   0, 0, 1,   0, 1,   1, 0, 0, 1,
 
             # Back
-             half, -half, -half,   0, 0, -1,  0, 0,
-            -half, -half, -half,   0, 0, -1,  1, 0,
-            -half,  half, -half,   0, 0, -1,  1, 1,
-             half,  half, -half,   0, 0, -1,  0, 1,
+             half, -half, -half,   0, 0, -1,  0, 0,  -1, 0, 0, 1,
+            -half, -half, -half,   0, 0, -1,  1, 0,  -1, 0, 0, 1,
+            -half,  half, -half,   0, 0, -1,  1, 1,  -1, 0, 0, 1,
+             half,  half, -half,   0, 0, -1,  0, 1,  -1, 0, 0, 1,
 
             # Left
-            -half, -half, -half,  -1, 0, 0,   0, 0,
-            -half, -half,  half,  -1, 0, 0,   1, 0,
-            -half,  half,  half,  -1, 0, 0,   1, 1,
-            -half,  half, -half,  -1, 0, 0,   0, 1,
+            -half, -half, -half,  -1, 0, 0,   0, 0,   0, 0, -1, 1,
+            -half, -half,  half,  -1, 0, 0,   1, 0,   0, 0, -1, 1,
+            -half,  half,  half,  -1, 0, 0,   1, 1,   0, 0, -1, 1,
+            -half,  half, -half,  -1, 0, 0,   0, 1,   0, 0, -1, 1,
 
             # Right
-             half, -half,  half,   1, 0, 0,   0, 0,
-             half, -half, -half,   1, 0, 0,   1, 0,
-             half,  half, -half,   1, 0, 0,   1, 1,
-             half,  half,  half,   1, 0, 0,   0, 1,
+             half, -half,  half,   1, 0, 0,   0, 0,   0, 0, 1, 1,
+             half, -half, -half,   1, 0, 0,   1, 0,   0, 0, 1, 1,
+             half,  half, -half,   1, 0, 0,   1, 1,   0, 0, 1, 1,
+             half,  half,  half,   1, 0, 0,   0, 1,   0, 0, 1, 1,
 
             # Top
-            -half,  half,  half,   0, 1, 0,   0, 0,
-             half,  half,  half,   0, 1, 0,   1, 0,
-             half,  half, -half,   0, 1, 0,   1, 1,
-            -half,  half, -half,   0, 1, 0,   0, 1,
+            -half,  half,  half,   0, 1, 0,   0, 0,   1, 0, 0, 1,
+             half,  half,  half,   0, 1, 0,   1, 0,   1, 0, 0, 1,
+             half,  half, -half,   0, 1, 0,   1, 1,   1, 0, 0, 1,
+            -half,  half, -half,   0, 1, 0,   0, 1,   1, 0, 0, 1,
 
             # Bottom
-            -half, -half, -half,   0, -1, 0,  0, 0,
-             half, -half, -half,   0, -1, 0,  1, 0,
-             half, -half,  half,   0, -1, 0,  1, 1,
-            -half, -half,  half,   0, -1, 0,  0, 1,
+            -half, -half, -half,   0, -1, 0,  0, 0,   1, 0, 0, 1,
+             half, -half, -half,   0, -1, 0,  1, 0,   1, 0, 0, 1,
+             half, -half,  half,   0, -1, 0,  1, 1,   1, 0, 0, 1,
+            -half, -half,  half,   0, -1, 0,  0, 1,   1, 0, 0, 1,
         ]
 
         indices = [
@@ -65,6 +66,7 @@ class Cube(Object3D):
         geometry = Geometry(
             vertices=vertices,
             indices=indices,
+            has_source_tangents=False,
         )
 
         super().__init__(

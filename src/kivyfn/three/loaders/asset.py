@@ -43,3 +43,21 @@ class SceneAsset:
     tree: list[AssetObject] = field(
         default_factory=list,
     )
+
+    def walk_tree(self):
+        for root in self.tree:
+            yield from self._walk_node(root)
+
+    def walk_renderable(self):
+        for asset in self.walk_tree():
+            if asset.is_renderable:
+                yield asset
+
+    def _walk_node(
+        self,
+        asset: AssetObject,
+    ):
+        yield asset
+
+        for child in asset.children:
+            yield from self._walk_node(child)

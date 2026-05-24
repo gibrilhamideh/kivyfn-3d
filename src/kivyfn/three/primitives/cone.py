@@ -8,6 +8,7 @@ from kivyfn.three.objects.material import Material
 from kivyfn.three.objects.object3d import Object3D
 from kivyfn.three.objects.geometry import Geometry
 
+
 class Cone(Object3D):
     def __init__(
         self,
@@ -39,16 +40,22 @@ class Cone(Object3D):
             nz = sin_a
             length = math.sqrt(nx * nx + ny * ny + nz * nz)
 
+            tangent_x = -sin_a
+            tangent_y = 0.0
+            tangent_z = cos_a
+
             vertices.extend([
                 x, -half_height, z,
                 nx / length, ny / length, nz / length,
                 u, 0.0,
+                tangent_x, tangent_y, tangent_z, 1.0,
             ])
 
             vertices.extend([
                 0.0, half_height, 0.0,
                 nx / length, ny / length, nz / length,
                 u, 1.0,
+                tangent_x, tangent_y, tangent_z, 1.0,
             ])
 
         for i in range(segments):
@@ -61,12 +68,13 @@ class Cone(Object3D):
             ])
 
         # Bottom cap
-        center_index = len(vertices) // 8
+        center_index = len(vertices) // 12
 
         vertices.extend([
             0.0, -half_height, 0.0,
             0.0, -1.0, 0.0,
             0.5, 0.5,
+            1.0, 0.0, 0.0, 1.0,
         ])
 
         start = center_index + 1
@@ -82,6 +90,7 @@ class Cone(Object3D):
                 cos_a * radius, -half_height, sin_a * radius,
                 0.0, -1.0, 0.0,
                 cos_a * 0.5 + 0.5, sin_a * 0.5 + 0.5,
+                1.0, 0.0, 0.0, 1.0,
             ])
 
         for i in range(segments):
@@ -94,6 +103,7 @@ class Cone(Object3D):
         geometry = Geometry(
             vertices=vertices,
             indices=indices,
+            has_source_tangents=False,
         )
 
         super().__init__(

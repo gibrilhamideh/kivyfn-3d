@@ -33,7 +33,12 @@ class _AxisLine(Object3D):
         geometry = Geometry(
             vertices=vertices,
             indices=indices,
-            mode="lines"
+            mode="lines",
+            fmt=[
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+            ]
         )
 
         super().__init__(

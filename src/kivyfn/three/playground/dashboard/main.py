@@ -28,7 +28,6 @@ from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.scene import Scene
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.utils.color import random_color
-from kivyfn.three.utils.stopwatch import Stopwatch
 
 
 class MainApp(App):
@@ -54,11 +53,10 @@ class MainApp(App):
             / "Fan.glb"
         )
 
-        with Stopwatch.section("Loader"):
-            loader = GlbLoader()
-            scene_asset = loader.load(model_path)
+        loader = GlbLoader()
+        scene = loader.load(model_path)
 
-        fan_asset = scene_asset.objects.get("Fan")
+        fan_asset = scene.objects.get("Fan")
 
         if fan_asset is None:
             raise RuntimeError(

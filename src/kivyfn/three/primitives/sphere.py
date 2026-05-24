@@ -8,6 +8,7 @@ from kivyfn.three.objects.material import Material
 from kivyfn.three.objects.object3d import Object3D
 from kivyfn.three.objects.geometry import Geometry
 
+
 class Sphere(Object3D):
     def __init__(
         self,
@@ -49,10 +50,15 @@ class Sphere(Object3D):
                 ny = y
                 nz = z
 
+                tangent_x = -sin_phi
+                tangent_y = 0.0
+                tangent_z = cos_phi
+
                 vertices.extend([
                     px, py, pz,
                     nx, ny, nz,
                     u, 1.0 - v,
+                    tangent_x, tangent_y, tangent_z, 1.0,
                 ])
 
         # ==========================================
@@ -78,6 +84,7 @@ class Sphere(Object3D):
         geometry = Geometry(
             vertices=vertices,
             indices=indices,
+            has_source_tangents=False,
         )
 
         super().__init__(

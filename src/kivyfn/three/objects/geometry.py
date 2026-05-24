@@ -45,7 +45,14 @@ class Geometry:
     texture: Texture | None = None 
     has_source_tangents: bool = False
 
-    def get_stats(self) -> GeometryStats:
+    @property
+    def stride(self) -> int:
+        return sum(
+            size
+            for _, size, _ in self.fmt
+        )
+
+    def get_stats(self, *, merge_vertices = False) -> GeometryStats:
         try:
             import trimesh
         except ImportError as error:
@@ -80,6 +87,11 @@ class Geometry:
             faces=faces,
             process=False,
         )
+
+        if merge_vertices:
+            mesh.merge_vertices()
+            mesh.remove_unreferenced_vertices()
+            mesh.fix_normals()
 
         return GeometryStats(
             vertex_count=len(positions),

@@ -1,6 +1,6 @@
 # kivyfn/collision/collider.py
 from __future__ import annotations
-from typing import TYPE_CHECKING, Iterator, Literal
+from typing import TYPE_CHECKING, Literal
 
 from kivy.event import EventDispatcher
 from kivy.properties import ObjectProperty, OptionProperty, NumericProperty
@@ -51,13 +51,20 @@ class Collider(EventDispatcher):
     def on_pivot(self, *_):
         self.compute_bounds()
 
-
     def compute_bounds(self) -> None:
         vertices = self.geometry.vertices
+        stride = self.geometry.stride
 
-        xs = vertices[0::8]
-        ys = vertices[1::8]
-        zs = vertices[2::8]
+        if not vertices:
+            self.bounds_min = Vector3.zero()
+            self.bounds_max = Vector3.zero()
+            self.origin = Vector3.zero()
+            self.radius = 0.0
+            return
+
+        xs = vertices[0::stride]
+        ys = vertices[1::stride]
+        zs = vertices[2::stride]
 
         x_min = min(xs)
         y_min = min(ys)
@@ -92,22 +99,21 @@ class Collider(EventDispatcher):
                 (vertices[index], vertices[index + 1], vertices[index + 2]),
                 tuple(origin),
             )
-            for index in range(0, len(vertices), 8)
+            for index in range(0, len(vertices), stride)
         )
 
-    def iter_triangles(
-        self,
-    ) -> Iterator[tuple[Vector3, Vector3, Vector3]]:
+    def iter_triangles(self):
         vertices = self.geometry.vertices
         indices = self.geometry.indices
+        stride = self.geometry.stride
 
         for index in range(0, len(indices), 3):
             i0, i1, i2 = indices[index:index + 3]
 
             yield (
-                Vector3(*vertices[i0 * 8:i0 * 8 + 3]),
-                Vector3(*vertices[i1 * 8:i1 * 8 + 3]),
-                Vector3(*vertices[i2 * 8:i2 * 8 + 3]),
+                Vector3(*vertices[i0 * stride:i0 * stride + 3]),
+                Vector3(*vertices[i1 * stride:i1 * stride + 3]),
+                Vector3(*vertices[i2 * stride:i2 * stride + 3]),
             )
 
     def intersects_bounds(
