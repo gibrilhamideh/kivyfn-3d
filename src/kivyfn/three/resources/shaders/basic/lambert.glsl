@@ -31,7 +31,7 @@ varying vec4 normal_vec;
 varying vec4 vertex_pos;
 
 uniform mat4 normal_mat;
-uniform vec4 object_color;
+uniform vec4 base_color;
 
 void main (void){
 
@@ -40,5 +40,5 @@ void main (void){
 
     float theta = clamp(dot(v_normal, v_light), 0.0, 1.0);
 
-    gl_FragColor = vec4(object_color.rgb * theta, object_color.a);
+    gl_FragColor = vec4(base_color.rgb * theta, base_color.a);
 }

@@ -35,7 +35,7 @@ void main (void) {
 varying vec3 frag_normal;
 varying vec3 frag_position;
 
-uniform vec4 object_color;
+uniform vec4 base_color;
 
 uniform vec3 light_direction;
 uniform vec3 light_color;
@@ -53,13 +53,13 @@ void main (void){
     );
 
     vec3 color =
-        object_color.rgb *
+        base_color.rgb *
         light_color *
         diffuse *
         light_intensity;
 
     gl_FragColor = vec4(
         color,
-        object_color.a
+        base_color.a
     );
 }

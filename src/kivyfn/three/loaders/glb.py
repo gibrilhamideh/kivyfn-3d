@@ -3,25 +3,31 @@
 from __future__ import annotations
 
 import base64
+import io
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
+from kivy.core.image import Image as CoreImage
+from kivy.graphics.texture import Texture
 from pygltflib import GLTF2
 
-from kivyfn.three.loaders.asset import AssetObject, SceneAsset
-from kivyfn.three.math.matrix import Matrix3, Matrix4
+from kivyfn.three.loaders.asset import AssetObject
+from kivyfn.three.loaders.asset import SceneAsset
+from kivyfn.three.math.matrix import Matrix3
+from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.objects.geometry import Geometry
+from kivyfn.three.objects.material import Material
 
 
 class GlbLoader:
     def __init__(
         self,
-        flip_v: bool = True,
+        flip_v: bool = False,
         flip_winding: bool = False,
     ):
         self.flip_v = flip_v
@@ -30,6 +36,9 @@ class GlbLoader:
         self.scene: SceneAsset = SceneAsset()
         self._gltf: Any = None
         self._buffer_bytes: bytes | None = None
+        self._base_path: Path | None = None
+
+        self._texture_cache: dict[int, Texture] = {}
 
     def load(
         self,
@@ -40,6 +49,8 @@ class GlbLoader:
         self.scene = SceneAsset()
         self._gltf = GLTF2().load_binary(str(path))
         self._buffer_bytes = self._load_buffer_bytes(path)
+        self._base_path = path.parent
+        self._texture_cache.clear()
 
         for root_index in self._get_scene_root_indices():
             root_asset = self._load_node(root_index)
@@ -79,9 +90,11 @@ class GlbLoader:
         )
 
         primitives = self._get_node_primitives(node)
+        local_transform = self._get_node_local_transform(node)
 
         if len(primitives) == 1:
-            geometry = self._process_primitive(primitives[0])
+            primitive = primitives[0]
+            geometry = self._process_primitive(primitive)
 
             if geometry is not None:
                 geometry.name = node_name
@@ -89,8 +102,15 @@ class GlbLoader:
             asset = AssetObject(
                 name=node_name,
                 geometry=geometry,
-                transform=self._get_node_local_transform(node),
-                material=None,
+                transform=local_transform,
+                material=(
+                    self._process_material(
+                        primitive=primitive,
+                        fallback_name=node_name,
+                    )
+                    if geometry is not None
+                    else None
+                ),
             )
 
             self._register_asset(asset)
@@ -99,7 +119,7 @@ class GlbLoader:
             asset = AssetObject(
                 name=node_name,
                 geometry=None,
-                transform=self._get_node_local_transform(node),
+                transform=local_transform,
                 material=None,
             )
 
@@ -121,7 +141,10 @@ class GlbLoader:
                     name=primitive_name,
                     geometry=geometry,
                     transform=Transform(),
-                    material=None,
+                    material=self._process_material(
+                        primitive=primitive,
+                        fallback_name=primitive_name,
+                    ),
                 )
 
                 self._register_asset(primitive_asset)
@@ -192,21 +215,15 @@ class GlbLoader:
         self,
         node: Any,
     ) -> Transform:
-        return self._transform_from_matrix4(
-            self._get_node_local_matrix(node)
-        )
-
-    def _get_node_local_matrix(
-        self,
-        node: Any,
-    ) -> Matrix4:
         if getattr(node, "matrix", None):
-            return Matrix4(
+            matrix = Matrix4(
                 np.array(
                     node.matrix,
                     dtype=np.float32,
                 ).reshape((4, 4))
             )
+
+            return self._transform_from_matrix4(matrix)
 
         translation_data = getattr(node, "translation", None)
         rotation_data = getattr(node, "rotation", None)
@@ -247,7 +264,7 @@ class GlbLoader:
             translation=translation,
             rotation=rotation,
             scale=scale,
-        ).to_matrix4()
+        )
 
     def _transform_from_matrix4(
         self,
@@ -279,7 +296,9 @@ class GlbLoader:
             rotation_values[:, 2] /= scale.z
 
         rotation = Quaternion.from_matrix3(
-            Matrix3(rotation_values.astype(np.float32))
+            Matrix3(
+                rotation_values.astype(np.float32)
+            )
         )
 
         return Transform(
@@ -287,6 +306,467 @@ class GlbLoader:
             rotation=rotation,
             scale=scale,
         )
+
+    # =================================== #
+    # Materials
+    # =================================== #
+    def _process_material(
+        self,
+        primitive: Any,
+        fallback_name: str,
+    ) -> Material:
+        material_index = getattr(
+            primitive,
+            "material",
+            None,
+        )
+
+        if (
+            material_index is None
+            or not self._gltf.materials
+            or material_index < 0
+            or material_index >= len(self._gltf.materials)
+        ):
+            return Material(
+                name=fallback_name,
+            )
+
+        gltf_material = self._gltf.materials[material_index]
+
+        material = Material(
+            name=(
+                gltf_material.name
+                or fallback_name
+            ),
+        )
+
+        pbr = getattr(
+            gltf_material,
+            "pbrMetallicRoughness",
+            None,
+        )
+
+        if pbr is not None:
+            self._apply_pbr_material(
+                material=material,
+                pbr=pbr,
+            )
+
+        emissive_factor = getattr(
+            gltf_material,
+            "emissiveFactor",
+            None,
+        )
+
+        if emissive_factor is not None:
+            material.emissive_factor = [
+                float(emissive_factor[0]),
+                float(emissive_factor[1]),
+                float(emissive_factor[2]),
+            ]
+
+        normal_texture = self._load_texture_from_info(
+            getattr(
+                gltf_material,
+                "normalTexture",
+                None,
+            )
+        )
+
+        if normal_texture is not None:
+            material.normal_texture = normal_texture
+
+        emissive_texture = self._load_texture_from_info(
+            getattr(
+                gltf_material,
+                "emissiveTexture",
+                None,
+            )
+        )
+
+        if emissive_texture is not None:
+            material.emissive_texture = emissive_texture
+
+        occlusion_texture = self._load_texture_from_info(
+            getattr(
+                gltf_material,
+                "occlusionTexture",
+                None,
+            )
+        )
+
+        if occlusion_texture is not None:
+            material.occlusion_texture = occlusion_texture
+
+        material.sync_uniforms()
+
+        return material
+
+    def _apply_pbr_material(
+        self,
+        material: Material,
+        pbr: Any,
+    ) -> None:
+        base_color = getattr(
+            pbr,
+            "baseColorFactor",
+            None,
+        )
+
+        metallic_factor = getattr(
+            pbr,
+            "metallicFactor",
+            None,
+        )
+
+        roughness_factor = getattr(
+            pbr,
+            "roughnessFactor",
+            None,
+        )
+
+        if base_color is not None:
+            material.base_color = [
+                float(base_color[0]),
+                float(base_color[1]),
+                float(base_color[2]),
+                float(base_color[3]),
+            ]
+
+        if metallic_factor is not None:
+            material.metallic_factor = float(
+                metallic_factor
+            )
+
+        if roughness_factor is not None:
+            material.roughness_factor = float(
+                roughness_factor
+            )
+
+        base_texture = self._load_texture_from_info(
+            getattr(
+                pbr,
+                "baseColorTexture",
+                None,
+            )
+        )
+
+        if base_texture is not None:
+            material.base_texture = base_texture
+
+        metallic_roughness_texture = self._load_texture_from_info(
+            getattr(
+                pbr,
+                "metallicRoughnessTexture",
+                None,
+            )
+        )
+
+        if metallic_roughness_texture is not None:
+            material.metallic_roughness_texture = (
+                metallic_roughness_texture
+            )
+
+    # =================================== #
+    # Textures / Images
+    # =================================== #
+    def _load_texture_from_info(
+        self,
+        texture_info: Any,
+    ) -> Texture | None:
+        if texture_info is None:
+            return None
+
+        texture_index = getattr(
+            texture_info,
+            "index",
+            None,
+        )
+
+        if texture_index is None:
+            return None
+
+        return self._load_texture(texture_index)
+
+    def _load_texture(
+        self,
+        texture_index: int,
+    ) -> Texture | None:
+        if (
+            not self._gltf.textures
+            or texture_index < 0
+            or texture_index >= len(self._gltf.textures)
+        ):
+            return None
+
+        if texture_index in self._texture_cache:
+            return self._texture_cache[texture_index]
+
+        gltf_texture = self._gltf.textures[texture_index]
+
+        image_index = getattr(
+            gltf_texture,
+            "source",
+            None,
+        )
+
+        if image_index is None:
+            return None
+
+        texture = self._load_image_texture(image_index)
+
+        if texture is None:
+            return None
+
+        self._apply_sampler(
+            texture=texture,
+            gltf_texture=gltf_texture,
+        )
+
+        self._texture_cache[texture_index] = texture
+
+        return texture
+
+    def _load_image_texture(
+        self,
+        image_index: int,
+    ) -> Texture | None:
+        if (
+            not self._gltf.images
+            or image_index < 0
+            or image_index >= len(self._gltf.images)
+        ):
+            return None
+
+        image = self._gltf.images[image_index]
+
+        image_bytes, extension = self._load_image_bytes(
+            image=image,
+        )
+
+        if image_bytes is None:
+            return None
+
+        core_image = CoreImage(
+            io.BytesIO(image_bytes),
+            ext=extension,
+            mipmap=True,
+            nocache=True,
+        )
+
+        texture = core_image.texture
+
+        if texture is None:
+            return None
+
+        # TODO: fix in kivy-stubs
+        texture.min_filter = "linear_mipmap_linear" # pyright: ignore
+        texture.mag_filter = "linear" # pyright: ignore
+        texture.wrap = "repeat" # pyright: ignore
+
+        return texture # pyright: ignore
+
+    def _apply_sampler(
+        self,
+        texture: Texture,
+        gltf_texture: Any,
+    ) -> None:
+        sampler_index = getattr(
+            gltf_texture,
+            "sampler",
+            None,
+        )
+
+        if (
+            sampler_index is None
+            or not self._gltf.samplers
+            or sampler_index < 0
+            or sampler_index >= len(self._gltf.samplers)
+        ):
+            return
+
+        sampler = self._gltf.samplers[sampler_index]
+
+        min_filter = self._sampler_min_filter_to_kivy(
+            getattr(
+                sampler,
+                "minFilter",
+                None,
+            )
+        )
+
+        mag_filter = self._sampler_mag_filter_to_kivy(
+            getattr(
+                sampler,
+                "magFilter",
+                None,
+            )
+        )
+
+        wrap_s = self._sampler_wrap_to_kivy(
+            getattr(
+                sampler,
+                "wrapS",
+                None,
+            )
+        )
+
+        wrap_t = self._sampler_wrap_to_kivy(
+            getattr(
+                sampler,
+                "wrapT",
+                None,
+            )
+        )
+
+        texture_options = cast(Any, texture)
+        if min_filter is not None:
+            texture_options.min_filter = min_filter
+
+        if mag_filter is not None:
+            texture_options.mag_filter = mag_filter
+
+        if wrap_s is not None and wrap_t is not None:
+            if wrap_s == wrap_t:
+                texture_options.wrap = wrap_s
+
+        elif wrap_s is not None:
+            texture_options.wrap = wrap_s
+
+        elif wrap_t is not None:
+            texture_options.wrap = wrap_t
+
+    def _sampler_min_filter_to_kivy(
+        self,
+        value: int | None,
+    ) -> str | None:
+        if value is None:
+            return None
+
+        return {
+            9728: "nearest",
+            9729: "linear",
+            9984: "nearest_mipmap_nearest",
+            9985: "linear_mipmap_nearest",
+            9986: "nearest_mipmap_linear",
+            9987: "linear_mipmap_linear",
+        }.get(value)
+
+    def _sampler_mag_filter_to_kivy(
+        self,
+        value: int | None,
+    ) -> str | None:
+        if value is None:
+            return None
+
+        return {
+            9728: "nearest",
+            9729: "linear",
+        }.get(value)
+
+    def _sampler_wrap_to_kivy(
+        self,
+        value: int | None,
+    ) -> str | None:
+        if value is None:
+            return None
+
+        return {
+            33071: "clamp_to_edge",
+            33648: "mirrored_repeat",
+            10497: "repeat",
+        }.get(value)
+
+    def _load_image_bytes(
+        self,
+        image: Any,
+    ) -> tuple[bytes | None, str]:
+        uri = getattr(
+            image,
+            "uri",
+            None,
+        )
+
+        mime_type = getattr(
+            image,
+            "mimeType",
+            None,
+        )
+
+        buffer_view_index = getattr(
+            image,
+            "bufferView",
+            None,
+        )
+
+        if uri:
+            if uri.startswith("data:"):
+                header, encoded = uri.split(",", 1)
+
+                mime_type = (
+                    header.split(";", 1)[0].replace("data:", "")
+                    or mime_type
+                )
+
+                return (
+                    base64.b64decode(encoded),
+                    self._extension_from_mime_type(mime_type),
+                )
+
+            if self._base_path is None:
+                raise RuntimeError(
+                    "GLB base path was not set."
+                )
+
+            image_path = (
+                Path(uri)
+                if os.path.isabs(uri)
+                else self._base_path / uri
+            )
+
+            return (
+                image_path.read_bytes(),
+                image_path.suffix.lstrip(".") or "png",
+            )
+
+        if buffer_view_index is not None:
+            return (
+                self._read_buffer_view_bytes(buffer_view_index),
+                self._extension_from_mime_type(mime_type),
+            )
+
+        return None, self._extension_from_mime_type(mime_type)
+
+    def _read_buffer_view_bytes(
+        self,
+        buffer_view_index: int,
+    ) -> bytes:
+        if self._buffer_bytes is None:
+            raise RuntimeError(
+                "GLB buffer bytes were not loaded."
+            )
+
+        view = self._gltf.bufferViews[buffer_view_index]
+
+        byte_offset = view.byteOffset or 0
+        byte_length = view.byteLength or 0
+
+        return self._buffer_bytes[
+            byte_offset : byte_offset + byte_length
+        ]
+
+    def _extension_from_mime_type(
+        self,
+        mime_type: str | None,
+    ) -> str:
+        if mime_type is None:
+            return "png"
+
+        return {
+            "image/jpeg": "jpg",
+            "image/png": "png",
+            "image/webp": "webp",
+        }.get(mime_type, "png")
 
     # =================================== #
     # Buffer Reading
@@ -310,7 +790,11 @@ class GlbLoader:
             return base64.b64decode(encoded)
 
         if uri:
-            bin_path = uri if os.path.isabs(uri) else filename.parent / uri
+            bin_path = (
+                Path(uri)
+                if os.path.isabs(uri)
+                else filename.parent / uri
+            )
 
             with open(bin_path, "rb") as file:
                 return file.read()
@@ -320,12 +804,14 @@ class GlbLoader:
     def _read_accessor(
         self,
         accessor_index: int | None,
-    ):
+    ) -> np.ndarray | None:
         if accessor_index is None:
             return None
 
         if self._buffer_bytes is None:
-            raise RuntimeError("GLB buffer bytes were not loaded.")
+            raise RuntimeError(
+                "GLB buffer bytes were not loaded."
+            )
 
         buffer_bytes = self._buffer_bytes
         accessor = self._gltf.accessors[accessor_index]
@@ -360,7 +846,10 @@ class GlbLoader:
         }
 
         dtype = dtype_map[accessor.componentType]
-        component_count = component_count_map.get(accessor.type, 1)
+        component_count = component_count_map.get(
+            accessor.type,
+            1,
+        )
 
         element_size = np.dtype(dtype).itemsize * component_count
         start = view_offset + accessor_offset
@@ -401,23 +890,46 @@ class GlbLoader:
         self,
         primitive: Any,
     ) -> Geometry | None:
-        position_index = getattr(primitive.attributes, "POSITION", None)
-        normal_index = getattr(primitive.attributes, "NORMAL", None)
-        uv_index = getattr(primitive.attributes, "TEXCOORD_0", None)
-        index_index = primitive.indices
+        position_index = getattr(
+            primitive.attributes,
+            "POSITION",
+            None,
+        )
 
-        if position_index is None or index_index is None:
+        if position_index is None:
             return None
 
         positions = self._read_accessor(position_index)
-        normals = self._read_accessor(normal_index)
-        uvs = self._read_accessor(uv_index)
-        indices = self._read_accessor(index_index)
 
-        if positions is None or indices is None:
+        if positions is None:
             return None
 
         positions = positions.astype(np.float32)
+        vertex_count = positions.shape[0]
+
+        index_index = primitive.indices
+
+        if index_index is not None:
+            indices = self._read_accessor(index_index)
+
+            if indices is None:
+                return None
+
+            final_indices = indices.reshape(-1).astype(np.int64)
+
+        else:
+            final_indices = np.arange(
+                vertex_count,
+                dtype=np.int64,
+            )
+
+        normals = self._read_accessor(
+            getattr(
+                primitive.attributes,
+                "NORMAL",
+                None,
+            )
+        )
 
         if normals is None or normals.shape[1] < 3:
             normals = np.zeros_like(
@@ -427,9 +939,17 @@ class GlbLoader:
         else:
             normals = normals.astype(np.float32)
 
+        uvs = self._read_accessor(
+            getattr(
+                primitive.attributes,
+                "TEXCOORD_0",
+                None,
+            )
+        )
+
         if uvs is None or uvs.shape[1] < 2:
             uvs = np.zeros(
-                (positions.shape[0], 2),
+                (vertex_count, 2),
                 dtype=np.float32,
             )
         else:
@@ -437,8 +957,6 @@ class GlbLoader:
 
         if self.flip_v:
             uvs[:, 1] = 1.0 - uvs[:, 1]
-
-        final_indices = indices.reshape(-1).astype(np.int64)
 
         if self.flip_winding and len(final_indices) % 3 == 0:
             final_indices = final_indices.reshape(-1, 3)
@@ -462,15 +980,14 @@ class GlbLoader:
 
     def _ensure_uint16_indices(
         self,
-        indices,
-    ):
+        indices: np.ndarray,
+    ) -> np.ndarray:
         if int(indices.max()) > 65535:
             raise OverflowError(
-                "Indices exceed 65535 in a single primitive."
+                "Indices exceed 65535 in a single primitive. "
+                "Split the primitive before loading it."
             )
 
-        return indices
-
-
+        return indices.astype(np.uint16)
 
 

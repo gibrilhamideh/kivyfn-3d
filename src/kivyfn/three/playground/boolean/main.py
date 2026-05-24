@@ -55,9 +55,7 @@ class MainApp(App):
             divisions=100,
             material=Material(
                 name="grid",
-                uniforms={
-                    "object_color": [0.45, 0.45, 0.45, 1.0],
-                },
+                base_color=[0.45, 0.45, 0.45, 1.0]
             ),
         )
 
@@ -71,9 +69,7 @@ class MainApp(App):
     def create_boolean_test(self) -> None:
         wall_material = Material(
             name="wall",
-            uniforms={
-                "object_color": [0.75, 0.75, 0.75, 1.0],
-            },
+            base_color=[0.75, 0.75, 0.75, 1.0]
         )
 
         wall = Box(

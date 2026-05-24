@@ -19,8 +19,8 @@ void main(void) {
     precision highp float;
 #endif
 
-uniform vec4 object_color;
+uniform vec4 base_color;
 
 void main(void) {
-    gl_FragColor = object_color;
+    gl_FragColor = base_color;
 }

@@ -67,9 +67,7 @@ class MainApp(App):
             divisions=100,
             material=Material(
                 name="grid",
-                uniforms={
-                    "object_color": [0.45, 0.45, 0.45, 1.0],
-                },
+                base_color=[0.45, 0.45, 0.45, 1.0]
             ),
         )
 
@@ -89,9 +87,7 @@ class MainApp(App):
         if asset.is_renderable:
             material = Material(
                 name=asset.name,
-                uniforms={
-                    "object_color": random_color(),
-                },
+                base_color=random_color()
             )
 
             node = Object3D(

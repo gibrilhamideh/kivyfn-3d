@@ -66,13 +66,13 @@ class MainApp(App):
 
         self.scene = Scene()
 
-        lambert_shader = Shader(
-            name="lambert",
+        standard_shader = Shader(
+            name="standard",
             path=(
                 RESOURCES_PATH
                 / "shaders"
                 / "basic"
-                / "lambert.glsl"
+                / "standard.glsl"
             ),
         )
 
@@ -88,7 +88,7 @@ class MainApp(App):
 
         self.scene.create_context(
             name="main",
-            shader=lambert_shader,
+            shader=standard_shader,
         )
 
         self.scene.create_context(
@@ -112,15 +112,8 @@ class MainApp(App):
             divisions=100,
             material=Material(
                 name="grid",
-                uniforms={
-                    "object_color": [
-                        0.45,
-                        0.45,
-                        0.45,
-                        1.0,
-                    ],
-                },
-            ),
+                base_color=[0.45, 0.45, 0.45, 1.0]
+            )
         )
 
         self.scene.add(
@@ -195,10 +188,7 @@ class MainApp(App):
         self,
         object3d: Object3D,
     ) -> None:
-        object3d.material.set_uniform(
-            "object_color",
-            random_color(),
-        )
+        object3d.material.base_color = random_color()
 
     def start_rotation(
         self,

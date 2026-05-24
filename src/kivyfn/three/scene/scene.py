@@ -84,20 +84,7 @@ class Scene(Widget):
         if asset.is_renderable:
             node = Object3D(
                 geometry=asset.require_geometry(),
-                material=(
-                    asset.material
-                    or Material(
-                        name=asset.name,
-                        uniforms={
-                            "object_color": [
-                                1.0,
-                                1.0,
-                                1.0,
-                                1.0,
-                            ],
-                        },
-                    )
-                ),
+                material=(asset.material or Material(name=asset.name)),
                 name=asset.name,
                 transform=asset.transform.copy(),
                 pickable=pickable,
