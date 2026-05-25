@@ -149,6 +149,7 @@ class GlbLoader:
             node_index=node_index,
             node=node,
         )
+        # TODO: add logger.debug when loading nodes
 
         primitives = self._get_node_primitives(node)
         local_transform = self._get_node_local_transform(node)
@@ -1171,7 +1172,9 @@ class GlbLoader:
                 copy=False,
             )
 
-        if int(indices.max()) > 65535:
+        total = int(indices.max())
+
+        if total > 65535:
             raise OverflowError(
                 "Indices exceed 65535 in a single primitive. "
                 "Split the primitive before loading it."

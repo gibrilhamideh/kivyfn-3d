@@ -8,7 +8,7 @@ Config.set("input", "mouse", "mouse,disable_multitouch")
 
 from kivy.app import App
 
-from kivyfn.three.paths import RESOURCES_PATH
+from kivyfn.three.paths import THREE_SHADER_PATH
 from kivyfn.three.controls import BlenderCameraControls, InteractionController
 from kivyfn.three.helpers import AxisHelper, GridHelper
 from kivyfn.three.objects import Material
@@ -31,12 +31,12 @@ class MainApp(App):
 
         lambert_shader = Shader(
             name="lambert",
-            path=RESOURCES_PATH / "shaders" / "basic" / "lambert.glsl",
+            path=THREE_SHADER_PATH / "basic" / "lambert.glsl",
         )
 
         helper_shader = Shader(
             name="helper",
-            path=RESOURCES_PATH / "shaders" / "helper" / "unlit.glsl",
+            path=THREE_SHADER_PATH / "helper" / "unlit.glsl",
         )
 
 

@@ -16,7 +16,7 @@ from kivyfn.three.objects import Material
 from kivyfn.three.primitives import Box, Cube, Cylinder, Sphere
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.scene import Scene
-from kivyfn.three.paths import RESOURCES_PATH
+from kivyfn.three.paths import THREE_SHADER_PATH
 
 
 class MainApp(App):
@@ -25,12 +25,12 @@ class MainApp(App):
 
         lambert_shader = Shader(
             name="lambert",
-            path=RESOURCES_PATH / "shaders" / "basic" / "lambert.glsl",
+            path=THREE_SHADER_PATH / "basic" / "lambert.glsl",
         )
 
         helper_shader = Shader(
             name="helper",
-            path=RESOURCES_PATH / "shaders" / "helper" / "unlit.glsl",
+            path=THREE_SHADER_PATH / "helper" / "unlit.glsl",
         )
 
         self.scene.create_context(
@@ -208,8 +208,6 @@ class MainApp(App):
             name="sphere_cutter",
         )
 
-        print("wall stats:", wall.geometry.get_stats())
-        print("sphere stats:", cutter.geometry.get_stats())
 
         modifier = BooleanModifier(
             cutter=cutter,

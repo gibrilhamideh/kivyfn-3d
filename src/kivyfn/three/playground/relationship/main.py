@@ -15,10 +15,10 @@ from kivyfn.three.loaders import GlbLoader
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.objects import Material
 from kivyfn.three.objects.object3d import Object3D
-from kivyfn.three.paths import RESOURCES_PATH
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.scene import Scene
 from kivyfn.three.scene.node import Node3D
+from kivyfn.three.paths import THREE_MODEL_PATH, THREE_SHADER_PATH
 from kivyfn.three.utils.color import random_color
 
 
@@ -28,17 +28,17 @@ class MainApp(App):
 
         lambert_shader = Shader(
             name="lambert",
-            path=RESOURCES_PATH / "shaders" / "basic" / "lambert.glsl",
+            path=THREE_SHADER_PATH / "basic" / "lambert.glsl",
         )
 
         helper_shader = Shader(
             name="helper",
-            path=RESOURCES_PATH / "shaders" / "helper" / "unlit.glsl",
+            path=THREE_SHADER_PATH / "helper" / "unlit.glsl",
         )
 
         loader = GlbLoader()
         assets = loader.load(
-            RESOURCES_PATH / "models" / "glb" / "Cube.glb"
+            THREE_MODEL_PATH / "glb" / "Cube.glb"
         )
 
         self.scene.create_context(
