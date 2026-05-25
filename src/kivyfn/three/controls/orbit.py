@@ -66,7 +66,7 @@ class OrbitCameraController:
         dx: float,
         dy: float,
         degrees_per_pixel: float = 0.25,
-        min_pitch_degrees: float | None = None,  # Default: No pitch constraint
+        min_pitch_degrees: float | None = None,
         max_pitch_degrees: float | None = None,
     ) -> tuple[Vector3, Vector3, Vector3]:
         forward, right, corrected_up, target = cls.basis(eye, target, up)
@@ -81,16 +81,16 @@ class OrbitCameraController:
             temporary_right = right
         temporary_right = temporary_right.normalize()
 
-        pitch = math.radians(-dy * degrees_per_pixel)
+        # FIXED VERTICAL INVERSION HERE: Removed the negative sign from dy
+        pitch = math.radians(dy * degrees_per_pixel)
         pitched_offset = offset.rotate(temporary_right, pitch)
         pitched_normal = pitched_offset.normalize()
 
-        # CLAMP PITCH (If provided)
+        # CLAMP PITCH
         current_sin = pitched_normal.dot(up)
         min_sin = math.sin(math.radians(min_pitch_degrees)) if min_pitch_degrees is not None else -1.0
         max_sin = math.sin(math.radians(max_pitch_degrees)) if max_pitch_degrees is not None else 1.0
 
-        # Enforce basic gimbal lock protection if no limits given
         if min_pitch_degrees is None and max_pitch_degrees is None:
             if abs(current_sin) <= 0.98:
                 offset = pitched_offset
@@ -168,13 +168,11 @@ class OrbitCameraController:
         max_zoom: float | None = None,
     ) -> float:
         """Computes the new view size width for an orthographic camera matrix projection."""
-        # Scale zoom step relative to current size so scrolling feels smooth
         scale_factor = current_size * 0.05
-        proposed_size = current_size + (dy * scale_factor)
-        
-        # Enforce boundary clamp constraints safely
+        proposed_size = current_size - (dy * scale_factor)
+
         actual_min = max(min_zoom, cls.MIN_DISTANCE) if min_zoom is not None else cls.MIN_DISTANCE
-        
+
         if max_zoom is not None:
             return max(actual_min, min(proposed_size, max_zoom))
         return max(actual_min, proposed_size)

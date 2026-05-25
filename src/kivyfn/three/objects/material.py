@@ -15,24 +15,12 @@ from kivy.properties import (
 )
 
 
-from kivyfn.three.utils.texture import create_texture
-
-
-WHITE_TEXTURE = create_texture(
-    (255, 255, 255, 255),
-)
-
-FLAT_NORMAL_TEXTURE = create_texture(
-    (128, 128, 255, 255),
-)
-
-
 class Material(EventDispatcher):
 
     name = StringProperty("")
 
     # =================================== #
-    # PBR Core
+    # PBR Core Factors
     # =================================== #
 
     metallic_factor: float = NumericProperty(0.0)
@@ -45,25 +33,31 @@ class Material(EventDispatcher):
         [1.0, 1.0, 1.0, 1.0],
     )
 
-    base_texture: Texture = ObjectProperty(
-        WHITE_TEXTURE,
-    )
+    # =================================== #
+    # Core Engine & glTF Packed Maps
+    # =================================== #
 
-    normal_texture: Texture = ObjectProperty(
-        FLAT_NORMAL_TEXTURE,
-    )
+    base_texture: Texture | None = ObjectProperty(None)
 
-    emissive_texture: Texture = ObjectProperty(
-        WHITE_TEXTURE,
-    )
+    normal_texture: Texture | None = ObjectProperty(None)
 
-    metallic_roughness_texture: Texture = ObjectProperty(
-        WHITE_TEXTURE,
-    )
+    emissive_texture: Texture | None = ObjectProperty(None)
 
-    occlusion_texture: Texture = ObjectProperty(
-        WHITE_TEXTURE,
-    )
+    occlusion_texture: Texture | None = ObjectProperty(None)
+
+    metallic_roughness_texture: Texture | None = ObjectProperty(None)
+
+    # =================================== #
+    # Standard Maps
+    # =================================== #
+
+    roughness_texture: Texture | None = ObjectProperty(None)
+
+    metallic_texture: Texture | None = ObjectProperty(None)
+
+    specular_texture: Texture | None = ObjectProperty(None)
+
+    displacement_texture: Texture | None = ObjectProperty(None)
 
     # =================================== #
     # Custom Uniforms
@@ -88,14 +82,20 @@ class Material(EventDispatcher):
         base_texture: Texture | None = None,
         normal_texture: Texture | None = None,
         emissive_texture: Texture | None = None,
-        metallic_roughness_texture: Texture | None = None,
         occlusion_texture: Texture | None = None,
+        metallic_roughness_texture: Texture | None = None,
+        roughness_texture: Texture | None = None,
+        metallic_texture: Texture | None = None,
+        specular_texture: Texture | None = None,
+        displacement_texture: Texture | None = None,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__()
 
         self.name = name
+        self.uniforms = kwargs
 
+        # Factors
         if metallic_factor is not None:
             self.metallic_factor = metallic_factor
 
@@ -108,21 +108,20 @@ class Material(EventDispatcher):
         if base_color is not None:
             self.base_color = base_color
 
-        if base_texture is not None:
-            self.base_texture = base_texture
+        # Core / Packed Textures
+        self.base_texture = base_texture
+        self.normal_texture = normal_texture
+        self.emissive_texture = emissive_texture
+        self.occlusion_texture = occlusion_texture
+        self.metallic_roughness_texture = metallic_roughness_texture
 
-        if normal_texture is not None:
-            self.normal_texture = normal_texture
+        # Loose Textures
+        self.roughness_texture = roughness_texture
+        self.metallic_texture = metallic_texture
+        self.specular_texture = specular_texture
+        self.displacement_texture = displacement_texture
 
-        if emissive_texture is not None:
-            self.emissive_texture = emissive_texture
-
-        if metallic_roughness_texture is not None:
-            self.metallic_roughness_texture = metallic_roughness_texture
-
-        if occlusion_texture is not None:
-            self.occlusion_texture = occlusion_texture
-
+        # Bind reactive properties to sync with uniforms dict
         self.bind(
             metallic_factor=self.sync_uniforms,
             roughness_factor=self.sync_uniforms,
@@ -131,70 +130,36 @@ class Material(EventDispatcher):
             base_texture=self.sync_uniforms,
             normal_texture=self.sync_uniforms,
             emissive_texture=self.sync_uniforms,
-            metallic_roughness_texture=self.sync_uniforms,
             occlusion_texture=self.sync_uniforms,
+            metallic_roughness_texture=self.sync_uniforms,
+            roughness_texture=self.sync_uniforms,
+            metallic_texture=self.sync_uniforms,
+            specular_texture=self.sync_uniforms,
+            displacement_texture=self.sync_uniforms,
         )
 
         self.sync_uniforms()
 
     def sync_uniforms(self, *_):
-        self.set_uniform(
-            "metallic_factor",
-            float(self.metallic_factor),
-        )
+        self.set_uniform("metallic_factor", float(self.metallic_factor))
+        self.set_uniform("roughness_factor", float(self.roughness_factor))
+        self.set_uniform("emissive_factor", list(self.emissive_factor))
+        self.set_uniform("base_color", list(self.base_color))
 
-        self.set_uniform(
-            "roughness_factor",
-            float(self.roughness_factor),
-        )
+        # Core / Packed Textures
+        self.set_uniform("base_texture", self.base_texture)
+        self.set_uniform("normal_texture", self.normal_texture)
+        self.set_uniform("emissive_texture", self.emissive_texture)
+        self.set_uniform("occlusion_texture", self.occlusion_texture)
+        self.set_uniform("metallic_roughness_texture", self.metallic_roughness_texture)
 
-        self.set_uniform(
-            "emissive_factor",
-            list(self.emissive_factor),
-        )
+        # Loose Textures
+        self.set_uniform("roughness_texture", self.roughness_texture)
+        self.set_uniform("metallic_texture", self.metallic_texture)
+        self.set_uniform("specular_texture", self.specular_texture)
+        self.set_uniform("displacement_texture", self.displacement_texture)
 
-        self.set_uniform(
-            "base_color",
-            list(self.base_color),
-        )
-
-        self.set_uniform(
-            "base_texture",
-            self.base_texture,
-        )
-
-        self.set_uniform(
-            "normal_texture",
-            self.normal_texture,
-        )
-
-        self.set_uniform(
-            "emissive_texture",
-            self.emissive_texture,
-        )
-
-        self.set_uniform(
-            "metallic_roughness_texture",
-            self.metallic_roughness_texture,
-        )
-
-        self.set_uniform(
-            "occlusion_texture",
-            self.occlusion_texture,
-        )
-
-    def set_uniform(
-        self,
-        name: str,
-        value: Any,
-    ) -> None:
+    def set_uniform(self, name: str, value: Any) -> None:
         self.uniforms[name] = value
 
-    def remove_uniform(
-        self,
-        name: str,
-    ) -> None:
-        self.uniforms.pop(name, None)
 
-    def clear_uniforms(self) -> None:
-        self.uniforms.clear()

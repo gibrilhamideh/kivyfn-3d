@@ -165,7 +165,7 @@ class BlenderCameraControls(SceneController):
         camera = self.camera
 
         # 1. ORTHOGRAPHIC PROJECTION TYPE
-        if getattr(camera, "perspective", 1.0) == 0.0:
+        if camera.perspective == 0.0:
             camera.ortho_size = OrbitCameraController.zoom_orthographic(
                 current_size=camera.ortho_size,
                 dy=amount,

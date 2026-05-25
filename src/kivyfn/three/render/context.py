@@ -27,6 +27,7 @@ class RenderContext(EventDispatcher):
         uniforms: dict | None = None,
         compute_normal_mat: bool = True,
     ):
+        super().__init__()
         self.shader = shader
         self.name = name
         self.ctx = KivyRenderContext(compute_normal_mat=compute_normal_mat)
@@ -35,8 +36,23 @@ class RenderContext(EventDispatcher):
         if uniforms is not None:
             self.uniforms = uniforms
 
+    # =================================== #
+    # External API
+    # =================================== #
+    def set_uniform(
+        self,
+        name: str,
+        value: Any,
+    ) -> None:
+        self.uniforms[name] = value
+
+    # =================================== #
+    # Property Events
+    # =================================== #
+    def on_uniforms(self, *_):
         for key, value in self.uniforms.items():
             self.ctx[key] = value
+
 
     # =================================== #
     # Context Mirroring

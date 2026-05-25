@@ -4,9 +4,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kivy.core.window import Window
-from kivy.graphics import Canvas
+from kivy.graphics import Color, Rectangle
 from kivy.graphics.opengl import GL_DEPTH_TEST, glDisable, glEnable, glViewport
-from kivy.properties import ObjectProperty
+from kivy.properties import ObjectProperty, ColorProperty
 from kivy.uix.widget import Widget
 
 
@@ -27,11 +27,23 @@ if TYPE_CHECKING:
 class Scene(Widget):
 
     root: Node3D = ObjectProperty(None, allownone=True)
+    bg_color: tuple[float, float, float, float] = ColorProperty()
 
     def __init__(self, root: Node3D | None = None, **kwargs):
         super().__init__(**kwargs)
 
-        self.canvas = Canvas()
+        with self.canvas.before:
+            self._bg_color = Color(0.0, 0.0, 0.0, 0.0)
+            self._bg_rect = Rectangle(
+                pos=self.pos,
+                size=self.size,
+            )
+
+        self.bind(
+            pos=self._update_bg_rect,
+            size=self._update_bg_rect,
+        )
+
         self.camera = Camera()
         self.renderer = Renderer(self.canvas)
         self.viewport = Viewport(self)
@@ -52,6 +64,9 @@ class Scene(Widget):
     # =================================== #
     # API
     # =================================== #
+    def get_context(self, name: str) -> RenderContext:
+        return self.renderer.get_context(name)
+
     def create_context(self, name: str, shader: Shader) -> RenderContext:
         return self.renderer.create_context(name, shader)
 
@@ -177,6 +192,13 @@ class Scene(Widget):
         self.update_camera()
 
     # =================================== #
+    # 
+    # =================================== #
+    def _update_bg_rect(self, *_):
+        self._bg_rect.pos = self.pos
+        self._bg_rect.size = self.size
+
+    # =================================== #
     # Camera
     # =================================== #
     def update_camera(self) -> None:
@@ -257,4 +279,10 @@ class Scene(Widget):
                 return True
 
         return super().on_touch_up(touch)
+
+    # =================================== #
+    # Property Events
+    # =================================== #
+    def on_bg_color(self, *_):
+        self._bg_color.rgba = self.bg_color
 

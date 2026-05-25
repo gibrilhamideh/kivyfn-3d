@@ -11,7 +11,7 @@ from kivyfn.three.objects.geometry import Geometry
 
 class Plane(Object3D):
     axis = OptionProperty(
-        "xy",
+        "xz",
         options=("xy", "xz", "yz"),
     )
 
@@ -19,7 +19,7 @@ class Plane(Object3D):
         self,
         width: float = 1.0,
         height: float = 1.0,
-        axis: str = "xy",
+        axis: str = "xz",
         material: Material | None = None,
         **kwargs,
     ):
