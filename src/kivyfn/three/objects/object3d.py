@@ -67,7 +67,6 @@ class Object3D(Node3D):
         return (
             f"Object3D("
             f"name={self.name!r}, "
-            f"geometry={self.geometry}, "
             f"children={len(self.children)})"
         )
 

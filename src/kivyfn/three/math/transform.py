@@ -115,8 +115,9 @@ class Transform:
 
     def __repr__(self) -> str:
         return (
-            f"Transform("
-            f"translation={self.translation}, "
-            f"rotation={self.rotation}, "
-            f"scale={self.scale})"
+            "Transform(\n"
+            f"  translation={self.translation},\n"
+            f"  rotation={self.rotation},\n"
+            f"  scale={self.scale},\n"
+            ")"
         )

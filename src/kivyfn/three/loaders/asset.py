@@ -33,6 +33,29 @@ class AssetObject:
             raise TypeError(f"AssetObject {self.name!r} is not renderable.")
         return self.geometry
 
+    def __repr__(self) -> str:
+        geometry_name = (
+            self.geometry.name
+            if self.geometry is not None
+            else None
+        )
+
+        material_name = (
+            self.material.name
+            if self.material is not None
+            else None
+        )
+
+        return (
+            "AssetObject(\n"
+            f"  name={self.name!r},\n"
+            f"  geometry={geometry_name!r},\n"
+            f"  material={material_name!r},\n"
+            f"  children={len(self.children)},\n"
+            f"  is_renderable={self.is_renderable},\n"
+            ")"
+        )
+
 
 @dataclass(slots=True)
 class SceneAsset:

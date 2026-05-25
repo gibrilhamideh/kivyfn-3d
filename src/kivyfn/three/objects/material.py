@@ -147,17 +147,26 @@ class Material(EventDispatcher):
         self.set_uniform("base_color", list(self.base_color))
 
         # Core / Packed Textures
-        self.set_uniform("base_texture", self.base_texture)
-        self.set_uniform("normal_texture", self.normal_texture)
-        self.set_uniform("emissive_texture", self.emissive_texture)
-        self.set_uniform("occlusion_texture", self.occlusion_texture)
-        self.set_uniform("metallic_roughness_texture", self.metallic_roughness_texture)
+        if self.base_texture is not None:
+            self.set_uniform("base_texture", self.base_texture)
+        if self.normal_texture is not None:
+            self.set_uniform("normal_texture", self.normal_texture)
+        if self.emissive_texture is not None:
+            self.set_uniform("emissive_texture", self.emissive_texture)
+        if self.occlusion_texture is not None:
+            self.set_uniform("occlusion_texture", self.occlusion_texture)
+        if self.metallic_roughness_texture is not None:
+            self.set_uniform("metallic_roughness_texture", self.metallic_roughness_texture)
 
         # Loose Textures
-        self.set_uniform("roughness_texture", self.roughness_texture)
-        self.set_uniform("metallic_texture", self.metallic_texture)
-        self.set_uniform("specular_texture", self.specular_texture)
-        self.set_uniform("displacement_texture", self.displacement_texture)
+        if self.roughness_texture is not None:
+            self.set_uniform("roughness_texture", self.roughness_texture)
+        if self.metallic_texture is not None:
+            self.set_uniform("metallic_texture", self.metallic_texture)
+        if self.specular_texture is not None:
+            self.set_uniform("specular_texture", self.specular_texture)
+        if self.displacement_texture is not None:
+            self.set_uniform("displacement_texture", self.displacement_texture)
 
     def set_uniform(self, name: str, value: Any) -> None:
         self.uniforms[name] = value

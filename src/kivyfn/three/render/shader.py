@@ -8,6 +8,7 @@ from kivy.event import EventDispatcher
 from kivy.properties import ObjectProperty, StringProperty
 
 
+# TODO: ADD observable file for shader to get event on shader change for hot reload
 class Shader(EventDispatcher):
     name = StringProperty("")
     path = ObjectProperty(None, allownone=True)
