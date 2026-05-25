@@ -1,15 +1,17 @@
-# kivyfn/three/scene/cameranode.py
+# kivyfn/three/scene/camera.py
 
 from __future__ import annotations
-
+from typing import Literal
+import math
 from kivy.graphics.transformation import Matrix
-from kivy.properties import NumericProperty, ObjectProperty
+from kivy.properties import NumericProperty, ObjectProperty, OptionProperty
 
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.scene.node import Node3D
 
 
 class Camera(Node3D):
+    # Kivy properties to allow reactive auto-binding inside the Scene class
     eye = ObjectProperty(None, allownone=True)
     target = ObjectProperty(None, allownone=True)
     up = ObjectProperty(None, allownone=True)
@@ -17,7 +19,13 @@ class Camera(Node3D):
     fov = NumericProperty(45.0)
     near = NumericProperty(1.0)
     far = NumericProperty(1000.0)
-    perspective = NumericProperty(1.0)
+
+    ortho_size = NumericProperty(20.0)
+    perspective: int = NumericProperty(1)
+    projection_type: Literal[
+        "perspective",
+        "orthographic"
+        ] = OptionProperty("perspective", options=["perspective", "orthographic"])
 
     def __init__(
         self,
@@ -36,9 +44,15 @@ class Camera(Node3D):
         self.target = target or Vector3.zero()
         self.up = up or Vector3(0.0, 1.0, 0.0)
 
+    def on_projection_type(self, instance, value: str) -> None:
+        """Automatically updates the matrix interpolator factor when projection style changes."""
+        if value == "perspective":
+            self.perspective = 1
+        elif value == "orthographic":
+            self.perspective = 0
+
     def get_view_matrix(self) -> Matrix:
         matrix = Matrix()
-
         return matrix.look_at(
             self.eye.x,
             self.eye.y,
@@ -55,10 +69,19 @@ class Camera(Node3D):
         self,
         aspect: float,
     ) -> Matrix:
-        top = self.near * self._tan_half_fov()
-        bottom = -top
-        right = top * aspect
-        left = -right
+        # Evaluate layout dimensions contextually depending on active matrix styling
+        if self.perspective == 0.0:
+            # Orthographic view frustum calculations based on world units
+            right = self.ortho_size / 2.0
+            left = -right
+            top = right / aspect
+            bottom = -top
+        else:
+            # Traditional Perspective field-of-view calculation
+            top = self.near * self._tan_half_fov()
+            bottom = -top
+            right = top * aspect
+            left = -right
 
         return Matrix().view_clip(
             left,
@@ -71,8 +94,6 @@ class Camera(Node3D):
         )
 
     def _tan_half_fov(self) -> float:
-        import math
-
         return math.tan(
             math.radians(self.fov) / 2.0
         )
@@ -93,6 +114,7 @@ class Camera(Node3D):
         return (
             f"Camera("
             f"name={self.name!r}, "
+            f"projection_type={self.projection_type!r}, "
             f"eye={self.eye}, "
             f"target={self.target})"
         )

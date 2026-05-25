@@ -42,6 +42,13 @@ class Scene(Widget):
         self.bind(size=self._on_viewport_changed)
         self.bind(pos=self._on_viewport_changed)
 
+        self.camera.bind(eye=self._on_camera_state_changed)
+        self.camera.bind(target=self._on_camera_state_changed)
+        self.camera.bind(up=self._on_camera_state_changed)
+        self.camera.bind(fov=self._on_camera_state_changed)
+        self.camera.bind(ortho_size=self._on_camera_state_changed)
+        self.camera.bind(perspective=self._on_camera_state_changed)
+
     # =================================== #
     # API
     # =================================== #
@@ -138,7 +145,7 @@ class Scene(Widget):
     # =================================== #
     # gl Context
     # =================================== #
-    def setup_gl_context(self, *args) -> None:
+    def setup_gl_context(self, *_) -> None:
         glEnable(GL_DEPTH_TEST)
 
         x, y = self.to_window(
@@ -153,7 +160,7 @@ class Scene(Widget):
             int(self.height),
         )
 
-    def reset_gl_context(self, *args) -> None:
+    def reset_gl_context(self, *_) -> None:
         glDisable(GL_DEPTH_TEST)
 
         glViewport(
@@ -163,7 +170,10 @@ class Scene(Widget):
             Window.height,
         )
 
-    def _on_viewport_changed(self, *args) -> None:
+    def _on_viewport_changed(self, *_) -> None:
+        self.update_camera()
+
+    def _on_camera_state_changed(self, *_) -> None:
         self.update_camera()
 
     # =================================== #

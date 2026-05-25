@@ -135,13 +135,13 @@ class Renderer:
 
     def sync_context_view(
         self,
-        context: RenderContext,
+        ctx: RenderContext,
     ) -> None:
         if self._projection_mat is not None:
-            context.ctx["projection_mat"] = self._projection_mat
+            ctx["projection_mat"] = self._projection_mat
 
         if self._modelview_mat is not None:
-            context.ctx["modelview_mat"] = self._modelview_mat
+            ctx["modelview_mat"] = self._modelview_mat
 
     @property
     def modelview_mat(
