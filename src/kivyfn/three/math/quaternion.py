@@ -8,6 +8,18 @@ from kivyfn.three.math.matrix import Matrix3, Matrix4
 
 
 class Quaternion:
+
+
+
+    def __repr__(self) -> str:
+        return (
+            f"Quaternion("
+            f"x={self.x}, "
+            f"y={self.y}, "
+            f"z={self.z}, "
+            f"w={self.w})"
+        )
+
     def __init__(
         self,
         x: float = 0.0,
@@ -260,11 +272,4 @@ class Quaternion:
         yield self.z
         yield self.w
 
-    def __repr__(self) -> str:
-        return (
-            f"Quaternion("
-            f"x={self.x}, "
-            f"y={self.y}, "
-            f"z={self.z}, "
-            f"w={self.w})"
-        )
+

@@ -33,7 +33,8 @@ namespaces = true
 
 [project.optional-dependencies]
 dev = [
-    "kivy-stubs>=0.1.0"
+    "kivy-stubs>=0.1.0",
+    "watchdog",
 ]
 
 modifiers = [

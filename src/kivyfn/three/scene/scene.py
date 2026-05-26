@@ -29,6 +29,9 @@ class Scene(Widget):
     root: Node3D = ObjectProperty(None, allownone=True)
     bg_color: tuple[float, float, float, float] = ColorProperty()
 
+
+
+
     def __init__(self, root: Node3D | None = None, **kwargs):
         super().__init__(**kwargs)
 
@@ -101,7 +104,7 @@ class Scene(Widget):
         *,
         parent: Node3D | None = None,
         pickable: bool = False,
-    ) -> Node3D:
+    ) -> Node3D | Object3D:
 
         if asset.is_renderable:
             node = Object3D(
@@ -141,7 +144,7 @@ class Scene(Widget):
         context: str,
         *,
         pickable: bool = False,
-    ) -> list[Node3D]:
+    ) -> list[Node3D | Object3D]:
 
         nodes: list[Node3D] = []
 
@@ -285,4 +288,19 @@ class Scene(Widget):
     # =================================== #
     def on_bg_color(self, *_):
         self._bg_color.rgba = self.bg_color
+
+    # =================================== #
+    # Helpers
+    # =================================== #
+    def debug_info(self) -> str:
+        return (
+            "Scene(\n"
+            f"  root={self.root.name!r},\n"
+            f"  contexts={len(self.renderer.contexts)},\n"
+            f"  controllers={len(self.controllers)},\n"
+            f"  camera={self.camera.name!r},\n"
+            f"  size=({self.width}, {self.height})\n"
+            ")"
+        )
+
 

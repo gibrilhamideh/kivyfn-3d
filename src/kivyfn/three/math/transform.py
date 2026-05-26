@@ -10,6 +10,17 @@ from kivyfn.three.math.vector import Vector3
 
 
 class Transform:
+
+    def __repr__(self) -> str:
+        return (
+            "Transform(\n"
+            f"  translation={self.translation},\n"
+            f"  rotation={self.rotation},\n"
+            f"  scale={self.scale}\n"
+            ")"
+        )
+
+
     def __init__(
         self,
         translation: Vector3 | None = None,
@@ -113,11 +124,4 @@ class Transform:
 
         return Matrix4(matrix)
 
-    def __repr__(self) -> str:
-        return (
-            "Transform(\n"
-            f"  translation={self.translation},\n"
-            f"  rotation={self.rotation},\n"
-            f"  scale={self.scale},\n"
-            ")"
-        )
+

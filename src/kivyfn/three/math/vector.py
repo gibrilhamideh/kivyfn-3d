@@ -9,6 +9,16 @@ EPSILON = 1e-8
 
 
 class Vector3:
+
+
+    def __repr__(self) -> str:
+        return (
+            f"Vector3("
+            f"x={self.x}, "
+            f"y={self.y}, "
+            f"z={self.z})"
+        )
+
     def __init__(
         self,
         x: float = 0.0,
@@ -200,10 +210,4 @@ class Vector3:
         yield self.y
         yield self.z
 
-    def __repr__(self) -> str:
-        return (
-            f"Vector3("
-            f"x={self.x}, "
-            f"y={self.y}, "
-            f"z={self.z})"
-        )
+

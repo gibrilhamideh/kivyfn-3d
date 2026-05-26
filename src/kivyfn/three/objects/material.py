@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from pprint import pformat
 
 from kivy.event import EventDispatcher
 from kivy.graphics.texture import Texture
@@ -67,9 +68,8 @@ class Material(EventDispatcher):
 
     def __repr__(self) -> str:
         return (
-            f"Material("
-            f"name={self.name!r}"
-            f")"
+            f"Material(name={self.name!r}, "
+            f"uniforms={pformat(self.uniforms)})"
         )
 
     def __init__(

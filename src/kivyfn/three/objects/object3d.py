@@ -64,10 +64,27 @@ class Object3D(Node3D):
     )
 
     def __repr__(self) -> str:
+        geometry_name = (
+            self.geometry.name
+            if self.geometry is not None
+            else None
+        )
+
+        material_name = (
+            self.material.name
+            if self.material is not None
+            else None
+        )
+
         return (
-            f"Object3D("
+            "Object3D("
             f"name={self.name!r}, "
-            f"children={len(self.children)})"
+            f"geometry={geometry_name!r}, "
+            f"material={material_name!r}, "
+            f"children={len(self.children)}, "
+            f"pickable={self.pickable}, "
+            f"grabable={self.grabable}"
+            ")"
         )
 
     def __init__(

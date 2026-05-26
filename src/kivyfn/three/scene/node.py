@@ -47,9 +47,11 @@ class Node3D(EventDispatcher):
 
     def __repr__(self) -> str:
         return (
-            f"Node3D("
+            "Node3D("
             f"name={self.name!r}, "
-            f"children={len(self.children)})"
+            f"children={len(self.children)}, "
+            f"visible={self.visible}"
+            ")"
         )
 
     # =================================== #

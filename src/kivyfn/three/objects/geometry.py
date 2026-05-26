@@ -46,16 +46,29 @@ class Geometry:
     has_source_tangents: bool = False
 
     def __repr__(self) -> str:
+        vertex_count = (
+            len(self.vertices) // self.stride
+            if self.stride > 0
+            else 0
+        )
+
+        triangle_count = (
+            len(self.indices) // 3
+            if self.indices
+            else vertex_count // 3
+        )
+
         return (
             "Geometry(\n"
             f"  name={self.name!r},\n"
-            f"  vertices={len(self.vertices)},\n"
-            f"  indices={len(self.indices)},\n"
-            f"  triangles={len(self.indices) // 3},\n"
+            f"  vertex_count={vertex_count},\n"
+            f"  float_count={len(self.vertices)},\n"
+            f"  index_count={len(self.indices)},\n"
+            f"  triangle_count={triangle_count},\n"
             f"  stride={self.stride},\n"
             f"  mode={self.mode!r},\n"
             f"  has_texture={self.texture is not None},\n"
-            f"  has_source_tangents={self.has_source_tangents},\n"
+            f"  has_source_tangents={self.has_source_tangents}\n"
             ")"
         )
 

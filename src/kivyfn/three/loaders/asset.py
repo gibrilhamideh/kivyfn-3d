@@ -56,6 +56,18 @@ class AssetObject:
             ")"
         )
 
+    def print_tree(
+        self,
+        indent: int = 0,
+    ) -> None:
+        print(
+            "  " * indent
+            + repr(self)
+        )
+
+        for child in self.children:
+            child.print_tree(indent + 1)
+
 
 @dataclass(slots=True)
 class SceneAsset:
@@ -84,3 +96,17 @@ class SceneAsset:
 
         for child in asset.children:
             yield from self._walk_node(child)
+
+    def print_tree(self) -> None:
+        for asset in self.tree:
+            asset.print_tree()
+
+    def __repr__(self) -> str:
+        return (
+            "SceneAsset(\n"
+            f"  objects={len(self.objects)},\n"
+            f"  roots={[obj.name for obj in self.tree]}\n"
+            ")"
+        )
+
+

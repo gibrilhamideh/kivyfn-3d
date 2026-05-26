@@ -21,11 +21,23 @@ class Camera(Node3D):
     far = NumericProperty(1000.0)
 
     ortho_size = NumericProperty(20.0)
-    perspective: int = NumericProperty(1)
+    perspective: int = NumericProperty(1.0)
     projection_type: Literal[
         "perspective",
         "orthographic"
         ] = OptionProperty("perspective", options=["perspective", "orthographic"])
+
+    def __repr__(self) -> str:
+        return (
+            "Camera(\n"
+            f"  name={self.name!r},\n"
+            f"  projection_type={self.projection_type!r},\n"
+            f"  fov={self.fov:.1f},\n"
+            f"  eye={self.eye},\n"
+            f"  target={self.target},\n"
+            f"  up={self.up}\n"
+            ")"
+        )
 
     def __init__(
         self,
@@ -110,11 +122,4 @@ class Camera(Node3D):
         if up is not None:
             self.up = up
 
-    def __repr__(self) -> str:
-        return (
-            f"Camera("
-            f"name={self.name!r}, "
-            f"projection_type={self.projection_type!r}, "
-            f"eye={self.eye}, "
-            f"target={self.target})"
-        )
+

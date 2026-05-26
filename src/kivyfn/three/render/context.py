@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from typing import Any
+from pprint import pformat
 
 from kivy.properties import DictProperty, ObjectProperty, StringProperty
 from kivy.graphics import RenderContext as KivyRenderContext
@@ -17,7 +18,14 @@ class RenderContext(EventDispatcher):
     uniforms: dict = DictProperty()
 
     def __repr__(self) -> str:
-        return f"RenderPass(shader={self.shader!r})"
+
+        return (
+            "RenderContext("
+            f"name={self.name!r}, "
+            f"shader={self.shader.name!r}, "
+            f"uniforms={pformat(self.uniforms)}"
+            ")"
+        )
 
     def __init__(
         self,
