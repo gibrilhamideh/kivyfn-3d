@@ -49,7 +49,7 @@ class RenderContext(EventDispatcher):
         name="",
         uniforms: dict | None = None,
         compute_normal_mat: bool = True,
-        hot_reload: bool = True,
+        hot_reload: bool = False,
         **kwargs
     ):
         super().__init__(**kwargs)
