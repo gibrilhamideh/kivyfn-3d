@@ -1,21 +1,36 @@
 # kivyfn/three/render/context.py
 
 from __future__ import annotations
-from typing import Any
-from pprint import pformat
+from typing import Any, Literal
 
-from kivy.properties import DictProperty, ObjectProperty, StringProperty
-from kivy.graphics import RenderContext as KivyRenderContext
+from pprint import pformat
+from pathlib import Path
+
+
 from kivy.event import EventDispatcher
+from kivy.graphics import RenderContext as KivyRenderContext
+from kivy.properties import (
+    DictProperty,
+    ObjectProperty,
+    StringProperty,
+    BooleanProperty
+)
 
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.camera import Camera
 
+ShaderReloadEvent = Literal[
+    "manual",
+    "modified",
+    "created",
+    "moved",
+]
 
 class RenderContext(EventDispatcher):
     name: str = StringProperty()
     shader: Shader = ObjectProperty()
     uniforms: dict = DictProperty()
+    hot_reload: bool = BooleanProperty(False)
 
     def __repr__(self) -> str:
 
@@ -34,12 +49,19 @@ class RenderContext(EventDispatcher):
         name="",
         uniforms: dict | None = None,
         compute_normal_mat: bool = True,
+        hot_reload: bool = True,
+        **kwargs
     ):
-        super().__init__()
+        super().__init__(**kwargs)
         self.shader = shader
         self.name = name
         self.ctx = KivyRenderContext(compute_normal_mat=compute_normal_mat)
         self.ctx.shader.source = str(shader.path)
+
+        self.bind(hot_reload=shader.setter("hot_reload"))
+        shader.bind(on_reload=self.on_shader_reload)
+
+        self.hot_reload = hot_reload
 
         if uniforms is not None:
             self.uniforms = uniforms
@@ -54,12 +76,29 @@ class RenderContext(EventDispatcher):
     ) -> None:
         self.uniforms[name] = value
 
+    def sync_uniforms(self):
+        for key, value in self.uniforms.items():
+            self.ctx[key] = value
+
     # =================================== #
     # Property Events
     # =================================== #
     def on_uniforms(self, *_):
         for key, value in self.uniforms.items():
             self.ctx[key] = value
+
+
+    def on_shader_reload(
+        self,
+        shader: Shader,
+        event_type: ShaderReloadEvent,
+        path: Path | None,
+    ) -> None:
+        if path is not None:
+            self.ctx.shader.source = str(path)
+            self.sync_uniforms()
+            self.ctx.ask_update()
+
 
 
     # =================================== #

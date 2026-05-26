@@ -32,7 +32,6 @@ class Shader(EventDispatcher):
         self,
         path: str | Path | None = None,
         name: str = "",
-        hot_reload: bool = False,
         **kwargs: Any,
     ):
         super().__init__(**kwargs)
@@ -48,7 +47,6 @@ class Shader(EventDispatcher):
         if path is not None:
             self.path = Path(path)
 
-        self.hot_reload = hot_reload
 
     def __repr__(self) -> str:
         return (
