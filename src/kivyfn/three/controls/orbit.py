@@ -120,7 +120,6 @@ class OrbitCameraController:
         
         proposed_target = target + delta
         
-        # CLAMP PAN (If bounds provided)
         if min_bounds is not None and max_bounds is not None:
             proposed_target.x = max(min_bounds.x, min(proposed_target.x, max_bounds.x))
             proposed_target.y = max(min_bounds.y, min(proposed_target.y, max_bounds.y))

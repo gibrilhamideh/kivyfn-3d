@@ -80,6 +80,11 @@ class RenderContext(EventDispatcher):
         for key, value in self.uniforms.items():
             self.ctx[key] = value
 
+    def destroy(self) -> None:
+        self.shader.unbind(on_reload=self.on_shader_reload)
+        self.shader.destroy()
+        self.ctx.clear()
+
     # =================================== #
     # Property Events
     # =================================== #
@@ -98,7 +103,6 @@ class RenderContext(EventDispatcher):
             self.ctx.shader.source = str(path)
             self.sync_uniforms()
             self.ctx.ask_update()
-
 
 
     # =================================== #

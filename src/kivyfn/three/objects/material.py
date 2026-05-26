@@ -60,6 +60,7 @@ class Material(EventDispatcher):
 
     displacement_texture: Texture | None = ObjectProperty(None)
 
+
     # =================================== #
     # Custom Uniforms
     # =================================== #

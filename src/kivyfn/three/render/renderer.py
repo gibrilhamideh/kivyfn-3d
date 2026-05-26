@@ -8,6 +8,7 @@ from kivy.graphics import Callback, Canvas
 from kivy.graphics.transformation import Matrix
 
 from kivyfn.three.render.context import RenderContext
+from kivyfn.three.render.manager import RenderContextManager
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.node import Node3D
 
@@ -22,7 +23,7 @@ class Renderer:
     ):
         self.canvas = canvas
 
-        self.contexts: dict[str, RenderContext] = {}
+        self.contexts = RenderContextManager()
 
         self._modelview_mat: Matrix | None = None
         self._projection_mat: Matrix | None = None
@@ -41,18 +42,22 @@ class Renderer:
         self,
         name: str,
         shader: Shader,
+        hot_reload: bool,
+        tags: set[str] | None = None,
     ) -> RenderContext:
-        if name in self.contexts:
-            raise ValueError(f"Render context already exists: {name!r}")
-
         context = RenderContext(
             name=name,
             shader=shader,
+            hot_reload=hot_reload,
         )
 
-        self.contexts[name] = context
-        self.canvas.add(context.ctx)
+        self.contexts.add(
+            name=name,
+            context=context,
+            tags=tags,
+        )
 
+        self.canvas.add(context.ctx)
         self.sync_context_view(context)
 
         return context
@@ -61,39 +66,34 @@ class Renderer:
         self,
         name: str,
     ) -> None:
-        context = self.contexts.pop(name, None)
+        context = self.contexts.remove(name)
 
         if context is None:
             return
 
-        context.clear()
+        context.destroy()
 
         try:
             self.canvas.remove(context.ctx)
         except ValueError:
             pass
 
-    def get_context(
-        self,
-        name: str,
-    ) -> RenderContext:
-        return self.contexts[name]
 
     def clear_contexts(
         self,
     ) -> None:
-        for name in list(self.contexts.keys()):
+        for name in self.contexts.names():
             self.remove_context(name)
 
 
     # =================================== #
     # Build
     # =================================== #
-    def clear(self):
+    def clear(self) -> None:
         for ctx in self.contexts.values():
             ctx.clear()
 
-    def remove(self, node: Node3D):
+    def remove(self, node: Node3D) -> None:
         self.detach(node)
 
     def add(
@@ -103,19 +103,25 @@ class Renderer:
         setup_gl_context: GLCallback,
         reset_gl_context: GLCallback,
     ) -> None:
-
-        ctx = self.get_context(context)
+        ctx = self.contexts.get(context)
 
         with ctx:
             Callback(setup_gl_context)
             self.attach(node, ctx)
             Callback(reset_gl_context)
 
-    def attach(self, node: Node3D, ctx: RenderContext):
+    def attach(
+        self,
+        node: Node3D,
+        ctx: RenderContext,
+    ) -> None:
         for child in node.walk_tree():
             child.attach(ctx)
 
-    def detach(self, node: Node3D):
+    def detach(
+        self,
+        node: Node3D,
+    ) -> None:
         for child in node.walk_tree():
             child.detach()
 

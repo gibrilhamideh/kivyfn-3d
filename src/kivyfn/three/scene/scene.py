@@ -64,18 +64,35 @@ class Scene(Widget):
         self.camera.bind(ortho_size=self._on_camera_state_changed)
         self.camera.bind(perspective=self._on_camera_state_changed)
 
-    # =================================== #
-    # API
-    # =================================== #
-    def get_context(self, name: str) -> RenderContext:
-        return self.renderer.get_context(name)
 
-    def create_context(self, name: str, shader: Shader) -> RenderContext:
-        return self.renderer.create_context(name, shader)
+
+    # =================================== #
+    # Context API
+    # =================================== #
+    @property
+    def contexts(self):
+        return self.renderer.contexts
+
+    def create_context(
+        self,
+        name: str,
+        shader: Shader,
+        hot_reload: bool = False,
+        tags: set[str] | None = None,
+    ) -> RenderContext:
+        return self.renderer.create_context(
+            name=name,
+            shader=shader,
+            hot_reload=hot_reload,
+            tags=tags,
+        )
 
     def remove_context(self, name: str) -> None:
         self.renderer.remove_context(name)
 
+    # =================================== #
+    # Load API
+    # =================================== #
     def add(
         self,
         node: Node3D,
