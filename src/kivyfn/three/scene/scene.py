@@ -1,7 +1,7 @@
 # kivyfn/three/scene/scene.py
 
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle
@@ -16,6 +16,7 @@ from kivyfn.three.scene.camera import Camera
 from kivyfn.three.scene.viewport import Viewport
 from kivyfn.three.objects.object3d import Object3D
 from kivyfn.three.objects.material import Material
+from kivyfn.three.lights.manager import LightManager
 
 if TYPE_CHECKING:
     from kivyfn.three.render.context import RenderContext
@@ -23,14 +24,21 @@ if TYPE_CHECKING:
     from kivyfn.three.controls.base import SceneController
     from kivyfn.three.loaders.asset import AssetObject, SceneAsset
 
+FramebufferOutput = Literal[
+    "color",
+    "depth",
+    "normal",
+    "position",
+    "emissive",
+    "material",
+    "object_id",
+]
+
 
 class Scene(Widget):
 
     root: Node3D = ObjectProperty(None, allownone=True)
     bg_color: tuple[float, float, float, float] = ColorProperty()
-
-
-
 
     def __init__(self, root: Node3D | None = None, **kwargs):
         super().__init__(**kwargs)
@@ -53,6 +61,8 @@ class Scene(Widget):
         self.controllers = []
 
         self.root = root or Node3D(name="root")
+        self.lights = LightManager(self.root)
+        self.lights.bind(on_dirty=self.renderer.sync_lights)
 
         self.bind(size=self._on_viewport_changed)
         self.bind(pos=self._on_viewport_changed)
@@ -89,6 +99,63 @@ class Scene(Widget):
 
     def remove_context(self, name: str) -> None:
         self.renderer.remove_context(name)
+
+
+    # =================================== #
+    # FrameBuffer API
+    # =================================== #
+    def create_framebuffer(
+        self,
+        name: str,
+        shader: Shader,
+        size: tuple[int, int],
+        *,
+        hot_reload: bool = False,
+        tags: set[str] | None = None,
+    ) -> RenderContext:
+        return self.renderer.create_framebuffer(
+            name=name,
+            shader=shader,
+            size=size,
+            hot_reload=hot_reload,
+            tags=tags,
+        )
+
+    def remove_framebuffer(
+        self,
+        name: str,
+    ) -> None:
+        self.renderer.remove_framebuffer(name)
+
+    def link_framebuffer(
+        self,
+        source: str,
+        uniform: str,
+        *,
+        tags: set[str] | None = None,
+        names: set[str] | None = None,
+        output: FramebufferOutput = "depth",
+    ) -> None:
+        self.renderer.link_framebuffer(
+            source=source,
+            uniform=uniform,
+            tags=tags,
+            names=names,
+            output=output,
+        )
+
+    def unlink_framebuffer(
+        self,
+        source: str,
+        *,
+        tags: set[str] | None = None,
+        names: set[str] | None = None,
+    ) -> None:
+        self.renderer.unlink_framebuffer(
+            source=source,
+            tags=tags,
+            names=names,
+        )
 
     # =================================== #
     # Load API

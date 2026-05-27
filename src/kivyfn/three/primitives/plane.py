@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from kivy.properties import OptionProperty
 
 from kivyfn.three.objects.material import Material
@@ -82,7 +84,13 @@ class Plane(Object3D):
         ]
 
         return Geometry(
-            vertices=vertices,
-            indices=indices,
+            vertices=np.array(
+                vertices,
+                dtype=np.float32,
+            ),
+            indices=np.array(
+                indices,
+                dtype=np.uint16,
+            ),
             has_source_tangents=False,
         )

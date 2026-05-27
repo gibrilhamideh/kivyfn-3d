@@ -134,6 +134,9 @@ class Object3D(Node3D):
     # =================================== #
     # Rendering
     # =================================== #
+    
+    # TODO: recouple instuctions from Node3D and Object3D, instuctions 
+    # belong in renderer
     def attach(self, ctx):
         self.ctx = ctx
         self.instructions = Instructions(self, ctx)

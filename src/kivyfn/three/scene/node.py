@@ -31,8 +31,7 @@ class Node3D(EventDispatcher):
     parent: Node3D | Object3D | None = ObjectProperty(None, allownone=True)
     transform: Transform = ObjectProperty()
 
-
-
+    __events__ = ("on_dirty",)
 
     def __init__(
         self,
@@ -147,6 +146,7 @@ class Node3D(EventDispatcher):
     # Dirty Propagation
     # =================================== #
     def mark_transform_dirty(self) -> None:
+        self.dispatch("on_dirty")
         instructions = getattr(self, "instructions", None)
 
         if instructions is not None:
@@ -154,6 +154,12 @@ class Node3D(EventDispatcher):
 
         for child in self.children:
             child.mark_transform_dirty()
+
+    # =================================== #
+    # Events
+    # =================================== #
+    def on_dirty(self):
+        pass
 
     # =================================== #
     # Relationships

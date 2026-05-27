@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Literal, Callable, TYPE_CHECKING
 
 from kivy.graphics import Callback, Canvas
 from kivy.graphics.transformation import Matrix
@@ -12,6 +12,18 @@ from kivyfn.three.render.manager import RenderContextManager
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.node import Node3D
 
+if TYPE_CHECKING:
+    from kivyfn.three.lights.manager import LightManager
+
+FramebufferOutput = Literal[
+    "color",
+    "depth",
+    "normal",
+    "position",
+    "emissive",
+    "material",
+    "object_id",
+]
 
 GLCallback = Callable[..., None]
 
@@ -22,7 +34,6 @@ class Renderer:
         canvas: Canvas,
     ):
         self.canvas = canvas
-
         self.contexts = RenderContextManager()
 
         self._modelview_mat: Matrix | None = None
@@ -34,6 +45,12 @@ class Renderer:
             f"contexts={len(self.contexts)}, "
             f")"
         )
+
+    # =================================== #
+    # Light
+    # =================================== #
+    def sync_lights(self, manager: LightManager) -> None:
+        raise NotImplementedError("light management not implemented yet")
 
     # =================================== #
     # Contexts
@@ -72,11 +89,7 @@ class Renderer:
             return
 
         context.destroy()
-
-        try:
-            self.canvas.remove(context.ctx)
-        except ValueError:
-            pass
+        self.canvas.remove(context.ctx)
 
 
     def clear_contexts(
@@ -85,6 +98,97 @@ class Renderer:
         for name in self.contexts.names():
             self.remove_context(name)
 
+
+    # =================================== #
+    # FrameBuffer
+    # =================================== #
+    def create_framebuffer(
+        self,
+        name: str,
+        shader: Shader,
+        size: tuple[int, int],
+        *,
+        hot_reload: bool = False,
+        tags: set[str] | None = None,
+    ) -> RenderContext:
+        context = RenderContext(
+            name=name,
+            shader=shader,
+            hot_reload=hot_reload,
+            framebuffer=True,
+            size=size,
+        )
+
+        self.contexts.add(
+            name=name,
+            context=context,
+            tags=tags,
+        )
+
+        self.canvas.add(context.ctx)
+        self.sync_context_view(context)
+
+        return context
+
+    def remove_framebuffer(
+        self,
+        name: str,
+    ) -> None:
+        self.unlink_framebuffer(source=name)
+        self.remove_context(name)
+
+    def link_framebuffer(
+        self,
+        source: str,
+        uniform: str,
+        *,
+        output: FramebufferOutput = "color",
+        tags: set[str] | None = None,
+        names: set[str] | None = None,
+    ) -> None:
+        source_ctx = self.contexts.get(source)
+
+        if not source_ctx.framebuffer:
+            raise TypeError(f"Context {source!r} is not a framebuffer context.")
+
+        texture = source_ctx.texture
+        if texture is None:
+            raise RuntimeError(f"Framebuffer {source!r} has no output texture.")
+
+        slot = self.contexts.reserve_texture_slot(
+            source=source,
+            uniform=uniform,
+            tags=tags,
+            names=names,
+            output=output
+        )
+
+        for ctx in self.contexts.select(tags=tags, names=names):
+            ctx.bind_texture(
+                uniform=uniform,
+                texture=texture,
+                slot=slot,
+            )
+
+    def unlink_framebuffer(
+        self,
+        source: str,
+        *,
+        tags: set[str] | None = None,
+        names: set[str] | None = None,
+    ) -> None:
+        links = self.contexts.release_texture_links(
+            source=source,
+            tags=tags,
+            names=names,
+        )
+
+        for link in links:
+            for ctx in self.contexts.select(
+                tags=link.tags,
+                names=link.names,
+            ):
+                ctx.unbind_texture(link.uniform)
 
     # =================================== #
     # Build

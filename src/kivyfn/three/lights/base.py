@@ -6,6 +6,17 @@ from kivyfn.three.scene.node import Node3D
 
 
 class Light3D(Node3D):
+
+
+    def __repr__(self) -> str:
+        return (
+            "Light3D(\n"
+            f"    name={self.name!r},\n"
+            f"    color={self.color},\n"
+            f"    intensity={self.intensity},\n"
+            ")"
+        )
+
     def __init__(
         self,
         *,
@@ -21,3 +32,5 @@ class Light3D(Node3D):
 
         self.color = color
         self.intensity = intensity
+
+

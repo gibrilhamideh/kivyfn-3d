@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from kivyfn.three.light.base import Light3D
+from kivyfn.three.lights.base import Light3D
 
 
 class DirectionalLight(Light3D):

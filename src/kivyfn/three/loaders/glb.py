@@ -1157,8 +1157,8 @@ class GlbLoader:
         ).reshape(-1)
 
         return Geometry(
-            vertices=packed_vertices.tolist(),
-            indices=final_indices.tolist(),
+            vertices=packed_vertices,
+            indices=final_indices,
             has_source_tangents=has_source_tangents,
         )
 

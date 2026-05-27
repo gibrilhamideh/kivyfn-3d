@@ -1,8 +1,10 @@
-# kivyfn/three/primitive/sphere.py
+# kivyfn/three/primitives/sphere.py
 
 from __future__ import annotations
 
 import math
+
+import numpy as np
 
 from kivyfn.three.objects.material import Material
 from kivyfn.three.objects.object3d import Object3D
@@ -82,8 +84,14 @@ class Sphere(Object3D):
                 ])
 
         geometry = Geometry(
-            vertices=vertices,
-            indices=indices,
+            vertices=np.array(
+                vertices,
+                dtype=np.float32,
+            ),
+            indices=np.array(
+                indices,
+                dtype=np.uint16,
+            ),
             has_source_tangents=False,
         )
 

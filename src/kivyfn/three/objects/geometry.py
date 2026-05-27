@@ -1,8 +1,12 @@
-# kiyvfn/three/render/geomerty.py
+# kivyfn/three/render/geometry.py
+
 from __future__ import annotations
-from typing import Literal
+
 from dataclasses import dataclass, field
+from typing import Literal
+
 import numpy as np
+from numpy.typing import NDArray
 
 from kivy.graphics.texture import Texture
 
@@ -14,8 +18,9 @@ RenderMode = Literal[
     "lines",
     "triangles",
     "triangle_strip",
-    "triangle_fan"
+    "triangle_fan",
 ]
+
 
 @dataclass(slots=True)
 class GeometryStats:
@@ -28,43 +33,49 @@ class GeometryStats:
     is_winding_consistent: bool
     euler_number: int
 
+
 @dataclass(slots=True)
 class Geometry:
+
     name: str | None = None
 
-    fmt: list[tuple[bytes, int, str]] = field(default_factory=lambda: [
-        (b"v_pos", 3, "float"),
-        (b"v_normal", 3, "float"),
-        (b"v_uv", 2, "float"),
-        (b"v_tangent", 4, "float"),
-    ])
+    fmt: list[tuple[bytes, int, str]] = field(
+        default_factory=lambda: [
+            (b"v_pos", 3, "float"),
+            (b"v_normal", 3, "float"),
+            (b"v_uv", 2, "float"),
+            (b"v_tangent", 4, "float"),
+        ]
+    )
 
-    vertices: list[float] = field(default_factory=list)
-    indices: list[int] = field(default_factory=list)
+    vertices: NDArray[np.float32] = field(
+        default_factory=lambda: np.array(
+            [],
+            dtype=np.float32,
+        )
+    )
+
+    indices: NDArray[np.uint16] = field(
+        default_factory=lambda: np.array(
+            [],
+            dtype=np.uint16,
+        )
+    )
+
     mode: RenderMode = "triangles"
-    texture: Texture | None = None 
+
+    texture: Texture | None = None
+
     has_source_tangents: bool = False
 
     def __repr__(self) -> str:
-        vertex_count = (
-            len(self.vertices) // self.stride
-            if self.stride > 0
-            else 0
-        )
-
-        triangle_count = (
-            len(self.indices) // 3
-            if self.indices
-            else vertex_count // 3
-        )
-
         return (
             "Geometry(\n"
             f"  name={self.name!r},\n"
-            f"  vertex_count={vertex_count},\n"
+            f"  vertex_count={self.vertex_count},\n"
             f"  float_count={len(self.vertices)},\n"
-            f"  index_count={len(self.indices)},\n"
-            f"  triangle_count={triangle_count},\n"
+            f"  index_count={self.index_count},\n"
+            f"  triangle_count={self.triangle_count},\n"
             f"  stride={self.stride},\n"
             f"  mode={self.mode!r},\n"
             f"  has_texture={self.texture is not None},\n"
@@ -79,33 +90,50 @@ class Geometry:
             for _, size, _ in self.fmt
         )
 
-    def get_stats(self, *, merge_vertices = False) -> GeometryStats:
+    @property
+    def vertex_count(self) -> int:
+        if self.stride <= 0:
+            return 0
+
+        return len(self.vertices) // self.stride
+
+    @property
+    def index_count(self) -> int:
+        return len(self.indices)
+
+    @property
+    def triangle_count(self) -> int:
+        if len(self.indices) > 0:
+            return len(self.indices) // 3
+
+        return self.vertex_count // 3
+
+    def get_stats(
+        self,
+        *,
+        merge_vertices: bool = False,
+    ) -> GeometryStats:
+
         try:
             import trimesh
+
         except ImportError as error:
             raise ImportError(
                 "Geometry.get_stats() requires trimesh. "
                 "Install it with: pip install trimesh"
             ) from error
 
-        stride = sum(
-            size
-            for _, size, _ in self.fmt
+        vertices = self.vertices.reshape(
+            -1,
+            self.stride,
         )
-
-        vertices = np.array(
-            self.vertices,
-            dtype=np.float32,
-        ).reshape(-1, stride)
 
         positions = vertices[:, :3]
 
-        indices = np.array(
-            self.indices,
-            dtype=np.int64,
+        indices = self.indices.astype(
+            np.int64,
+            copy=False,
         )
-
-        triangle_count = len(indices) // 3
 
         faces = indices.reshape(-1, 3)
 
@@ -123,10 +151,9 @@ class Geometry:
         return GeometryStats(
             vertex_count=len(positions),
             index_count=len(indices),
-            triangle_count=triangle_count,
+            triangle_count=len(faces),
             is_watertight=bool(mesh.is_watertight),
             is_volume=bool(mesh.is_volume),
             is_winding_consistent=bool(mesh.is_winding_consistent),
             euler_number=int(mesh.euler_number),
         )
-

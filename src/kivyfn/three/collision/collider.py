@@ -1,24 +1,29 @@
-# kivyfn/collision/collider.py
+# kivyfn/three/collision/collider.py
+
 from __future__ import annotations
+
+import math
 from typing import TYPE_CHECKING, Literal
 
+import numpy as np
 from kivy.event import EventDispatcher
-from kivy.properties import ObjectProperty, OptionProperty, NumericProperty
+from kivy.properties import NumericProperty, ObjectProperty, OptionProperty
+
 from kivyfn.three.collision.intersections import sphere_intersect, triangle_intersect
 from kivyfn.three.math.vector import Vector3
 
-import math
-
 if TYPE_CHECKING:
     from kivyfn.three.objects import Object3D
+
 
 Pivot = Literal[
     "center",
     "bottom",
     "top",
     "left",
-    "right"
+    "right",
 ]
+
 
 class Collider(EventDispatcher):
 
@@ -26,6 +31,7 @@ class Collider(EventDispatcher):
     origin: Vector3 = ObjectProperty()
     bounds_min: Vector3 = ObjectProperty(Vector3.zero())
     bounds_max: Vector3 = ObjectProperty(Vector3.zero())
+
     pivot: Pivot = OptionProperty(
         "center",
         options=(
@@ -33,11 +39,13 @@ class Collider(EventDispatcher):
             "bottom",
             "top",
             "left",
-            "right"
-        )
+            "right",
+        ),
     )
 
     def __init__(self, object3d: Object3D) -> None:
+        super().__init__()
+
         self.object3d = object3d
 
     @property
@@ -55,65 +63,101 @@ class Collider(EventDispatcher):
         vertices = self.geometry.vertices
         stride = self.geometry.stride
 
-        if not vertices:
+        if vertices.size == 0:
             self.bounds_min = Vector3.zero()
             self.bounds_max = Vector3.zero()
             self.origin = Vector3.zero()
             self.radius = 0.0
             return
 
-        xs = vertices[0::stride]
-        ys = vertices[1::stride]
-        zs = vertices[2::stride]
+        vertex_data = vertices.reshape(
+            -1,
+            stride,
+        )
 
-        x_min = min(xs)
-        y_min = min(ys)
-        z_min = min(zs)
+        positions = vertex_data[:, :3]
 
-        x_max = max(xs)
-        y_max = max(ys)
-        z_max = max(zs)
+        mins = positions.min(axis=0)
+        maxs = positions.max(axis=0)
 
-        self.bounds_min = Vector3(x_min, y_min, z_min)
-        self.bounds_max = Vector3(x_max, y_max, z_max)
+        x_min, y_min, z_min = mins
+        x_max, y_max, z_max = maxs
 
-        center_x = (x_min + x_max) / 2.0
-        center_y = (y_min + y_max) / 2.0
-        center_z = (z_min + z_max) / 2.0
+        self.bounds_min = Vector3(
+            float(x_min),
+            float(y_min),
+            float(z_min),
+        )
+
+        self.bounds_max = Vector3(
+            float(x_max),
+            float(y_max),
+            float(z_max),
+        )
+
+        center = (mins + maxs) * 0.5
+
+        center_x, center_y, center_z = center
 
         if self.pivot == "center":
-            origin = Vector3(center_x, center_y, center_z)
+            origin_values = center
+
         elif self.pivot == "bottom":
-            origin = Vector3(center_x, y_min, center_z)
-        elif self.pivot == "top":
-            origin = Vector3(center_x, y_max, center_z)
-        elif self.pivot == "left":
-            origin = Vector3(x_min, center_y, center_z)
-        else:
-            origin = Vector3(x_max, center_y, center_z)
-
-        self.origin = origin
-
-        self.radius = max(
-            math.dist(
-                (vertices[index], vertices[index + 1], vertices[index + 2]),
-                tuple(origin),
+            origin_values = np.array(
+                [center_x, y_min, center_z],
+                dtype=np.float32,
             )
-            for index in range(0, len(vertices), stride)
+
+        elif self.pivot == "top":
+            origin_values = np.array(
+                [center_x, y_max, center_z],
+                dtype=np.float32,
+            )
+
+        elif self.pivot == "left":
+            origin_values = np.array(
+                [x_min, center_y, center_z],
+                dtype=np.float32,
+            )
+
+        else:
+            origin_values = np.array(
+                [x_max, center_y, center_z],
+                dtype=np.float32,
+            )
+
+        self.origin = Vector3(
+            float(origin_values[0]),
+            float(origin_values[1]),
+            float(origin_values[2]),
         )
+
+        distances = np.linalg.norm(
+            positions - origin_values,
+            axis=1,
+        )
+
+        self.radius = float(distances.max())
 
     def iter_triangles(self):
         vertices = self.geometry.vertices
         indices = self.geometry.indices
         stride = self.geometry.stride
 
+        vertex_data = vertices.reshape(
+            -1,
+            stride,
+        )
+
+        positions = vertex_data[:, :3]
+
         for index in range(0, len(indices), 3):
             i0, i1, i2 = indices[index:index + 3]
 
             yield (
-                Vector3(*vertices[i0 * stride:i0 * stride + 3]),
-                Vector3(*vertices[i1 * stride:i1 * stride + 3]),
-                Vector3(*vertices[i2 * stride:i2 * stride + 3]),
+                Vector3(*positions[int(i0)]),
+                Vector3(*positions[int(i1)]),
+                Vector3(*positions[int(i2)]),
             )
 
     def intersects_bounds(
@@ -159,13 +203,20 @@ class Collider(EventDispatcher):
 
         return closest or (None, None)
 
-    def intersects_ray(self, ray_origin, ray_direction):
+    def intersects_ray(
+        self,
+        ray_origin,
+        ray_direction,
+    ):
         local_origin, local_direction = self._local_ray(
             ray_origin,
             ray_direction,
         )
 
-        if not self.intersects_bounds(local_origin, local_direction):
+        if not self.intersects_bounds(
+            local_origin,
+            local_direction,
+        ):
             return None
 
         distance, point = self.intersects_geometry(
@@ -188,8 +239,11 @@ class Collider(EventDispatcher):
 
         return world_distance, world_point
 
-
-    def _local_ray(self, ray_origin, ray_direction):
+    def _local_ray(
+        self,
+        ray_origin,
+        ray_direction,
+    ):
         inverse = self.world_matrix.inverse()
 
         local_origin = inverse.transform_point(
@@ -199,6 +253,7 @@ class Collider(EventDispatcher):
         )
 
         world_target = ray_origin + ray_direction
+
         local_target = inverse.transform_point(
             world_target.x,
             world_target.y,
@@ -208,6 +263,8 @@ class Collider(EventDispatcher):
         local_origin = Vector3(*local_origin)
         local_target = Vector3(*local_target)
 
-        local_direction = (local_target - local_origin).normalize()
+        local_direction = (
+            local_target - local_origin
+        ).normalize()
 
         return local_origin, local_direction

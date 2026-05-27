@@ -1,23 +1,28 @@
 # kivyfn/three/render/context.py
 
 from __future__ import annotations
-from typing import Any, Literal
 
-from pprint import pformat
 from pathlib import Path
-
+from pprint import pformat
+from typing import Any, Literal, cast
 
 from kivy.event import EventDispatcher
-from kivy.graphics import RenderContext as KivyRenderContext
+from kivy.graphics import (
+    BindTexture,
+    Fbo,
+    RenderContext as KivyRenderContext,
+)
+from kivy.graphics.texture import Texture
 from kivy.properties import (
+    BooleanProperty,
     DictProperty,
     ObjectProperty,
     StringProperty,
-    BooleanProperty
 )
 
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.camera import Camera
+
 
 ShaderReloadEvent = Literal[
     "manual",
@@ -26,18 +31,22 @@ ShaderReloadEvent = Literal[
     "moved",
 ]
 
+
 class RenderContext(EventDispatcher):
     name: str = StringProperty()
     shader: Shader = ObjectProperty()
     uniforms: dict = DictProperty()
     hot_reload: bool = BooleanProperty(False)
 
-    def __repr__(self) -> str:
+    framebuffer: bool = BooleanProperty(False)
+    depth: bool = BooleanProperty(True)
 
+    def __repr__(self) -> str:
         return (
             "RenderContext("
             f"name={self.name!r}, "
             f"shader={self.shader.name!r}, "
+            f"framebuffer={self.framebuffer!r}, "
             f"uniforms={pformat(self.uniforms)}"
             ")"
         )
@@ -46,16 +55,39 @@ class RenderContext(EventDispatcher):
         self,
         shader: Shader,
         *,
-        name="",
+        name: str = "",
         uniforms: dict | None = None,
         compute_normal_mat: bool = True,
         hot_reload: bool = False,
-        **kwargs
+        framebuffer: bool = False,
+        size: tuple[int, int] | None = None,
+        depth: bool = True,
+        **kwargs,
     ):
         super().__init__(**kwargs)
+
         self.shader = shader
         self.name = name
-        self.ctx = KivyRenderContext(compute_normal_mat=compute_normal_mat)
+        self.framebuffer = framebuffer
+        self.depth = depth
+
+        if framebuffer:
+            if size is None:
+                raise ValueError(
+                    "Framebuffer context requires a concrete size."
+                )
+
+            self.ctx = Fbo(
+                size=size,
+                with_depthbuffer=depth,
+                compute_normal_mat=compute_normal_mat,
+            )
+
+        else:
+            self.ctx = KivyRenderContext(
+                compute_normal_mat=compute_normal_mat,
+            )
+
         self.ctx.shader.source = str(shader.path)
 
         self.bind(hot_reload=shader.setter("hot_reload"))
@@ -76,9 +108,29 @@ class RenderContext(EventDispatcher):
     ) -> None:
         self.uniforms[name] = value
 
-    def sync_uniforms(self):
+    def sync_uniforms(self) -> None:
         for key, value in self.uniforms.items():
             self.ctx[key] = value
+
+    def bind_texture(
+        self,
+        uniform: str,
+        texture: Texture,
+        slot: int,
+    ) -> None:
+        with self.ctx:
+            BindTexture(
+                texture=texture,
+                index=slot,
+            )
+
+        self.ctx[uniform] = slot
+
+    def unbind_texture(
+        self,
+        uniform: str,
+    ) -> None:
+        self.ctx[uniform] = 0
 
     def destroy(self) -> None:
         self.shader.unbind(on_reload=self.on_shader_reload)
@@ -89,9 +141,7 @@ class RenderContext(EventDispatcher):
     # Property Events
     # =================================== #
     def on_uniforms(self, *_):
-        for key, value in self.uniforms.items():
-            self.ctx[key] = value
-
+        self.sync_uniforms()
 
     def on_shader_reload(
         self,
@@ -103,7 +153,6 @@ class RenderContext(EventDispatcher):
             self.ctx.shader.source = str(path)
             self.sync_uniforms()
             self.ctx.ask_update()
-
 
     # =================================== #
     # Context Mirroring
@@ -152,3 +201,14 @@ class RenderContext(EventDispatcher):
     @property
     def modelview_mat(self):
         return self.ctx["modelview_mat"]
+
+    # =================================== #
+    # Framebuffer
+    # =================================== #
+    @property
+    def texture(self) -> Texture | None:
+        if not self.framebuffer:
+            return None
+
+        ctx = cast(Fbo, self.ctx)
+        return ctx.texture
