@@ -13,13 +13,11 @@ from kivy.properties import (
 
 from kivyfn.three.collision import Collider
 from kivyfn.three.scene.node import Node3D
-from kivyfn.three.render.instructions import Instructions
 
 if TYPE_CHECKING:
     from kivyfn.three.math.vector import Vector3
     from kivyfn.three.objects.geometry import Geometry
     from kivyfn.three.objects.material import Material
-    from kivyfn.three.render.context import RenderContext
     from kivyfn.three.controls.interaction import InteractionEvent
 
 
@@ -33,10 +31,7 @@ Pivot = Literal[
 
 
 class Object3D(Node3D):
-    ctx: RenderContext | None = ObjectProperty()
     geometry: Geometry = ObjectProperty()
-    material: Material = ObjectProperty()
-    instructions: Instructions | None = ObjectProperty()
 
     pickable: bool = BooleanProperty(False)
     grabable: bool = BooleanProperty(False)
@@ -131,25 +126,6 @@ class Object3D(Node3D):
         self.collider.pivot = self.pivot
         self.collider.compute_bounds()
 
-    # =================================== #
-    # Rendering
-    # =================================== #
-    
-    # TODO: recouple instuctions from Node3D and Object3D, instuctions 
-    # belong in renderer
-    def attach(self, ctx):
-        self.ctx = ctx
-        self.instructions = Instructions(self, ctx)
-        return True
-
-    def detach(self):
-        assert self.ctx is not None
-        assert self.instructions is not None
-        self.ctx.remove(self.instructions.group)
-
-        self.ctx = None
-        self.instructions = None
-        return True
 
     # =================================== #
     # Collistions

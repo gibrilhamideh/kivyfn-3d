@@ -17,6 +17,7 @@ from kivy.properties import (
     BooleanProperty,
     DictProperty,
     ObjectProperty,
+    OptionProperty,
     StringProperty,
 )
 
@@ -31,15 +32,36 @@ ShaderReloadEvent = Literal[
     "moved",
 ]
 
+RenderPassOutput = Literal[
+    "color",
+    "depth",
+    "normal",
+    "position",
+    "emissive",
+    "material",
+    "object_id",
+]
+
 
 class RenderContext(EventDispatcher):
     name: str = StringProperty()
     shader: Shader = ObjectProperty()
     uniforms: dict = DictProperty()
     hot_reload: bool = BooleanProperty(False)
-
     framebuffer: bool = BooleanProperty(False)
-    depth: bool = BooleanProperty(True)
+
+    output: RenderPassOutput = OptionProperty(
+        "color",
+        options=(
+            "color",
+            "depth",
+            "normal",
+            "position",
+            "emissive",
+            "material",
+            "object_id",
+        ),
+    )
 
     def __repr__(self) -> str:
         return (
@@ -47,6 +69,7 @@ class RenderContext(EventDispatcher):
             f"name={self.name!r}, "
             f"shader={self.shader.name!r}, "
             f"framebuffer={self.framebuffer!r}, "
+            f"output={self.output!r}, "
             f"uniforms={pformat(self.uniforms)}"
             ")"
         )
@@ -61,7 +84,7 @@ class RenderContext(EventDispatcher):
         hot_reload: bool = False,
         framebuffer: bool = False,
         size: tuple[int, int] | None = None,
-        depth: bool = True,
+        output: RenderPassOutput = "color",
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -69,7 +92,7 @@ class RenderContext(EventDispatcher):
         self.shader = shader
         self.name = name
         self.framebuffer = framebuffer
-        self.depth = depth
+        self.output = output
 
         if framebuffer:
             if size is None:
@@ -79,7 +102,7 @@ class RenderContext(EventDispatcher):
 
             self.ctx = Fbo(
                 size=size,
-                with_depthbuffer=depth,
+                with_depthbuffer=True,
                 compute_normal_mat=compute_normal_mat,
             )
 
@@ -186,13 +209,8 @@ class RenderContext(EventDispatcher):
         camera: Camera,
         aspect: float,
     ) -> None:
-        self.ctx["projection_mat"] = (
-            camera.get_projection_matrix(aspect)
-        )
-
-        self.ctx["modelview_mat"] = (
-            camera.get_view_matrix()
-        )
+        self.ctx["projection_mat"] = camera.get_projection_matrix(aspect)
+        self.ctx["modelview_mat"] = camera.get_view_matrix()
 
     @property
     def projection_mat(self):

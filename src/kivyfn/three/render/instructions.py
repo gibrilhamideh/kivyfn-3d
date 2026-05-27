@@ -18,9 +18,11 @@ from kivy.graphics import (
 )
 
 if TYPE_CHECKING:
-    from kivyfn.three.render.context import RenderContext
+    from kivy.graphics.transformation import Matrix
+
+    from kivyfn.three.objects.geometry import Geometry
     from kivyfn.three.objects.material import Material
-    from kivyfn.three.objects.object3d import Object3D
+    from kivyfn.three.render.context import RenderContext
 
 
 TEXTURE_SLOTS = {
@@ -36,42 +38,29 @@ TEXTURE_SLOTS = {
 }
 
 
-class Instructions(EventDispatcher):
+class BaseInstructions(EventDispatcher):
     def __init__(
         self,
-        object3d: Object3D,
+        *,
+        geometry: Geometry,
         ctx: RenderContext,
+        compute_normal_matrix: bool = False,
+        **kwargs
     ):
-        super().__init__()
+        super().__init__(**kwargs)
 
         self.ctx = ctx
-        self.group = InstructionGroup()
-        self.object3d = object3d
+        self.geometry = geometry
+        self.visible = True
 
-        material = object3d.material
-        geometry = object3d.geometry
+        self.group = InstructionGroup()
 
         self.push = PushMatrix()
         self.matrix = MatrixInstruction()
-        self.normal_matrix = UpdateNormalMatrix()
 
-        self.base_texture = BindTexture(index=1)
-        self.normal_texture = BindTexture(index=2)
-        self.emissive_texture = BindTexture(index=3)
-        self.metallic_roughness_texture = BindTexture(index=4)
-        self.occlusion_texture = BindTexture(index=5)
-        self.roughness_texture = BindTexture(index=6)
-        self.metallic_texture = BindTexture(index=7)
-        self.specular_texture = BindTexture(index=8)
-        self.displacement_texture = BindTexture(index=9)
-
-        self.material_callback = Callback(
-            partial(
-                self.apply_material,
-                material,
-                ctx,
-            )
-        )
+        self.normal_matrix = None
+        if compute_normal_matrix:
+            self.normal_matrix = UpdateNormalMatrix()
 
         self.mesh = Mesh(
             vertices=geometry.vertices,
@@ -83,42 +72,101 @@ class Instructions(EventDispatcher):
 
         self.pop = PopMatrix()
 
-        self.group.add(self.push)
-        self.group.add(self.matrix)
-        self.group.add(self.normal_matrix)
+        self.instructions = [
+            self.push,
+            self.matrix,
+            self.normal_matrix,
+            self.mesh,
+            self.pop,
+        ]
 
-        self.group.add(self.base_texture)
-        self.group.add(self.normal_texture)
-        self.group.add(self.emissive_texture)
-        self.group.add(self.metallic_roughness_texture)
-        self.group.add(self.occlusion_texture)
-        self.group.add(self.roughness_texture)
-        self.group.add(self.metallic_texture)
-        self.group.add(self.specular_texture)
-        self.group.add(self.displacement_texture)
+        self.rebuild()
 
-        self.group.add(self.material_callback)
-        self.group.add(self.mesh)
-        self.group.add(self.pop)
+    def rebuild(self) -> None:
+        self.group.clear()
 
-        self.sync_transform()
-        self.update_textures()
+        if not self.visible:
+            return
 
-        material.bind(
-            uniforms=self.update_uniforms,
-            base_texture=self.update_textures,
-            normal_texture=self.update_textures,
-            emissive_texture=self.update_textures,
-            metallic_roughness_texture=self.update_textures,
-            occlusion_texture=self.update_textures,
-            roughness_texture=self.update_textures,
-            metallic_texture=self.update_textures,
-            specular_texture=self.update_textures,
-            displacement_texture=self.update_textures,
+        for instruction in self.instructions:
+            if instruction is not None:
+                self.group.add(instruction)
+
+    def sync_transform(
+        self,
+        matrix: Matrix,
+    ) -> None:
+        self.matrix.matrix = matrix
+
+    def sync_uniforms(self, *_):
+        pass
+
+    def sync_textures(self, *_):
+        pass
+
+    def show(self) -> None:
+        if self.visible:
+            return
+
+        self.visible = True
+        self.rebuild()
+
+    def hide(self) -> None:
+        if not self.visible:
+            return
+
+        self.visible = False
+        self.rebuild()
+
+    def destroy(self) -> None:
+        self.group.clear()
+        self.instructions.clear()
+
+
+class MaterialInstructions(BaseInstructions):
+    def __init__(
+        self,
+        *,
+        geometry: Geometry,
+        material: Material,
+        ctx: RenderContext,
+    ):
+        super().__init__(
+            geometry=geometry,
+            ctx=ctx,
+            compute_normal_matrix=True,
         )
 
-    def sync_transform(self) -> None:
-        self.matrix.matrix = self.object3d.world_matrix.to_kivy_matrix()
+        self.material = material
+
+        self.texture_binders = {
+            name: BindTexture(index=slot)
+            for name, slot in TEXTURE_SLOTS.items()
+        }
+
+        self.material_callback = Callback(
+            partial(
+                self.apply_material,
+                material,
+                ctx,
+            )
+        )
+
+        self.instructions = [
+            self.push,
+            self.matrix,
+            self.normal_matrix,
+            *self.texture_binders.values(),
+            self.material_callback,
+            self.mesh,
+            self.pop,
+        ]
+
+        self.rebuild()
+        self.sync_uniforms()
+        self.sync_textures()
+
+
 
     def apply_material(
         self,
@@ -136,39 +184,93 @@ class Instructions(EventDispatcher):
 
             ctx[key] = value
 
-    def update_textures(self, *_):
-        material = self.object3d.material
+    def sync_textures(self, *_):
+        for name, binder in self.texture_binders.items():
+            texture = getattr(self.material, name, None)
 
-        if material.base_texture is not None:
-            self.base_texture.texture = material.base_texture
-
-        if material.normal_texture is not None:
-            self.normal_texture.texture = material.normal_texture
-
-        if material.emissive_texture is not None:
-            self.emissive_texture.texture = material.emissive_texture
-
-        if material.metallic_roughness_texture is not None:
-            self.metallic_roughness_texture.texture = (
-                material.metallic_roughness_texture
-            )
-
-        if material.occlusion_texture is not None:
-            self.occlusion_texture.texture = material.occlusion_texture
-
-        if material.roughness_texture is not None:
-            self.roughness_texture.texture = material.roughness_texture
-
-        if material.metallic_texture is not None:
-            self.metallic_texture.texture = material.metallic_texture
-
-        if material.specular_texture is not None:
-            self.specular_texture.texture = material.specular_texture
-
-        if material.displacement_texture is not None:
-            self.displacement_texture.texture = material.displacement_texture
+            if texture is not None:
+                binder.texture = texture
 
         self.material_callback.ask_update()
 
-    def update_uniforms(self, *_):
+    def sync_uniforms(self, *_):
         self.material_callback.ask_update()
+
+    def destroy(self) -> None:
+        super().destroy()
+
+
+class ColorInstructions(MaterialInstructions):
+    pass
+
+
+class ObjectIdInstructions(BaseInstructions):
+    def __init__(
+        self,
+        *,
+        geometry: Geometry,
+        object_id: int,
+        ctx: RenderContext,
+    ):
+        super().__init__(
+            geometry=geometry,
+            ctx=ctx,
+        )
+
+        self.object_id = object_id
+        self.object_id_callback = Callback(self.apply_object_id)
+
+        self.instructions = [
+            self.push,
+            self.matrix,
+            self.object_id_callback,
+            self.mesh,
+            self.pop,
+        ]
+
+        self.rebuild()
+
+    def apply_object_id(
+        self,
+        callback: Callback,
+    ) -> None:
+        object_id = self.object_id
+
+        r = (object_id >> 16) & 0xFF
+        g = (object_id >> 8) & 0xFF
+        b = object_id & 0xFF
+
+        self.ctx["object_id_color"] = [
+            r / 255.0,
+            g / 255.0,
+            b / 255.0,
+            1.0,
+        ]
+
+class NormalInstructions(BaseInstructions):
+    def __init__(
+        self,
+        *,
+        geometry: Geometry,
+        ctx: RenderContext,
+    ):
+        super().__init__(
+            geometry=geometry,
+            ctx=ctx,
+            compute_normal_matrix=True,
+        )
+
+
+class DepthInstructions(BaseInstructions):
+    pass
+
+
+class PositionInstructions(BaseInstructions):
+    pass
+
+
+
+
+
+
+

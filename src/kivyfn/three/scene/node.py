@@ -19,28 +19,35 @@ if TYPE_CHECKING:
     from kivyfn.three.math.matrix import Matrix4
     from kivyfn.three.math.vector import Vector3
     from kivyfn.three.objects import Object3D
-    from kivyfn.three.render.context import RenderContext
+    from kivyfn.three.objects.material import Material
 
 
 class Node3D(EventDispatcher):
     name = StringProperty("")
     visible = BooleanProperty(True)
 
-
     children: list[Node3D | Object3D] = ListProperty([])
     parent: Node3D | Object3D | None = ObjectProperty(None, allownone=True)
+
+    material: Material | None = ObjectProperty(None, allownone=True)
+
     transform: Transform = ObjectProperty()
 
-    __events__ = ("on_dirty",)
+    __events__ = (
+        "on_transform_dirty",
+        "on_material_dirty",
+    )
 
     def __init__(
         self,
         name: str = "",
         transform: Transform | None = None,
+        material: Material | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
+        self.set_material(material)
         self.name = name
         self.transform = transform or Transform()
 
@@ -67,7 +74,6 @@ class Node3D(EventDispatcher):
 
         return self.parent.world_matrix @ self.local_matrix
 
-
     # =================================== #
     # Transform State
     # =================================== #
@@ -82,7 +88,6 @@ class Node3D(EventDispatcher):
     @property
     def scale(self) -> Vector3:
         return self.transform.scale
-
 
     # =================================== #
     # Translation
@@ -101,7 +106,6 @@ class Node3D(EventDispatcher):
         self.transform.translate_by(offset)
         self.mark_transform_dirty()
 
-
     # =================================== #
     # Scale
     # =================================== #
@@ -118,7 +122,6 @@ class Node3D(EventDispatcher):
     ) -> None:
         self.transform.scale_by(factor)
         self.mark_transform_dirty()
-
 
     # =================================== #
     # Rotation
@@ -141,24 +144,88 @@ class Node3D(EventDispatcher):
         )
         self.mark_transform_dirty()
 
+    # =================================== #
+    # Material
+    # =================================== #
+    def set_material(
+        self,
+        material: Material | None,
+    ) -> None:
+        if self.material is not None:
+            self.unbind_material(self.material)
+
+        self.material = material
+
+        if material is not None:
+            self.bind_material(material)
+
+        self.mark_material_dirty()
+
+    def bind_material(
+        self,
+        material: Material,
+    ) -> None:
+        material.bind(
+            uniforms=self._on_material_changed,
+            base_texture=self._on_material_changed,
+            normal_texture=self._on_material_changed,
+            emissive_texture=self._on_material_changed,
+            metallic_roughness_texture=self._on_material_changed,
+            occlusion_texture=self._on_material_changed,
+            roughness_texture=self._on_material_changed,
+            metallic_texture=self._on_material_changed,
+            specular_texture=self._on_material_changed,
+            displacement_texture=self._on_material_changed,
+        )
+
+    def unbind_material(
+        self,
+        material: Material,
+    ) -> None:
+        material.unbind(
+            uniforms=self._on_material_changed,
+            base_texture=self._on_material_changed,
+            normal_texture=self._on_material_changed,
+            emissive_texture=self._on_material_changed,
+            metallic_roughness_texture=self._on_material_changed,
+            occlusion_texture=self._on_material_changed,
+            roughness_texture=self._on_material_changed,
+            metallic_texture=self._on_material_changed,
+            specular_texture=self._on_material_changed,
+            displacement_texture=self._on_material_changed,
+        )
+
+    def _on_material_changed(self, *_):
+        self.mark_material_dirty()
 
     # =================================== #
     # Dirty Propagation
     # =================================== #
     def mark_transform_dirty(self) -> None:
-        self.dispatch("on_dirty")
-        instructions = getattr(self, "instructions", None)
-
-        if instructions is not None:
-            instructions.sync_transform()
+        self.dispatch("on_transform_dirty", self)
 
         for child in self.children:
             child.mark_transform_dirty()
 
+    def mark_material_dirty(self) -> None:
+        self.dispatch("on_material_dirty", self)
+
+        for child in self.children:
+            child.mark_material_dirty()
+
     # =================================== #
     # Events
     # =================================== #
-    def on_dirty(self):
+    def on_transform_dirty(
+        self,
+        node: Node3D,
+    ) -> None:
+        pass
+
+    def on_material_dirty(
+        self,
+        node: Node3D,
+    ) -> None:
         pass
 
     # =================================== #
@@ -176,7 +243,9 @@ class Node3D(EventDispatcher):
 
         self.children.append(child)
         child.parent = self
+
         child.mark_transform_dirty()
+        child.mark_material_dirty()
 
     def remove_child(
         self,
@@ -184,12 +253,17 @@ class Node3D(EventDispatcher):
     ) -> None:
         self.children.remove(child)
         child.parent = None
+
         child.mark_transform_dirty()
+        child.mark_material_dirty()
 
     def clear_children(self) -> None:
         for child in list(self.children):
             self.remove_child(child)
 
+    # =================================== #
+    # Traversal
+    # =================================== #
     def __iter__(self) -> Iterator[Node3D | Object3D]:
         return iter(self.children)
 
@@ -203,29 +277,16 @@ class Node3D(EventDispatcher):
         for node in self.walk_tree():
             if self.is_object3d(node):
                 yield node
-        return iter(self.children)
 
+    # =================================== #
+    # Type Helpers
+    # =================================== #
     @property
     def is_object(self) -> bool:
         return False
 
-    def is_object3d(self, node) -> TypeGuard[Object3D]:
-        return node.is_object
-
-    # =================================== #
-    # Render
-    # =================================== #
-    def attach(
+    def is_object3d(
         self,
-        ctx: RenderContext,
-    ) -> bool:
-        """Override in renderable subclasses."""
-        return False
-
-    def detach(self) -> bool:
-        """Override in renderable subclasses."""
-        return False
-
-
-
-
+        node,
+    ) -> TypeGuard[Object3D]:
+        return node.is_object

@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Literal, Callable, TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING, Literal
 
 from kivy.graphics import Callback, Canvas
 from kivy.graphics.transformation import Matrix
 
 from kivyfn.three.render.context import RenderContext
-from kivyfn.three.render.manager import RenderContextManager
+from kivyfn.three.render.context_manager import RenderContextManager
+from kivyfn.three.render.instructions import MaterialInstructions
+from kivyfn.three.render.instructions_manager import InstructionsManager
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.node import Node3D
 
 if TYPE_CHECKING:
     from kivyfn.three.lights.manager import LightManager
 
-FramebufferOutput = Literal[
+
+RenderPassOutput = Literal[
     "color",
     "depth",
     "normal",
@@ -35,15 +38,25 @@ class Renderer:
     ):
         self.canvas = canvas
         self.contexts = RenderContextManager()
+        self.instructions = InstructionsManager()
+
+        self.transform_dirty: set[int] = set()
+        self.material_dirty: set[int] = set()
+
+        self.instructions.bind(
+            on_transform_dirty=self.queue_transform_dirty,
+            on_material_dirty=self.queue_material_dirty,
+        )
 
         self._modelview_mat: Matrix | None = None
         self._projection_mat: Matrix | None = None
 
     def __repr__(self) -> str:
         return (
-            f"Renderer("
+            "Renderer("
             f"contexts={len(self.contexts)}, "
-            f")"
+            f"instructions={len(self.instructions.by_object)}"
+            ")"
         )
 
     # =================================== #
@@ -66,6 +79,7 @@ class Renderer:
             name=name,
             shader=shader,
             hot_reload=hot_reload,
+            output="color",
         )
 
         self.contexts.add(
@@ -88,26 +102,24 @@ class Renderer:
         if context is None:
             return
 
+        self.instructions.detach_context(context)
         context.destroy()
         self.canvas.remove(context.ctx)
 
-
-    def clear_contexts(
-        self,
-    ) -> None:
-        for name in self.contexts.names():
+    def clear_contexts(self) -> None:
+        for name in list(self.contexts.names()):
             self.remove_context(name)
 
-
     # =================================== #
-    # FrameBuffer
+    # Render Pass
     # =================================== #
-    def create_framebuffer(
+    def create_render_pass(
         self,
         name: str,
         shader: Shader,
         size: tuple[int, int],
         *,
+        output: RenderPassOutput = "color",
         hot_reload: bool = False,
         tags: set[str] | None = None,
     ) -> RenderContext:
@@ -117,6 +129,7 @@ class Renderer:
             hot_reload=hot_reload,
             framebuffer=True,
             size=size,
+            output=output,
         )
 
         self.contexts.add(
@@ -130,19 +143,19 @@ class Renderer:
 
         return context
 
-    def remove_framebuffer(
+    def remove_render_pass(
         self,
         name: str,
     ) -> None:
-        self.unlink_framebuffer(source=name)
+        self.unlink_render_pass(source=name)
         self.remove_context(name)
 
-    def link_framebuffer(
+    def link_render_pass(
         self,
         source: str,
         uniform: str,
         *,
-        output: FramebufferOutput = "color",
+        output: RenderPassOutput,
         tags: set[str] | None = None,
         names: set[str] | None = None,
     ) -> None:
@@ -160,7 +173,7 @@ class Renderer:
             uniform=uniform,
             tags=tags,
             names=names,
-            output=output
+            output=output,
         )
 
         for ctx in self.contexts.select(tags=tags, names=names):
@@ -170,7 +183,7 @@ class Renderer:
                 slot=slot,
             )
 
-    def unlink_framebuffer(
+    def unlink_render_pass(
         self,
         source: str,
         *,
@@ -194,11 +207,12 @@ class Renderer:
     # Build
     # =================================== #
     def clear(self) -> None:
+        self.instructions.clear()
+        self.transform_dirty.clear()
+        self.material_dirty.clear()
+
         for ctx in self.contexts.values():
             ctx.clear()
-
-    def remove(self, node: Node3D) -> None:
-        self.detach(node)
 
     def add(
         self,
@@ -214,20 +228,96 @@ class Renderer:
             self.attach(node, ctx)
             Callback(reset_gl_context)
 
+    def remove(
+        self,
+        node: Node3D,
+    ) -> None:
+        self.detach(node)
+
     def attach(
         self,
         node: Node3D,
         ctx: RenderContext,
     ) -> None:
-        for child in node.walk_tree():
-            child.attach(ctx)
+        for object3d in node.walk_objects():
+            self.instructions.attach(object3d, ctx)
+
+        self.sync_node_transform(node)
+        self.sync_node_material(node)
 
     def detach(
         self,
         node: Node3D,
     ) -> None:
-        for child in node.walk_tree():
-            child.detach()
+        for object3d in node.walk_objects():
+            self.instructions.detach(object3d)
+
+    # =================================== #
+    # Dirty Queue
+    # =================================== #
+    def queue_transform_dirty(
+        self,
+        manager: InstructionsManager,
+        node: Node3D,
+    ) -> None:
+        self.transform_dirty.add(id(node))
+        self.flush_dirty()
+
+    def queue_material_dirty(
+        self,
+        manager: InstructionsManager,
+        node: Node3D,
+    ) -> None:
+        self.material_dirty.add(id(node))
+        self.flush_dirty()
+
+    def flush_dirty(self, *_) -> None:
+        while self.transform_dirty:
+            node_id = self.transform_dirty.pop()
+            node = self.instructions.objects.get(node_id)
+
+            if node is not None:
+                self.sync_node_transform(node)
+
+        while self.material_dirty:
+            node_id = self.material_dirty.pop()
+            node = self.instructions.objects.get(node_id)
+
+            if node is not None:
+                self.sync_node_material(node)
+
+    # =================================== #
+    # Sync
+    # =================================== #
+    def sync_node_transform(
+        self,
+        node: Node3D,
+    ) -> None:
+        for object3d in node.walk_objects():
+            object_id = id(object3d)
+            matrix = object3d.world_matrix.to_kivy_matrix()
+
+            for instructions in self.instructions.by_object.get(object_id, {}).values():
+                instructions.sync_transform(matrix)
+
+    def sync_node_material(
+        self,
+        node: Node3D,
+    ) -> None:
+        for object3d in node.walk_objects():
+            object_id = id(object3d)
+            material = object3d.material
+
+            if material is None:
+                continue
+
+            for instructions in self.instructions.by_object.get(object_id, {}).values():
+                if not isinstance(instructions, MaterialInstructions):
+                    continue
+
+                instructions.material = material
+                instructions.sync_uniforms()
+                instructions.sync_textures()
 
     # =================================== #
     # View
@@ -254,15 +344,11 @@ class Renderer:
             ctx["modelview_mat"] = self._modelview_mat
 
     @property
-    def modelview_mat(
-        self,
-    ) -> Matrix:
+    def modelview_mat(self) -> Matrix:
         assert self._modelview_mat is not None
         return self._modelview_mat
 
     @property
-    def projection_mat(
-        self,
-    ) -> Matrix:
+    def projection_mat(self) -> Matrix:
         assert self._projection_mat is not None
         return self._projection_mat

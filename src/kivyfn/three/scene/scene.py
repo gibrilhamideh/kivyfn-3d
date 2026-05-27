@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from kivyfn.three.controls.base import SceneController
     from kivyfn.three.loaders.asset import AssetObject, SceneAsset
 
-FramebufferOutput = Literal[
+RenderPassOutput = Literal[
     "color",
     "depth",
     "normal",
@@ -104,7 +104,7 @@ class Scene(Widget):
     # =================================== #
     # FrameBuffer API
     # =================================== #
-    def create_framebuffer(
+    def create_render_pass(
         self,
         name: str,
         shader: Shader,
@@ -113,7 +113,7 @@ class Scene(Widget):
         hot_reload: bool = False,
         tags: set[str] | None = None,
     ) -> RenderContext:
-        return self.renderer.create_framebuffer(
+        return self.renderer.create_render_pass(
             name=name,
             shader=shader,
             size=size,
@@ -121,22 +121,22 @@ class Scene(Widget):
             tags=tags,
         )
 
-    def remove_framebuffer(
+    def remove_render_pass(
         self,
         name: str,
     ) -> None:
-        self.renderer.remove_framebuffer(name)
+        self.renderer.remove_render_pass(name)
 
-    def link_framebuffer(
+    def link_re(
         self,
         source: str,
         uniform: str,
         *,
         tags: set[str] | None = None,
         names: set[str] | None = None,
-        output: FramebufferOutput = "depth",
+        output: RenderPassOutput = "depth",
     ) -> None:
-        self.renderer.link_framebuffer(
+        self.renderer.link_render_pass(
             source=source,
             uniform=uniform,
             tags=tags,
@@ -144,14 +144,14 @@ class Scene(Widget):
             output=output,
         )
 
-    def unlink_framebuffer(
+    def unlink_render_pass(
         self,
         source: str,
         *,
         tags: set[str] | None = None,
         names: set[str] | None = None,
     ) -> None:
-        self.renderer.unlink_framebuffer(
+        self.renderer.unlink_render_pass(
             source=source,
             tags=tags,
             names=names,

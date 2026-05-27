@@ -1,4 +1,4 @@
-# kivyfn/three/render/manager.py
+# kivyfn/three/render/context_manager.py
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from kivyfn.three.render.context import RenderContext
 
 
-FRAMEBUFFER_TEXTURE_START_SLOT = 10
+RENDER_PASS_TEXTURE_START_SLOT = 10
 
 
 @dataclass(slots=True)
@@ -20,7 +20,7 @@ class ManagedRenderContext:
 
 
 @dataclass(slots=True)
-class FramebufferLink:
+class RenderPassLink:
     source: str
     output: str
     uniform: str
@@ -32,7 +32,7 @@ class FramebufferLink:
 class RenderContextManager:
     def __init__(self) -> None:
         self._contexts: dict[str, ManagedRenderContext] = {}
-        self._framebuffer_links: list[FramebufferLink] = []
+        self._render_pass_links: list[RenderPassLink] = []
 
     def __len__(self) -> int:
         return len(self._contexts)
@@ -142,7 +142,7 @@ class RenderContextManager:
 
             managed.context.ctx[uniform_name] = value
 
-    def reserve_texture_slot(
+    def reserve_render_pass_slot(
         self,
         *,
         source: str,
@@ -154,7 +154,7 @@ class RenderContextManager:
         tag_set = set(tags or ())
         name_set = set(names or ())
 
-        for link in self._framebuffer_links:
+        for link in self._render_pass_links:
             if (
                 link.source == source
                 and link.output == output
@@ -166,16 +166,16 @@ class RenderContextManager:
 
         used_slots = {
             link.slot
-            for link in self._framebuffer_links
+            for link in self._render_pass_links
         }
 
-        slot = FRAMEBUFFER_TEXTURE_START_SLOT
+        slot = RENDER_PASS_TEXTURE_START_SLOT
 
         while slot in used_slots:
             slot += 1
 
-        self._framebuffer_links.append(
-            FramebufferLink(
+        self._render_pass_links.append(
+            RenderPassLink(
                 source=source,
                 output=output,
                 uniform=uniform,
@@ -187,20 +187,20 @@ class RenderContextManager:
 
         return slot
 
-    def release_texture_links(
+    def release_render_pass_links(
         self,
         *,
         source: str,
         tags: set[str] | None = None,
         names: set[str] | None = None,
-    ) -> list[FramebufferLink]:
-        released: list[FramebufferLink] = []
-        remaining: list[FramebufferLink] = []
+    ) -> list[RenderPassLink]:
+        released: list[RenderPassLink] = []
+        remaining: list[RenderPassLink] = []
 
         tag_set = set(tags or ())
         name_set = set(names or ())
 
-        for link in self._framebuffer_links:
+        for link in self._render_pass_links:
             if link.source != source:
                 remaining.append(link)
                 continue
@@ -215,7 +215,7 @@ class RenderContextManager:
 
             released.append(link)
 
-        self._framebuffer_links = remaining
+        self._render_pass_links = remaining
         return released
 
     def add_tag(
@@ -240,4 +240,4 @@ class RenderContextManager:
 
     def clear(self) -> None:
         self._contexts.clear()
-        self._framebuffer_links.clear()
+        self._render_pass_links.clear()
