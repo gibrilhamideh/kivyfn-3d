@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING, Literal
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle
 from kivy.graphics.opengl import GL_DEPTH_TEST, glDisable, glEnable, glViewport
-from kivy.properties import ObjectProperty, ColorProperty
+from kivy.properties import NumericProperty, ObjectProperty, ColorProperty
 from kivy.uix.widget import Widget
-
 
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.render.renderer import Renderer
@@ -24,12 +23,12 @@ if TYPE_CHECKING:
     from kivyfn.three.controls.base import SceneController
     from kivyfn.three.loaders.asset import AssetObject, SceneAsset
 
+
 RenderPassOutput = Literal[
     "color",
     "depth",
     "normal",
     "position",
-    "emissive",
     "material",
     "object_id",
 ]
@@ -39,8 +38,9 @@ class Scene(Widget):
 
     root: Node3D = ObjectProperty(None, allownone=True)
     bg_color: tuple[float, float, float, float] = ColorProperty()
+    framerate: int | None = NumericProperty(30, allownone=True)
 
-    def __init__(self, root: Node3D | None = None, **kwargs):
+    def __init__(self, root: Node3D | None = None, framerate: int | None = 30, **kwargs):
         super().__init__(**kwargs)
 
         with self.canvas.before:
@@ -55,14 +55,20 @@ class Scene(Widget):
             size=self._update_bg_rect,
         )
 
+
+
         self.camera = Camera()
-        self.renderer = Renderer(self.canvas)
+        self.renderer = Renderer(self.canvas, framerate)
         self.viewport = Viewport(self)
         self.controllers = []
 
         self.root = root or Node3D(name="root")
         self.lights = LightManager(self.root)
         self.lights.bind(on_dirty=self.renderer.sync_lights)
+
+
+        self.framerate = framerate
+        self.bind(framerate=self.renderer.setter("framerate"))
 
         self.bind(size=self._on_viewport_changed)
         self.bind(pos=self._on_viewport_changed)
@@ -73,8 +79,6 @@ class Scene(Widget):
         self.camera.bind(fov=self._on_camera_state_changed)
         self.camera.bind(ortho_size=self._on_camera_state_changed)
         self.camera.bind(perspective=self._on_camera_state_changed)
-
-
 
     # =================================== #
     # Context API
@@ -97,12 +101,17 @@ class Scene(Widget):
             tags=tags,
         )
 
-    def remove_context(self, name: str) -> None:
-        self.renderer.remove_context(name)
+    def hide_context(self, name: str) -> None:
+        self.renderer.hide_context(name)
 
+    def show_context(self, name: str) -> None:
+        self.renderer.show_context(name)
+
+    def destroy_context(self, name: str) -> None:
+        self.renderer.destroy_context(name)
 
     # =================================== #
-    # FrameBuffer API
+    # FrameBuffer / Render Pass API
     # =================================== #
     def create_render_pass(
         self,
@@ -121,13 +130,10 @@ class Scene(Widget):
             tags=tags,
         )
 
-    def remove_render_pass(
-        self,
-        name: str,
-    ) -> None:
-        self.renderer.remove_render_pass(name)
+    def destroy_render_pass(self, name: str) -> None:
+        self.renderer.destroy_render_pass(name)
 
-    def link_re(
+    def link_render_pass(
         self,
         source: str,
         uniform: str,
@@ -144,21 +150,8 @@ class Scene(Widget):
             output=output,
         )
 
-    def unlink_render_pass(
-        self,
-        source: str,
-        *,
-        tags: set[str] | None = None,
-        names: set[str] | None = None,
-    ) -> None:
-        self.renderer.unlink_render_pass(
-            source=source,
-            tags=tags,
-            names=names,
-        )
-
     # =================================== #
-    # Load API
+    # Node Lifecycle API
     # =================================== #
     def add(
         self,
@@ -176,11 +169,27 @@ class Scene(Widget):
             reset_gl_context=self.reset_gl_context,
         )
 
-    def remove(self, node: Node3D) -> None:
-        assert node.parent is not None
-        node.parent.remove_child(node)
-        self.renderer.remove(node)
+    def hide(
+        self,
+        node: Node3D,
+    ) -> None:
+        self.renderer.hide(node)
 
+    def show(
+        self,
+        node: Node3D,
+    ) -> None:
+        self.renderer.show(node)
+
+    def destroy(self, node: Node3D) -> None:
+        if node.parent is not None:
+            node.parent.remove_child(node)
+
+        self.renderer.destroy(node)
+
+    # =================================== #
+    # Load API
+    # =================================== #
     def load_asset(
         self,
         asset: AssetObject,
@@ -243,9 +252,8 @@ class Scene(Widget):
 
         return nodes
 
-
     # =================================== #
-    # gl Context
+    # GL Context
     # =================================== #
     def setup_gl_context(self, *_) -> None:
         glEnable(GL_DEPTH_TEST)
@@ -279,7 +287,7 @@ class Scene(Widget):
         self.update_camera()
 
     # =================================== #
-    # 
+    # Background
     # =================================== #
     def _update_bg_rect(self, *_):
         self._bg_rect.pos = self.pos
@@ -386,5 +394,3 @@ class Scene(Widget):
             f"  size=({self.width}, {self.height})\n"
             ")"
         )
-
-

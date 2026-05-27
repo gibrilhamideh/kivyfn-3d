@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import Callable, TYPE_CHECKING, Literal
 
-from kivy.graphics import Callback, Canvas
+from kivy.graphics import Canvas
 from kivy.graphics.transformation import Matrix
+from kivy.event import EventDispatcher
+from kivy.properties import NumericProperty
 
 from kivyfn.three.render.context import RenderContext
 from kivyfn.three.render.context_manager import RenderContextManager
@@ -23,7 +25,6 @@ RenderPassOutput = Literal[
     "depth",
     "normal",
     "position",
-    "emissive",
     "material",
     "object_id",
 ]
@@ -31,11 +32,19 @@ RenderPassOutput = Literal[
 GLCallback = Callable[..., None]
 
 
-class Renderer:
+class Renderer(EventDispatcher):
+
+    framerate: int | None = NumericProperty(30, allownone=True)
+
     def __init__(
         self,
         canvas: Canvas,
+        framerate: int | None,
+        **kwargs
     ):
+        super().__init__(**kwargs)
+
+        self.framerate = framerate
         self.canvas = canvas
         self.contexts = RenderContextManager()
         self.instructions = InstructionsManager()
@@ -75,16 +84,10 @@ class Renderer:
         hot_reload: bool,
         tags: set[str] | None = None,
     ) -> RenderContext:
-        context = RenderContext(
+        context = self.contexts.create(
             name=name,
             shader=shader,
             hot_reload=hot_reload,
-            output="color",
-        )
-
-        self.contexts.add(
-            name=name,
-            context=context,
             tags=tags,
         )
 
@@ -93,22 +96,49 @@ class Renderer:
 
         return context
 
-    def remove_context(
+
+    def hide_context(
         self,
         name: str,
     ) -> None:
-        context = self.contexts.remove(name)
+        if self.contexts.hidden(name):
+            return
+
+        context = self.contexts.get(name)
+        self.contexts.set_hidden(name, True)
+        self.canvas.remove(context.ctx)
+
+
+    def show_context(
+        self,
+        name: str,
+    ) -> None:
+        if not self.contexts.hidden(name):
+            return
+
+        context = self.contexts.get(name)
+
+        self.contexts.set_hidden(name, False)
+        self.canvas.add(context.ctx)
+        self.sync_context_view(context)
+
+
+    def destroy_context(
+        self,
+        name: str,
+    ) -> None:
+        hidden = self.contexts.hidden(name)
+        context = self.contexts.destroy(name)
 
         if context is None:
             return
 
         self.instructions.detach_context(context)
-        context.destroy()
-        self.canvas.remove(context.ctx)
 
-    def clear_contexts(self) -> None:
-        for name in list(self.contexts.names()):
-            self.remove_context(name)
+        if not hidden:
+            self.canvas.remove(context.ctx)
+
+        context.destroy()
 
     # =================================== #
     # Render Pass
@@ -119,22 +149,15 @@ class Renderer:
         shader: Shader,
         size: tuple[int, int],
         *,
-        output: RenderPassOutput = "color",
         hot_reload: bool = False,
         tags: set[str] | None = None,
     ) -> RenderContext:
-        context = RenderContext(
+        context = self.contexts.create(
             name=name,
             shader=shader,
             hot_reload=hot_reload,
             framebuffer=True,
             size=size,
-            output=output,
-        )
-
-        self.contexts.add(
-            name=name,
-            context=context,
             tags=tags,
         )
 
@@ -143,12 +166,12 @@ class Renderer:
 
         return context
 
-    def remove_render_pass(
+
+    def destroy_render_pass(
         self,
         name: str,
     ) -> None:
-        self.unlink_render_pass(source=name)
-        self.remove_context(name)
+        self.destroy_context(name)
 
     def link_render_pass(
         self,
@@ -183,37 +206,10 @@ class Renderer:
                 slot=slot,
             )
 
-    def unlink_render_pass(
-        self,
-        source: str,
-        *,
-        tags: set[str] | None = None,
-        names: set[str] | None = None,
-    ) -> None:
-        links = self.contexts.release_texture_links(
-            source=source,
-            tags=tags,
-            names=names,
-        )
-
-        for link in links:
-            for ctx in self.contexts.select(
-                tags=link.tags,
-                names=link.names,
-            ):
-                ctx.unbind_texture(link.uniform)
 
     # =================================== #
     # Build
     # =================================== #
-    def clear(self) -> None:
-        self.instructions.clear()
-        self.transform_dirty.clear()
-        self.material_dirty.clear()
-
-        for ctx in self.contexts.values():
-            ctx.clear()
-
     def add(
         self,
         node: Node3D,
@@ -223,34 +219,37 @@ class Renderer:
     ) -> None:
         ctx = self.contexts.get(context)
 
-        with ctx:
-            Callback(setup_gl_context)
-            self.attach(node, ctx)
-            Callback(reset_gl_context)
-
-    def remove(
-        self,
-        node: Node3D,
-    ) -> None:
-        self.detach(node)
-
-    def attach(
-        self,
-        node: Node3D,
-        ctx: RenderContext,
-    ) -> None:
-        for object3d in node.walk_objects():
-            self.instructions.attach(object3d, ctx)
+        self.instructions.create(
+            node=node,
+            ctx=ctx,
+            setup_gl_context=setup_gl_context,
+            reset_gl_context=reset_gl_context,
+        )
 
         self.sync_node_transform(node)
         self.sync_node_material(node)
 
-    def detach(
+
+    def hide(
         self,
         node: Node3D,
     ) -> None:
-        for object3d in node.walk_objects():
-            self.instructions.detach(object3d)
+        self.instructions.hide(node)
+
+
+    def show(
+        self,
+        node: Node3D,
+    ) -> None:
+        self.instructions.show(node)
+
+    def destroy(
+        self,
+        node: Node3D,
+    ) -> None:
+        self.instructions.destroy(node)
+
+
 
     # =================================== #
     # Dirty Queue

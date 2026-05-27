@@ -202,13 +202,13 @@ class Node3D(EventDispatcher):
     # Dirty Propagation
     # =================================== #
     def mark_transform_dirty(self) -> None:
-        self.dispatch("on_transform_dirty", self)
+        self.dispatch("on_transform_dirty")
 
         for child in self.children:
             child.mark_transform_dirty()
 
     def mark_material_dirty(self) -> None:
-        self.dispatch("on_material_dirty", self)
+        self.dispatch("on_material_dirty")
 
         for child in self.children:
             child.mark_material_dirty()
@@ -218,13 +218,11 @@ class Node3D(EventDispatcher):
     # =================================== #
     def on_transform_dirty(
         self,
-        node: Node3D,
     ) -> None:
         pass
 
     def on_material_dirty(
         self,
-        node: Node3D,
     ) -> None:
         pass
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING
 
 from kivy.event import EventDispatcher
+from kivy.graphics import Callback
 
 from kivyfn.three.render.instructions import (
     BaseInstructions,
@@ -22,6 +23,9 @@ if TYPE_CHECKING:
     from kivyfn.three.objects.object3d import Object3D
 
 
+GLCallback = Callable[..., None]
+
+
 class InstructionsManager(EventDispatcher):
 
     __events__ = (
@@ -37,6 +41,40 @@ class InstructionsManager(EventDispatcher):
         self.objects: dict[int, Object3D] = {}
         self._bound_objects: set[int] = set()
 
+    # =================================== #
+    # Build
+    # =================================== #
+    def create(
+        self,
+        node: Node3D,
+        ctx: RenderContext,
+        setup_gl_context: GLCallback,
+        reset_gl_context: GLCallback,
+    ) -> None:
+        ctx.add(Callback(setup_gl_context))
+
+        for object3d in node.walk_objects():
+            self._create_object(
+                object3d=object3d,
+                ctx=ctx,
+            )
+
+        ctx.add(Callback(reset_gl_context))
+
+    def destroy(
+        self,
+        node: Node3D,
+        ctx: RenderContext | None = None,
+    ) -> None:
+        for object3d in node.walk_objects():
+            self._destroy_object(
+                object3d=object3d,
+                ctx=ctx,
+            )
+
+    # =================================== #
+    # Object Instructions
+    # =================================== #
     def create_instructions(
         self,
         object3d: Object3D,
@@ -90,7 +128,7 @@ class InstructionsManager(EventDispatcher):
             ctx=ctx,
         )
 
-    def attach(
+    def _create_object(
         self,
         object3d: Object3D,
         ctx: RenderContext,
@@ -117,6 +155,102 @@ class InstructionsManager(EventDispatcher):
 
         return instructions
 
+    def _destroy_object(
+        self,
+        object3d: Object3D,
+        ctx: RenderContext | None = None,
+    ) -> None:
+        object_id = id(object3d)
+
+        if ctx is not None:
+            self._destroy_one(
+                object_id=object_id,
+                context_name=ctx.name,
+            )
+
+            if object_id not in self.by_object:
+                self.unbind_object(object3d)
+
+            return
+
+        for context_name in list(self.by_object.get(object_id, {})):
+            self._destroy_one(
+                object_id=object_id,
+                context_name=context_name,
+            )
+
+        self.unbind_object(object3d)
+        self.objects.pop(object_id, None)
+
+    def _destroy_one(
+        self,
+        *,
+        object_id: int,
+        context_name: str,
+    ) -> None:
+        context_map = self.by_object.get(object_id)
+        if context_map is None:
+            return
+
+        instructions = context_map.pop(context_name, None)
+        if instructions is None:
+            return
+
+        instructions.ctx.remove(instructions.group)
+        instructions.destroy()
+
+        context_objects = self.by_context.get(context_name)
+        if context_objects is not None:
+            context_objects.pop(object_id, None)
+
+            if not context_objects:
+                self.by_context.pop(context_name, None)
+
+        if not context_map:
+            self.by_object.pop(object_id, None)
+            self.objects.pop(object_id, None)
+
+    def destroy_context(
+        self,
+        ctx: RenderContext,
+    ) -> None:
+        context_name = ctx.name
+
+        for object_id in list(self.by_context.get(context_name, {})):
+            object3d = self.objects.get(object_id)
+
+            self._destroy_one(
+                object_id=object_id,
+                context_name=context_name,
+            )
+
+            if object3d is not None and object_id not in self.by_object:
+                self.unbind_object(object3d)
+
+        self.by_context.pop(context_name, None)
+
+    # =================================== #
+    # Visibility
+    # =================================== #
+    def show(
+        self,
+        node: Node3D,
+    ) -> None:
+        for object3d in node.walk_objects():
+            for instructions in self.by_object.get(id(object3d), {}).values():
+                instructions.show()
+
+    def hide(
+        self,
+        node: Node3D,
+    ) -> None:
+        for object3d in node.walk_objects():
+            for instructions in self.by_object.get(id(object3d), {}).values():
+                instructions.hide()
+
+    # =================================== #
+    # Object Binding
+    # =================================== #
     def bind_object(
         self,
         object3d: Object3D,
@@ -149,106 +283,17 @@ class InstructionsManager(EventDispatcher):
 
         self._bound_objects.discard(object_id)
 
-    def detach(
-        self,
-        object3d: Object3D,
-        ctx: RenderContext | None = None,
-    ) -> None:
-        object_id = id(object3d)
-
-        if ctx is not None:
-            self._detach_one(
-                object_id=object_id,
-                context_name=ctx.name,
-            )
-
-            if object_id not in self.by_object:
-                self.unbind_object(object3d)
-
-            return
-
-        for context_name in list(self.by_object.get(object_id, {})):
-            self._detach_one(
-                object_id=object_id,
-                context_name=context_name,
-            )
-
-        self.unbind_object(object3d)
-        self.objects.pop(object_id, None)
-
-    def detach_context(
-        self,
-        ctx: RenderContext,
-    ) -> None:
-        context_name = ctx.name
-
-        for object_id in list(self.by_context.get(context_name, {})):
-            object3d = self.objects.get(object_id)
-
-            self._detach_one(
-                object_id=object_id,
-                context_name=context_name,
-            )
-
-            if object3d is not None and object_id not in self.by_object:
-                self.unbind_object(object3d)
-
-        self.by_context.pop(context_name, None)
-
-    def _detach_one(
-        self,
-        *,
-        object_id: int,
-        context_name: str,
-    ) -> None:
-        context_map = self.by_object.get(object_id)
-        if context_map is None:
-            return
-
-        instructions = context_map.pop(context_name, None)
-        if instructions is None:
-            return
-
-        instructions.ctx.remove(instructions.group)
-        instructions.destroy()
-
-        context_objects = self.by_context.get(context_name)
-        if context_objects is not None:
-            context_objects.pop(object_id, None)
-
-            if not context_objects:
-                self.by_context.pop(context_name, None)
-
-        if not context_map:
-            self.by_object.pop(object_id, None)
-            self.objects.pop(object_id, None)
-
-    def show(
-        self,
-        node: Node3D,
-    ) -> None:
-        for object3d in node.walk_objects():
-            for instructions in self.by_object.get(id(object3d), {}).values():
-                instructions.show()
-
-    def hide(
-        self,
-        node: Node3D,
-    ) -> None:
-        for object3d in node.walk_objects():
-            for instructions in self.by_object.get(id(object3d), {}).values():
-                instructions.hide()
-
+    # =================================== #
+    # Dirty Events
+    # =================================== #
     def _on_object_transform_dirty(
         self,
-        object3d: Object3D,
         node: Node3D,
     ) -> None:
         self.dispatch("on_transform_dirty", node)
 
     def _on_object_material_dirty(
         self,
-        object3d: Object3D,
         node: Node3D,
     ) -> None:
         self.dispatch("on_material_dirty", node)
@@ -264,15 +309,3 @@ class InstructionsManager(EventDispatcher):
         node: Node3D,
     ) -> None:
         pass
-
-    def clear(self) -> None:
-        for object_id in list(self.by_object):
-            object3d = self.objects.get(object_id)
-
-            if object3d is not None:
-                self.detach(object3d)
-
-        self.by_object.clear()
-        self.by_context.clear()
-        self.objects.clear()
-        self._bound_objects.clear()

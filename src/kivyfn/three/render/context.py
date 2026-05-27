@@ -9,7 +9,8 @@ from typing import Any, Literal, cast
 from kivy.event import EventDispatcher
 from kivy.graphics import (
     BindTexture,
-    Fbo,
+    InstructionGroup,
+    Fbo as KivyFbo,
     RenderContext as KivyRenderContext,
 )
 from kivy.graphics.texture import Texture
@@ -100,7 +101,7 @@ class RenderContext(EventDispatcher):
                     "Framebuffer context requires a concrete size."
                 )
 
-            self.ctx = Fbo(
+            self.ctx = KivyFbo(
                 size=size,
                 with_depthbuffer=True,
                 compute_normal_mat=compute_normal_mat,
@@ -110,6 +111,12 @@ class RenderContext(EventDispatcher):
             self.ctx = KivyRenderContext(
                 compute_normal_mat=compute_normal_mat,
             )
+
+        self.texture_group = InstructionGroup()
+        self.object_group = InstructionGroup()
+
+        self.ctx.add(self.texture_group)
+        self.ctx.add(self.object_group)
 
         self.ctx.shader.source = str(shader.path)
 
@@ -140,14 +147,16 @@ class RenderContext(EventDispatcher):
         uniform: str,
         texture: Texture,
         slot: int,
-    ) -> None:
-        with self.ctx:
-            BindTexture(
-                texture=texture,
-                index=slot,
-            )
+    ) -> BindTexture:
+        instruction = BindTexture(
+            texture=texture,
+            index=slot,
+        )
 
+        self.texture_group.add(instruction)
         self.ctx[uniform] = slot
+
+        return instruction
 
     def unbind_texture(
         self,
@@ -155,9 +164,15 @@ class RenderContext(EventDispatcher):
     ) -> None:
         self.ctx[uniform] = 0
 
+    def clear_textures(self) -> None:
+        self.texture_group.clear()
+
     def destroy(self) -> None:
         self.shader.unbind(on_reload=self.on_shader_reload)
         self.shader.destroy()
+
+        self.texture_group.clear()
+        self.object_group.clear()
         self.ctx.clear()
 
     # =================================== #
@@ -193,13 +208,14 @@ class RenderContext(EventDispatcher):
         self.ctx[name] = value
 
     def clear(self) -> None:
-        self.ctx.clear()
+        self.texture_group.clear()
+        self.object_group.clear()
 
     def add(self, instruction):
-        self.ctx.add(instruction)
+        self.object_group.add(instruction)
 
     def remove(self, instruction):
-        self.ctx.remove(instruction)
+        self.object_group.remove(instruction)
 
     # =================================== #
     # View & Projections
@@ -228,5 +244,5 @@ class RenderContext(EventDispatcher):
         if not self.framebuffer:
             return None
 
-        ctx = cast(Fbo, self.ctx)
+        ctx = cast(KivyFbo, self.ctx)
         return ctx.texture

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from kivyfn.three.render.context import RenderContext
+from kivyfn.three.render.context import RenderContext
+from kivyfn.three.render.shader import Shader
 
 
 RENDER_PASS_TEXTURE_START_SLOT = 10
@@ -32,20 +32,35 @@ class RenderPassLink:
 class RenderContextManager:
     def __init__(self) -> None:
         self._contexts: dict[str, ManagedRenderContext] = {}
+        self._hidden: set[str] = set()
         self._render_pass_links: list[RenderPassLink] = []
 
     def __len__(self) -> int:
         return len(self._contexts)
 
-    def add(
+    # =================================== #
+    # Context Lifecycle
+    # =================================== #
+    def create(
         self,
         name: str,
-        context: RenderContext,
+        shader: Shader,
         *,
+        hot_reload: bool = False,
+        framebuffer: bool = False,
+        size: tuple[int, int] | None = None,
         tags: set[str] | None = None,
-    ) -> None:
+    ) -> RenderContext:
         if name in self._contexts:
             raise ValueError(f"Render context already exists: {name!r}")
+
+        context = RenderContext(
+            name=name,
+            shader=shader,
+            hot_reload=hot_reload,
+            framebuffer=framebuffer,
+            size=size,
+        )
 
         self._contexts[name] = ManagedRenderContext(
             name=name,
@@ -53,14 +68,63 @@ class RenderContextManager:
             tags=set(tags or ()),
         )
 
-    def remove(self, name: str) -> RenderContext | None:
+        return context
+
+    def destroy(self, name: str) -> RenderContext | None:
         managed = self._contexts.pop(name, None)
+        self._hidden.discard(name)
 
         if managed is None:
             return None
 
         return managed.context
 
+    # =================================== #
+    # Hidden State
+    # =================================== #
+    def hidden(self, name: str) -> bool:
+        return name in self._hidden
+
+    def set_hidden(
+        self,
+        name: str,
+        hidden: bool,
+    ) -> None:
+        if name not in self._contexts:
+            raise KeyError(f"Render context does not exist: {name!r}")
+
+        if hidden:
+            self._hidden.add(name)
+        else:
+            self._hidden.discard(name)
+
+    def hidden_names(self) -> list[str]:
+        return list(self._hidden)
+
+    def visible_names(self) -> list[str]:
+        return [
+            name
+            for name in self._contexts
+            if name not in self._hidden
+        ]
+
+    def hidden_contexts(self) -> list[RenderContext]:
+        return [
+            self._contexts[name].context
+            for name in self._hidden
+            if name in self._contexts
+        ]
+
+    def visible_contexts(self) -> list[RenderContext]:
+        return [
+            managed.context
+            for name, managed in self._contexts.items()
+            if name not in self._hidden
+        ]
+
+    # =================================== #
+    # Access
+    # =================================== #
     def get(self, name: str) -> RenderContext:
         try:
             return self._contexts[name].context
@@ -70,19 +134,41 @@ class RenderContextManager:
     def exists(self, name: str) -> bool:
         return name in self._contexts
 
-    def names(self) -> list[str]:
-        return list(self._contexts.keys())
+    # =================================== #
+    # Iteration
+    # =================================== #
+    def names(
+        self,
+        *,
+        include_hidden: bool = True,
+    ) -> list[str]:
+        if include_hidden:
+            return list(self._contexts.keys())
 
-    def values(self) -> list[RenderContext]:
-        return [
-            managed.context
-            for managed in self._contexts.values()
-        ]
+        return self.visible_names()
 
-    def items(self) -> list[tuple[str, RenderContext]]:
+    def values(
+        self,
+        *,
+        include_hidden: bool = True,
+    ) -> list[RenderContext]:
+        if include_hidden:
+            return [
+                managed.context
+                for managed in self._contexts.values()
+            ]
+
+        return self.visible_contexts()
+
+    def items(
+        self,
+        *,
+        include_hidden: bool = True,
+    ) -> list[tuple[str, RenderContext]]:
         return [
             (name, managed.context)
             for name, managed in self._contexts.items()
+            if include_hidden or name not in self._hidden
         ]
 
     def select(
@@ -90,10 +176,14 @@ class RenderContextManager:
         *,
         tags: set[str] | None = None,
         names: set[str] | None = None,
+        include_hidden: bool = True,
     ) -> list[RenderContext]:
         selected: list[RenderContext] = []
 
         for name, managed in self._contexts.items():
+            if not include_hidden and name in self._hidden:
+                continue
+
             if names is not None and name not in names:
                 continue
 
@@ -104,6 +194,9 @@ class RenderContextManager:
 
         return selected
 
+    # =================================== #
+    # Uniforms
+    # =================================== #
     def set_uniform(
         self,
         context_name: str,
@@ -120,8 +213,12 @@ class RenderContextManager:
         *,
         whitelist: set[str] | None = None,
         blacklist: set[str] | None = None,
+        include_hidden: bool = True,
     ) -> None:
         for name, managed in self._contexts.items():
+            if not include_hidden and name in self._hidden:
+                continue
+
             if whitelist is not None and name not in whitelist:
                 continue
 
@@ -135,13 +232,21 @@ class RenderContextManager:
         tag: str,
         uniform_name: str,
         value: Any,
+        *,
+        include_hidden: bool = True,
     ) -> None:
-        for managed in self._contexts.values():
+        for name, managed in self._contexts.items():
+            if not include_hidden and name in self._hidden:
+                continue
+
             if tag not in managed.tags:
                 continue
 
             managed.context.ctx[uniform_name] = value
 
+    # =================================== #
+    # Render Pass Texture Slots
+    # =================================== #
     def reserve_render_pass_slot(
         self,
         *,
@@ -187,37 +292,9 @@ class RenderContextManager:
 
         return slot
 
-    def release_render_pass_links(
-        self,
-        *,
-        source: str,
-        tags: set[str] | None = None,
-        names: set[str] | None = None,
-    ) -> list[RenderPassLink]:
-        released: list[RenderPassLink] = []
-        remaining: list[RenderPassLink] = []
-
-        tag_set = set(tags or ())
-        name_set = set(names or ())
-
-        for link in self._render_pass_links:
-            if link.source != source:
-                remaining.append(link)
-                continue
-
-            if tags is not None and link.tags != tag_set:
-                remaining.append(link)
-                continue
-
-            if names is not None and link.names != name_set:
-                remaining.append(link)
-                continue
-
-            released.append(link)
-
-        self._render_pass_links = remaining
-        return released
-
+    # =================================== #
+    # Tags
+    # =================================== #
     def add_tag(
         self,
         context_name: str,
@@ -237,7 +314,3 @@ class RenderContextManager:
         context_name: str,
     ) -> set[str]:
         return set(self._contexts[context_name].tags)
-
-    def clear(self) -> None:
-        self._contexts.clear()
-        self._render_pass_links.clear()
