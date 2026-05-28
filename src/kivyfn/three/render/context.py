@@ -138,6 +138,13 @@ class RenderContext(EventDispatcher):
     ) -> None:
         self.uniforms[name] = value
 
+    def apply_uniform(
+        self,
+        name: str,
+        value: Any,
+    ) -> None:
+        self.ctx[name] = value
+
     def sync_uniforms(self) -> None:
         for key, value in self.uniforms.items():
             self.ctx[key] = value

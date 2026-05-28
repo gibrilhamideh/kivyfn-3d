@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Callable, TYPE_CHECKING, Literal
 
+from kivy.event import EventDispatcher
 from kivy.graphics import Canvas
 from kivy.graphics.transformation import Matrix
-from kivy.event import EventDispatcher
 from kivy.properties import NumericProperty
 
 from kivyfn.three.render.context import RenderContext
@@ -21,12 +21,11 @@ if TYPE_CHECKING:
 
 
 RenderPassOutput = Literal[
-    "color",
     "depth",
     "normal",
     "position",
-    "material",
-    "object_id",
+    "id",
+    "color"
 ]
 
 GLCallback = Callable[..., None]
@@ -40,14 +39,14 @@ class Renderer(EventDispatcher):
         self,
         canvas: Canvas,
         framerate: int | None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(**kwargs)
 
         self.framerate = framerate
         self.canvas = canvas
         self.contexts = RenderContextManager()
-        self.instructions = InstructionsManager()
+        self.instructions = InstructionsManager(self.contexts)
 
         self.transform_dirty: set[int] = set()
         self.material_dirty: set[int] = set()
@@ -84,7 +83,7 @@ class Renderer(EventDispatcher):
         hot_reload: bool,
         tags: set[str] | None = None,
     ) -> RenderContext:
-        context = self.contexts.create(
+        context = self.contexts.create_context(
             name=name,
             shader=shader,
             hot_reload=hot_reload,
@@ -96,44 +95,40 @@ class Renderer(EventDispatcher):
 
         return context
 
-
     def hide_context(
         self,
         name: str,
     ) -> None:
-        if self.contexts.hidden(name):
+        if self.contexts.context_hidden(name):
             return
 
-        context = self.contexts.get(name)
-        self.contexts.set_hidden(name, True)
-        self.canvas.remove(context.ctx)
+        context = self.contexts.get_context(name)
 
+        self.contexts.hide_context(name)
+        self.canvas.remove(context.ctx)
 
     def show_context(
         self,
         name: str,
     ) -> None:
-        if not self.contexts.hidden(name):
+        if not self.contexts.context_hidden(name):
             return
 
-        context = self.contexts.get(name)
+        context = self.contexts.get_context(name)
 
-        self.contexts.set_hidden(name, False)
+        self.contexts.show_context(name)
         self.canvas.add(context.ctx)
         self.sync_context_view(context)
-
 
     def destroy_context(
         self,
         name: str,
     ) -> None:
-        hidden = self.contexts.hidden(name)
-        context = self.contexts.destroy(name)
+        hidden = self.contexts.context_hidden(name)
+        context = self.contexts.destroy_context(name)
 
         if context is None:
             return
-
-        self.instructions.detach_context(context)
 
         if not hidden:
             self.canvas.remove(context.ctx)
@@ -152,12 +147,11 @@ class Renderer(EventDispatcher):
         hot_reload: bool = False,
         tags: set[str] | None = None,
     ) -> RenderContext:
-        context = self.contexts.create(
+        context = self.contexts.create_render_pass(
             name=name,
             shader=shader,
-            hot_reload=hot_reload,
-            framebuffer=True,
             size=size,
+            hot_reload=hot_reload,
             tags=tags,
         )
 
@@ -165,13 +159,6 @@ class Renderer(EventDispatcher):
         self.sync_context_view(context)
 
         return context
-
-
-    def destroy_render_pass(
-        self,
-        name: str,
-    ) -> None:
-        self.destroy_context(name)
 
     def link_render_pass(
         self,
@@ -182,30 +169,30 @@ class Renderer(EventDispatcher):
         tags: set[str] | None = None,
         names: set[str] | None = None,
     ) -> None:
-        source_ctx = self.contexts.get(source)
-
-        if not source_ctx.framebuffer:
-            raise TypeError(f"Context {source!r} is not a framebuffer context.")
+        source_ctx = self.contexts.get_render_pass(source)
 
         texture = source_ctx.texture
         if texture is None:
-            raise RuntimeError(f"Framebuffer {source!r} has no output texture.")
+            raise RuntimeError(f"Render pass {source!r} has no output texture.")
 
-        slot = self.contexts.reserve_texture_slot(
-            source=source,
-            uniform=uniform,
+        targets = self.contexts.select_contexts(
             tags=tags,
             names=names,
-            output=output,
         )
 
-        for ctx in self.contexts.select(tags=tags, names=names):
-            ctx.bind_texture(
+        for target_ctx in targets:
+            link = self.contexts.register_render_pass_link(
+                target=target_ctx.name,
+                source=source,
+                output=output,
                 uniform=uniform,
-                texture=texture,
-                slot=slot,
             )
 
+            target_ctx.bind_texture(
+                uniform=uniform,
+                texture=texture,
+                slot=link.slot,
+            )
 
     # =================================== #
     # Build
@@ -217,7 +204,7 @@ class Renderer(EventDispatcher):
         setup_gl_context: GLCallback,
         reset_gl_context: GLCallback,
     ) -> None:
-        ctx = self.contexts.get(context)
+        ctx = self.contexts.get_context(context)
 
         self.instructions.create(
             node=node,
@@ -229,13 +216,11 @@ class Renderer(EventDispatcher):
         self.sync_node_transform(node)
         self.sync_node_material(node)
 
-
     def hide(
         self,
         node: Node3D,
     ) -> None:
         self.instructions.hide(node)
-
 
     def show(
         self,
@@ -248,8 +233,6 @@ class Renderer(EventDispatcher):
         node: Node3D,
     ) -> None:
         self.instructions.destroy(node)
-
-
 
     # =================================== #
     # Dirty Queue
@@ -329,7 +312,10 @@ class Renderer(EventDispatcher):
         self._projection_mat = camera.get_projection_matrix(aspect)
         self._modelview_mat = camera.get_view_matrix()
 
-        for ctx in self.contexts.values():
+        for ctx in self.contexts.context_values():
+            self.sync_context_view(ctx)
+
+        for ctx in self.contexts.render_pass_values():
             self.sync_context_view(ctx)
 
     def sync_context_view(

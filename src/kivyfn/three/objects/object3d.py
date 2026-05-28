@@ -32,6 +32,7 @@ Pivot = Literal[
 
 class Object3D(Node3D):
     geometry: Geometry = ObjectProperty()
+    material: Material = ObjectProperty()
 
     pickable: bool = BooleanProperty(False)
     grabable: bool = BooleanProperty(False)
@@ -96,7 +97,7 @@ class Object3D(Node3D):
         )
 
         self.geometry = geometry
-        self.material = material
+        self.material = material # type: ignore[reportIncompatibleVariableOverride]
         self.pivot = pivot
         self.collider = Collider(self)
 

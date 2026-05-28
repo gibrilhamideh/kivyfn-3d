@@ -25,12 +25,11 @@ if TYPE_CHECKING:
 
 
 RenderPassOutput = Literal[
-    "color",
     "depth",
     "normal",
     "position",
-    "material",
-    "object_id",
+    "id",
+    "color"
 ]
 
 
@@ -129,9 +128,6 @@ class Scene(Widget):
             hot_reload=hot_reload,
             tags=tags,
         )
-
-    def destroy_render_pass(self, name: str) -> None:
-        self.renderer.destroy_render_pass(name)
 
     def link_render_pass(
         self,

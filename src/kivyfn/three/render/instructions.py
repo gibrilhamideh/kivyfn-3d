@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import Any, Callable, TYPE_CHECKING
 
 from kivy.event import EventDispatcher
 from kivy.graphics import (
@@ -22,7 +22,9 @@ if TYPE_CHECKING:
 
     from kivyfn.three.objects.geometry import Geometry
     from kivyfn.three.objects.material import Material
-    from kivyfn.three.render.context import RenderContext
+
+
+ApplyUniform = Callable[[str, Any], None]
 
 
 TEXTURE_SLOTS = {
@@ -43,13 +45,11 @@ class BaseInstructions(EventDispatcher):
         self,
         *,
         geometry: Geometry,
-        ctx: RenderContext,
         compute_normal_matrix: bool = False,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(**kwargs)
 
-        self.ctx = ctx
         self.geometry = geometry
         self.visible = True
 
@@ -81,6 +81,7 @@ class BaseInstructions(EventDispatcher):
         ]
 
         self.rebuild()
+
 
     def rebuild(self) -> None:
         self.group.clear()
@@ -129,15 +130,15 @@ class MaterialInstructions(BaseInstructions):
         *,
         geometry: Geometry,
         material: Material,
-        ctx: RenderContext,
+        apply_uniform: ApplyUniform,
     ):
         super().__init__(
             geometry=geometry,
-            ctx=ctx,
             compute_normal_matrix=True,
         )
 
         self.material = material
+        self.apply_uniform = apply_uniform
 
         self.texture_binders = {
             name: BindTexture(index=slot)
@@ -148,7 +149,6 @@ class MaterialInstructions(BaseInstructions):
             partial(
                 self.apply_material,
                 material,
-                ctx,
             )
         )
 
@@ -166,12 +166,16 @@ class MaterialInstructions(BaseInstructions):
         self.sync_uniforms()
         self.sync_textures()
 
-
+    def copy(self) -> MaterialInstructions:
+        return self.__class__(
+            geometry=self.geometry,
+            material=self.material,
+            apply_uniform=self.apply_uniform,
+        )
 
     def apply_material(
         self,
         material: Material,
-        ctx: RenderContext,
         callback: Callback,
     ) -> None:
         for key, value in material.uniforms.items():
@@ -179,10 +183,10 @@ class MaterialInstructions(BaseInstructions):
                 continue
 
             if key in TEXTURE_SLOTS:
-                ctx[key] = TEXTURE_SLOTS[key]
+                self.apply_uniform(key, TEXTURE_SLOTS[key])
                 continue
 
-            ctx[key] = value
+            self.apply_uniform(key, value)
 
     def sync_textures(self, *_):
         for name, binder in self.texture_binders.items():
@@ -210,14 +214,12 @@ class ObjectIdInstructions(BaseInstructions):
         *,
         geometry: Geometry,
         object_id: int,
-        ctx: RenderContext,
+        apply_uniform: ApplyUniform,
     ):
-        super().__init__(
-            geometry=geometry,
-            ctx=ctx,
-        )
+        super().__init__(geometry=geometry)
 
         self.object_id = object_id
+        self.apply_uniform = apply_uniform
         self.object_id_callback = Callback(self.apply_object_id)
 
         self.instructions = [
@@ -230,6 +232,8 @@ class ObjectIdInstructions(BaseInstructions):
 
         self.rebuild()
 
+
+
     def apply_object_id(
         self,
         callback: Callback,
@@ -240,23 +244,25 @@ class ObjectIdInstructions(BaseInstructions):
         g = (object_id >> 8) & 0xFF
         b = object_id & 0xFF
 
-        self.ctx["object_id_color"] = [
-            r / 255.0,
-            g / 255.0,
-            b / 255.0,
-            1.0,
-        ]
+        self.apply_uniform(
+            "object_id_color",
+            [
+                r / 255.0,
+                g / 255.0,
+                b / 255.0,
+                1.0,
+            ],
+        )
+
 
 class NormalInstructions(BaseInstructions):
     def __init__(
         self,
         *,
         geometry: Geometry,
-        ctx: RenderContext,
     ):
         super().__init__(
             geometry=geometry,
-            ctx=ctx,
             compute_normal_matrix=True,
         )
 
@@ -267,10 +273,3 @@ class DepthInstructions(BaseInstructions):
 
 class PositionInstructions(BaseInstructions):
     pass
-
-
-
-
-
-
-

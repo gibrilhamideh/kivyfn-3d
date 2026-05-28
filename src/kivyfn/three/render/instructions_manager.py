@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, TYPE_CHECKING
+from typing import Literal, Callable, TYPE_CHECKING
 
 from kivy.event import EventDispatcher
 from kivy.graphics import Callback
@@ -18,12 +18,22 @@ from kivyfn.three.render.instructions import (
 )
 
 if TYPE_CHECKING:
+    from kivyfn.three.render.context_manager import RenderContextManager
     from kivyfn.three.render.context import RenderContext
     from kivyfn.three.scene.node import Node3D
     from kivyfn.three.objects.object3d import Object3D
 
 
 GLCallback = Callable[..., None]
+
+
+RenderPassOutput = Literal[
+    "depth",
+    "normal",
+    "position",
+    "id",
+    "color"
+]
 
 
 class InstructionsManager(EventDispatcher):
@@ -33,16 +43,71 @@ class InstructionsManager(EventDispatcher):
         "on_material_dirty",
     )
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        contexts: RenderContextManager,
+    ) -> None:
         super().__init__()
 
+        self.contexts = contexts
         self.by_object: dict[int, dict[str, BaseInstructions]] = {}
         self.by_context: dict[str, dict[int, BaseInstructions]] = {}
         self.objects: dict[int, Object3D] = {}
         self._bound_objects: set[int] = set()
 
+
     # =================================== #
-    # Build
+    # Instructions
+    # =================================== #
+    def create_render_instructions(
+        self,
+        object3d: Object3D,
+        ctx: RenderContext,
+    ) -> BaseInstructions:
+        return MaterialInstructions(
+            geometry=object3d.geometry,
+            material=object3d.material,
+            apply_uniform=ctx.apply_uniform,
+        )
+
+    def create_pass_instructions(
+        self,
+        object3d: Object3D,
+        ctx: RenderContext,
+        output: RenderPassOutput,
+    ) -> BaseInstructions:
+
+        if output == "depth":
+            return DepthInstructions(
+                geometry=object3d.geometry,
+            )
+
+        if output == "position":
+            return PositionInstructions(
+                geometry=object3d.geometry,
+            )
+
+        if output == "normal":
+            return NormalInstructions(
+                geometry=object3d.geometry,
+            )
+
+        if output == "id":
+            return ObjectIdInstructions(
+                geometry=object3d.geometry,
+                object_id=id(object3d),
+                apply_uniform=ctx.apply_uniform,
+            )
+
+        return ColorInstructions(
+            geometry=object3d.geometry,
+            material=object3d.material,
+            apply_uniform=ctx.apply_uniform,
+        )
+
+
+    # =================================== #
+    # Create
     # =================================== #
     def create(
         self,
@@ -54,84 +119,34 @@ class InstructionsManager(EventDispatcher):
         ctx.add(Callback(setup_gl_context))
 
         for object3d in node.walk_objects():
-            self._create_object(
+            self._create(
                 object3d=object3d,
                 ctx=ctx,
             )
 
         ctx.add(Callback(reset_gl_context))
 
-    def destroy(
-        self,
-        node: Node3D,
-        ctx: RenderContext | None = None,
-    ) -> None:
-        for object3d in node.walk_objects():
-            self._destroy_object(
-                object3d=object3d,
-                ctx=ctx,
-            )
+        for link in self.contexts.get_render_pass_links(ctx.name):
+            pass_ctx = self.contexts.get_render_pass(link.source)
 
-    # =================================== #
-    # Object Instructions
-    # =================================== #
-    def create_instructions(
-        self,
-        object3d: Object3D,
-        ctx: RenderContext,
-    ) -> BaseInstructions:
-        output = getattr(ctx, "output", "color")
+            pass_ctx.add(Callback(setup_gl_context))
 
-        if output == "depth":
-            return DepthInstructions(
-                geometry=object3d.geometry,
-                ctx=ctx,
-            )
+            for object3d in node.walk_objects():
+                self._create(
+                    object3d=object3d,
+                    ctx=pass_ctx,
+                    output=link.output,
+                )
 
-        if output == "position":
-            return PositionInstructions(
-                geometry=object3d.geometry,
-                ctx=ctx,
-            )
+            pass_ctx.add(Callback(reset_gl_context))
 
-        if output == "normal":
-            return NormalInstructions(
-                geometry=object3d.geometry,
-                ctx=ctx,
-            )
 
-        if output == "object_id":
-            return ObjectIdInstructions(
-                geometry=object3d.geometry,
-                object_id=id(object3d),
-                ctx=ctx,
-            )
-
-        material = object3d.material
-
-        if material is None:
-            raise ValueError(
-                f"Object {object3d.name!r} has no material for "
-                f"context {ctx.name!r}."
-            )
-
-        if output == "color":
-            return ColorInstructions(
-                geometry=object3d.geometry,
-                material=material,
-                ctx=ctx,
-            )
-
-        return MaterialInstructions(
-            geometry=object3d.geometry,
-            material=material,
-            ctx=ctx,
-        )
-
-    def _create_object(
+    def _create(
         self,
         object3d: Object3D,
         ctx: RenderContext,
+        *,
+        output: RenderPassOutput | None = None,
     ) -> BaseInstructions:
         object_id = id(object3d)
         context_name = ctx.name
@@ -140,10 +155,17 @@ class InstructionsManager(EventDispatcher):
         if existing is not None:
             return existing
 
-        instructions = self.create_instructions(
-            object3d=object3d,
-            ctx=ctx,
-        )
+        if output is None:
+            instructions = self.create_render_instructions(
+                object3d=object3d,
+                ctx=ctx,
+            )
+        else:
+            instructions = self.create_pass_instructions(
+                object3d=object3d,
+                ctx=ctx,
+                output=output,
+            )
 
         ctx.add(instructions.group)
 
@@ -155,7 +177,33 @@ class InstructionsManager(EventDispatcher):
 
         return instructions
 
-    def _destroy_object(
+
+    # =================================== #
+    # Destroy
+    # =================================== #
+    def destroy(
+        self,
+        node: Node3D,
+        ctx: RenderContext | None = None,
+    ) -> None:
+        for object3d in node.walk_objects():
+            self._destroy(
+                object3d=object3d,
+                ctx=ctx,
+            )
+
+            if ctx is None:
+                continue
+
+            for link in self.contexts.get_render_pass_links(ctx.name):
+                pass_ctx = self.contexts.get_render_pass(link.source)
+
+                self._destroy(
+                    object3d=object3d,
+                    ctx=pass_ctx,
+                )
+
+    def _destroy(
         self,
         object3d: Object3D,
         ctx: RenderContext | None = None,
@@ -163,7 +211,7 @@ class InstructionsManager(EventDispatcher):
         object_id = id(object3d)
 
         if ctx is not None:
-            self._destroy_one(
+            self._destroy_instruction(
                 object_id=object_id,
                 context_name=ctx.name,
             )
@@ -174,7 +222,7 @@ class InstructionsManager(EventDispatcher):
             return
 
         for context_name in list(self.by_object.get(object_id, {})):
-            self._destroy_one(
+            self._destroy_instruction(
                 object_id=object_id,
                 context_name=context_name,
             )
@@ -182,7 +230,8 @@ class InstructionsManager(EventDispatcher):
         self.unbind_object(object3d)
         self.objects.pop(object_id, None)
 
-    def _destroy_one(
+
+    def _destroy_instruction(
         self,
         *,
         object_id: int,
@@ -196,7 +245,9 @@ class InstructionsManager(EventDispatcher):
         if instructions is None:
             return
 
-        instructions.ctx.remove(instructions.group)
+        ctx = self.contexts.get(context_name)
+        ctx.remove(instructions.group)
+
         instructions.destroy()
 
         context_objects = self.by_context.get(context_name)
@@ -210,24 +261,6 @@ class InstructionsManager(EventDispatcher):
             self.by_object.pop(object_id, None)
             self.objects.pop(object_id, None)
 
-    def destroy_context(
-        self,
-        ctx: RenderContext,
-    ) -> None:
-        context_name = ctx.name
-
-        for object_id in list(self.by_context.get(context_name, {})):
-            object3d = self.objects.get(object_id)
-
-            self._destroy_one(
-                object_id=object_id,
-                context_name=context_name,
-            )
-
-            if object3d is not None and object_id not in self.by_object:
-                self.unbind_object(object3d)
-
-        self.by_context.pop(context_name, None)
 
     # =================================== #
     # Visibility
