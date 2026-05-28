@@ -67,7 +67,7 @@ class InstructionsManager(EventDispatcher):
         return MaterialInstructions(
             geometry=object3d.geometry,
             material=object3d.material,
-            apply_uniform=ctx.apply_uniform,
+            ctx=ctx,
         )
 
     def create_pass_instructions(
@@ -76,33 +76,35 @@ class InstructionsManager(EventDispatcher):
         ctx: RenderContext,
         output: RenderPassOutput,
     ) -> BaseInstructions:
-
         if output == "depth":
             return DepthInstructions(
                 geometry=object3d.geometry,
+                ctx=ctx,
             )
 
         if output == "position":
             return PositionInstructions(
                 geometry=object3d.geometry,
+                ctx=ctx,
             )
 
         if output == "normal":
             return NormalInstructions(
                 geometry=object3d.geometry,
+                ctx=ctx,
             )
 
         if output == "id":
             return ObjectIdInstructions(
                 geometry=object3d.geometry,
                 object_id=id(object3d),
-                apply_uniform=ctx.apply_uniform,
+                ctx=ctx,
             )
 
         return ColorInstructions(
             geometry=object3d.geometry,
             material=object3d.material,
-            apply_uniform=ctx.apply_uniform,
+            ctx=ctx,
         )
 
 

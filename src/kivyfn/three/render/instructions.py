@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from functools import partial
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
+from kivy.graphics.transformation import Matrix
 from kivy.event import EventDispatcher
 from kivy.graphics import (
     BindTexture,
-    Callback,
     InstructionGroup,
     MatrixInstruction,
     Mesh,
@@ -17,14 +16,16 @@ from kivy.graphics import (
     UpdateNormalMatrix,
 )
 
-if TYPE_CHECKING:
-    from kivy.graphics.transformation import Matrix
+from kivyfn.three.render.callbacks import (
+    MaterialCallback,
+    ObjectIdCallback,
+    TransformCallback,
+)
 
+if TYPE_CHECKING:
     from kivyfn.three.objects.geometry import Geometry
     from kivyfn.three.objects.material import Material
-
-
-ApplyUniform = Callable[[str, Any], None]
+    from kivyfn.three.render.context import RenderContext
 
 
 TEXTURE_SLOTS = {
@@ -45,11 +46,13 @@ class BaseInstructions(EventDispatcher):
         self,
         *,
         geometry: Geometry,
+        ctx: RenderContext,
         compute_normal_matrix: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
+        self.ctx = ctx
         self.geometry = geometry
         self.visible = True
 
@@ -57,6 +60,11 @@ class BaseInstructions(EventDispatcher):
 
         self.push = PushMatrix()
         self.matrix = MatrixInstruction()
+
+        self.transform_callback = TransformCallback(
+            ctx=ctx,
+            matrix_instruction=self.matrix,
+        )
 
         self.normal_matrix = None
         if compute_normal_matrix:
@@ -76,12 +84,12 @@ class BaseInstructions(EventDispatcher):
             self.push,
             self.matrix,
             self.normal_matrix,
+            self.transform_callback,
             self.mesh,
             self.pop,
         ]
 
         self.rebuild()
-
 
     def rebuild(self) -> None:
         self.group.clear()
@@ -98,6 +106,7 @@ class BaseInstructions(EventDispatcher):
         matrix: Matrix,
     ) -> None:
         self.matrix.matrix = matrix
+        self.transform_callback.ask_update()
 
     def sync_uniforms(self, *_):
         pass
@@ -130,32 +139,32 @@ class MaterialInstructions(BaseInstructions):
         *,
         geometry: Geometry,
         material: Material,
-        apply_uniform: ApplyUniform,
+        ctx: RenderContext,
     ):
         super().__init__(
             geometry=geometry,
+            ctx=ctx,
             compute_normal_matrix=True,
         )
 
         self.material = material
-        self.apply_uniform = apply_uniform
 
         self.texture_binders = {
             name: BindTexture(index=slot)
             for name, slot in TEXTURE_SLOTS.items()
         }
 
-        self.material_callback = Callback(
-            partial(
-                self.apply_material,
-                material,
-            )
+        self.material_callback = MaterialCallback(
+            ctx=ctx,
+            material=material,
+            texture_slots=TEXTURE_SLOTS,
         )
 
         self.instructions = [
             self.push,
             self.matrix,
             self.normal_matrix,
+            self.transform_callback,
             *self.texture_binders.values(),
             self.material_callback,
             self.mesh,
@@ -165,28 +174,6 @@ class MaterialInstructions(BaseInstructions):
         self.rebuild()
         self.sync_uniforms()
         self.sync_textures()
-
-    def copy(self) -> MaterialInstructions:
-        return self.__class__(
-            geometry=self.geometry,
-            material=self.material,
-            apply_uniform=self.apply_uniform,
-        )
-
-    def apply_material(
-        self,
-        material: Material,
-        callback: Callback,
-    ) -> None:
-        for key, value in material.uniforms.items():
-            if value is None:
-                continue
-
-            if key in TEXTURE_SLOTS:
-                self.apply_uniform(key, TEXTURE_SLOTS[key])
-                continue
-
-            self.apply_uniform(key, value)
 
     def sync_textures(self, *_):
         for name, binder in self.texture_binders.items():
@@ -200,9 +187,6 @@ class MaterialInstructions(BaseInstructions):
     def sync_uniforms(self, *_):
         self.material_callback.ask_update()
 
-    def destroy(self) -> None:
-        super().destroy()
-
 
 class ColorInstructions(MaterialInstructions):
     pass
@@ -214,17 +198,24 @@ class ObjectIdInstructions(BaseInstructions):
         *,
         geometry: Geometry,
         object_id: int,
-        apply_uniform: ApplyUniform,
+        ctx: RenderContext,
     ):
-        super().__init__(geometry=geometry)
+        super().__init__(
+            geometry=geometry,
+            ctx=ctx,
+        )
 
         self.object_id = object_id
-        self.apply_uniform = apply_uniform
-        self.object_id_callback = Callback(self.apply_object_id)
+
+        self.object_id_callback = ObjectIdCallback(
+            ctx=ctx,
+            object_id=object_id,
+        )
 
         self.instructions = [
             self.push,
             self.matrix,
+            self.transform_callback,
             self.object_id_callback,
             self.mesh,
             self.pop,
@@ -232,27 +223,8 @@ class ObjectIdInstructions(BaseInstructions):
 
         self.rebuild()
 
-
-
-    def apply_object_id(
-        self,
-        callback: Callback,
-    ) -> None:
-        object_id = self.object_id
-
-        r = (object_id >> 16) & 0xFF
-        g = (object_id >> 8) & 0xFF
-        b = object_id & 0xFF
-
-        self.apply_uniform(
-            "object_id_color",
-            [
-                r / 255.0,
-                g / 255.0,
-                b / 255.0,
-                1.0,
-            ],
-        )
+    def sync_uniforms(self, *_):
+        self.object_id_callback.ask_update()
 
 
 class NormalInstructions(BaseInstructions):
@@ -260,9 +232,11 @@ class NormalInstructions(BaseInstructions):
         self,
         *,
         geometry: Geometry,
+        ctx: RenderContext,
     ):
         super().__init__(
             geometry=geometry,
+            ctx=ctx,
             compute_normal_matrix=True,
         )
 

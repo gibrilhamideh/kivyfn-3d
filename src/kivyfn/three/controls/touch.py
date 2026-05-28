@@ -1,5 +1,28 @@
 # kivyfn/three/controls/touch.py
 
+"""
+Production touch camera controls.
+
+Controls
+--------
+One finger drag:
+    Orbit camera around target.
+
+Two finger drag:
+    Pan camera.
+
+Two finger pinch:
+    Zoom in/out.
+
+Notes
+-----
+This class is intentionally NOT using kivy.gesture.Gesture.
+kivy.gesture is for recognizing drawn shapes/patterns.
+Camera navigation needs continuous multitouch tracking instead.
+"""
+
+
+
 from __future__ import annotations
 
 import math
@@ -8,6 +31,7 @@ from dataclasses import dataclass
 from kivyfn.three.controls.base import SceneController
 from kivyfn.three.controls.orbit import OrbitCameraController
 from kivyfn.three.math.vector import Vector3
+from kivyfn.three.scene.view import View
 
 
 @dataclass(slots=True)
@@ -22,27 +46,6 @@ class TouchPoint:
 
 
 class TouchCameraControls(SceneController):
-    """
-    Production touch camera controls.
-
-    Controls
-    --------
-    One finger drag:
-        Orbit camera around target.
-
-    Two finger drag:
-        Pan camera.
-
-    Two finger pinch:
-        Zoom in/out.
-
-    Notes
-    -----
-    This class is intentionally NOT using kivy.gesture.Gesture.
-    kivy.gesture is for recognizing drawn shapes/patterns.
-    Camera navigation needs continuous multitouch tracking instead.
-    """
-
     MODE_IDLE = "idle"
     MODE_ORBIT_PENDING = "orbit_pending"
     MODE_ORBIT = "orbit"
@@ -51,6 +54,7 @@ class TouchCameraControls(SceneController):
 
     def __init__(
         self,
+        view_name: str = "main",
         orbit_sensitivity: float = 0.35,
         pan_sensitivity: float = 0.01,
         zoom_sensitivity: float = 0.20,
@@ -67,6 +71,8 @@ class TouchCameraControls(SceneController):
         max_bounds: Vector3 | None = None,
     ):
         super().__init__()
+
+        self.view_name = view_name
 
         self.orbit_sensitivity = orbit_sensitivity
         self.pan_sensitivity = pan_sensitivity
@@ -105,9 +111,9 @@ class TouchCameraControls(SceneController):
         self._suppress_single_until_release = False
 
     @property
-    def camera(self):
+    def view(self) -> View:
         assert self.scene is not None
-        return self.scene.camera
+        return self.scene.views[self.view_name]
 
     # =================================== #
     # Events
@@ -180,9 +186,6 @@ class TouchCameraControls(SceneController):
             return True
 
         if was_two_finger and len(self._points) == 1:
-            # Important:
-            # After pinch/pan, do not immediately switch to orbit.
-            # Otherwise the remaining finger causes a camera jump.
             self._suppress_single_until_release = True
             self._mode = self.MODE_IDLE
             self._last_single_pos = self._only_point().pos
@@ -211,7 +214,6 @@ class TouchCameraControls(SceneController):
             if distance < self.orbit_deadzone:
                 return
 
-            # Start orbit cleanly without applying the first noisy jump.
             self._mode = self.MODE_ORBIT
             self._last_single_pos = point.pos
             self._smooth_orbit_dx = 0.0
@@ -272,7 +274,6 @@ class TouchCameraControls(SceneController):
             ):
                 return
 
-            # Start the two-finger gesture cleanly without the first jump.
             self._mode = self.MODE_TWO
             self._last_two_center = center
             self._last_two_distance = distance
@@ -301,31 +302,31 @@ class TouchCameraControls(SceneController):
             self._zoom(pinch_delta * self.zoom_sensitivity)
 
     # =================================== #
-    # Camera Controls
+    # View Controls
     # =================================== #
 
     def _orbit(self, dx: float, dy: float) -> None:
-        camera = self.camera
+        view = self.view
 
-        eye, target, up = OrbitCameraController.orbit(
-            camera.eye,
-            camera.target,
-            camera.up,
+        position, target, up = OrbitCameraController.orbit(
+            view.position,
+            view.target,
+            view.up,
             dx=dx * self.orbit_sensitivity,
             dy=dy * self.orbit_sensitivity,
             min_pitch_degrees=self.min_pitch,
             max_pitch_degrees=self.max_pitch,
         )
 
-        camera.set_look_at(eye, target, up)
+        view.set_look_at(position, target, up)
 
     def _pan(self, dx: float, dy: float) -> None:
-        camera = self.camera
+        view = self.view
 
-        eye, target, up = OrbitCameraController.pan(
-            camera.eye,
-            camera.target,
-            camera.up,
+        position, target, up = OrbitCameraController.pan(
+            view.position,
+            view.target,
+            view.up,
             dx=dx,
             dy=dy,
             units_per_pixel=self.pan_sensitivity,
@@ -333,31 +334,31 @@ class TouchCameraControls(SceneController):
             max_bounds=self.max_bounds,
         )
 
-        camera.set_look_at(eye, target, up)
+        view.set_look_at(position, target, up)
 
     def _zoom(self, amount: float) -> None:
-        camera = self.camera
+        view = self.view
 
-        if camera.perspective == 0.0:
-            camera.ortho_size = OrbitCameraController.zoom_orthographic(
-                current_size=camera.ortho_size,
+        if view.perspective == 0.0:
+            view.ortho_size = OrbitCameraController.zoom_orthographic(
+                current_size=view.ortho_size,
                 dy=amount,
                 min_zoom=self.min_zoom,
                 max_zoom=self.max_zoom,
             )
             return
 
-        eye, target, up = OrbitCameraController.dolly(
-            camera.eye,
-            camera.target,
-            camera.up,
+        position, target, up = OrbitCameraController.dolly(
+            view.position,
+            view.target,
+            view.up,
             dy=amount,
             units_per_pixel=0.01,
             min_zoom=self.min_zoom,
             max_zoom=self.max_zoom,
         )
 
-        camera.set_look_at(eye, target, up)
+        view.set_look_at(position, target, up)
 
     # =================================== #
     # Touch Helpers
@@ -390,6 +391,7 @@ class TouchCameraControls(SceneController):
 
     def _two_center(self) -> tuple[float, float]:
         a, b = self._two_points()
+
         return (
             (a.x + b.x) * 0.5,
             (a.y + b.y) * 0.5,
@@ -397,6 +399,7 @@ class TouchCameraControls(SceneController):
 
     def _two_distance(self) -> float:
         a, b = self._two_points()
+
         return math.hypot(
             b.x - a.x,
             b.y - a.y,

@@ -1,7 +1,7 @@
 # kivyfn/three/scene/scene.py
 
 from __future__ import annotations
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Tuple
 
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle
@@ -11,7 +11,8 @@ from kivy.uix.widget import Widget
 
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.render.renderer import Renderer
-from kivyfn.three.scene.camera import Camera
+from kivyfn.three.scene.view import View
+from kivyfn.three.scene.view_manager import ViewManager
 from kivyfn.three.scene.viewport import Viewport
 from kivyfn.three.objects.object3d import Object3D
 from kivyfn.three.objects.material import Material
@@ -55,8 +56,7 @@ class Scene(Widget):
         )
 
 
-
-        self.camera = Camera()
+        self.views = ViewManager()
         self.renderer = Renderer(self.canvas, framerate)
         self.viewport = Viewport(self)
         self.controllers = []
@@ -72,12 +72,9 @@ class Scene(Widget):
         self.bind(size=self._on_viewport_changed)
         self.bind(pos=self._on_viewport_changed)
 
-        self.camera.bind(eye=self._on_camera_state_changed)
-        self.camera.bind(target=self._on_camera_state_changed)
-        self.camera.bind(up=self._on_camera_state_changed)
-        self.camera.bind(fov=self._on_camera_state_changed)
-        self.camera.bind(ortho_size=self._on_camera_state_changed)
-        self.camera.bind(perspective=self._on_camera_state_changed)
+        self.views.bind(on_view_update=self._on_view_udpate)
+
+
 
     # =================================== #
     # Context API
@@ -90,15 +87,32 @@ class Scene(Widget):
         self,
         name: str,
         shader: Shader,
+        view_name: str,
         hot_reload: bool = False,
         tags: set[str] | None = None,
     ) -> RenderContext:
-        return self.renderer.create_context(
+        # Validate that the view exists before creating/linking the context.
+        view = self.views.get(view_name)
+
+        ctx = self.renderer.create_context(
             name=name,
             shader=shader,
             hot_reload=hot_reload,
             tags=tags,
         )
+
+        self.views.link(
+            view.name,
+            ctx.name,
+            sync=False,
+        )
+
+        self.update_view(
+            view,
+            (ctx.name,),
+        )
+
+        return ctx
 
     def hide_context(self, name: str) -> None:
         self.renderer.hide_context(name)
@@ -116,18 +130,34 @@ class Scene(Widget):
         self,
         name: str,
         shader: Shader,
+        view_name: str,
         size: tuple[int, int],
         *,
         hot_reload: bool = False,
         tags: set[str] | None = None,
     ) -> RenderContext:
-        return self.renderer.create_render_pass(
+        view = self.views.get(view_name)
+
+        ctx = self.renderer.create_render_pass(
             name=name,
             shader=shader,
             size=size,
             hot_reload=hot_reload,
             tags=tags,
         )
+
+        self.views.link(
+            view.name,
+            ctx.name,
+            sync=False,
+        )
+
+        self.update_view(
+            view,
+            (ctx.name,),
+        )
+
+        return ctx
 
     def link_render_pass(
         self,
@@ -277,26 +307,33 @@ class Scene(Widget):
         )
 
     def _on_viewport_changed(self, *_) -> None:
-        self.update_camera()
+        for view, contexts in self.views.get_links():
+            self.update_view(view, contexts)
 
-    def _on_camera_state_changed(self, *_) -> None:
-        self.update_camera()
+    def _on_view_udpate(
+        self,
+        manager: ViewManager,
+        view: View,
+        contexts: Tuple[str, ...]
+    ) -> None:
+        self.update_view(view, contexts)
 
-    # =================================== #
-    # Background
-    # =================================== #
-    def _update_bg_rect(self, *_):
-        self._bg_rect.pos = self.pos
-        self._bg_rect.size = self.size
 
     # =================================== #
     # Camera
     # =================================== #
-    def update_camera(self) -> None:
+    def update_view(
+        self,
+        view: View, 
+        names: Tuple[str, ...]) -> None:
         self.renderer.update_view(
-            self.camera,
+            view,
+            names,
             self.aspect,
         )
+
+    def update_all_views(self,):
+        pass
 
     @property
     def aspect(self) -> float:
@@ -306,13 +343,13 @@ class Scene(Widget):
             else 1.0
         )
 
-    @property
-    def modelview_mat(self):
-        return self.renderer.modelview_mat
+    # =================================== #
+    # Background
+    # =================================== #
+    def _update_bg_rect(self, *_):
+        self._bg_rect.pos = self.pos
+        self._bg_rect.size = self.size
 
-    @property
-    def projection_mat(self):
-        return self.renderer.projection_mat
 
     # =================================== #
     # Controllers
@@ -386,7 +423,6 @@ class Scene(Widget):
             f"  root={self.root.name!r},\n"
             f"  contexts={len(self.renderer.contexts)},\n"
             f"  controllers={len(self.controllers)},\n"
-            f"  camera={self.camera.name!r},\n"
             f"  size=({self.width}, {self.height})\n"
             ")"
         )

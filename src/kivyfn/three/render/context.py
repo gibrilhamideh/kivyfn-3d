@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 from pprint import pformat
-from typing import Any, Literal, cast
+from typing import cast, Any, Literal, TYPE_CHECKING
 
 from kivy.event import EventDispatcher
 from kivy.graphics import (
     BindTexture,
     InstructionGroup,
+    ClearColor,
+    ClearBuffers,
     Fbo as KivyFbo,
     RenderContext as KivyRenderContext,
 )
@@ -23,7 +25,9 @@ from kivy.properties import (
 )
 
 from kivyfn.three.render.shader import Shader
-from kivyfn.three.scene.camera import Camera
+
+if TYPE_CHECKING:
+    from kivyfn.three.scene.view import View
 
 
 ShaderReloadEvent = Literal[
@@ -107,6 +111,12 @@ class RenderContext(EventDispatcher):
                 compute_normal_mat=compute_normal_mat,
             )
 
+            with self.ctx:
+                ClearColor(1.0, 1.0, 1.0, 1.0)
+
+                # ClearBuffers()
+                ClearBuffers(clear_color=True, clear_depth=True)
+
         else:
             self.ctx = KivyRenderContext(
                 compute_normal_mat=compute_normal_mat,
@@ -165,11 +175,6 @@ class RenderContext(EventDispatcher):
 
         return instruction
 
-    def unbind_texture(
-        self,
-        uniform: str,
-    ) -> None:
-        self.ctx[uniform] = 0
 
     def clear_textures(self) -> None:
         self.texture_group.clear()
@@ -229,11 +234,11 @@ class RenderContext(EventDispatcher):
     # =================================== #
     def update_view(
         self,
-        camera: Camera,
+        view: View,
         aspect: float,
     ) -> None:
-        self.ctx["projection_mat"] = camera.get_projection_matrix(aspect)
-        self.ctx["modelview_mat"] = camera.get_view_matrix()
+        self.ctx["projection_mat"] = view.get_projection_matrix(aspect)
+        self.ctx["modelview_mat"] = view.get_view_matrix()
 
     @property
     def projection_mat(self):

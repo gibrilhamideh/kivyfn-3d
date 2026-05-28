@@ -1,26 +1,30 @@
-# kivyfn/three/scene/camera.py
+# kivyfn/three/scene/view.py
 
 from __future__ import annotations
 from typing import Literal
 import math
 from kivy.graphics.transformation import Matrix
-from kivy.properties import NumericProperty, ObjectProperty, OptionProperty
+from kivy.properties import (
+        NumericProperty,
+        ObjectProperty,
+        OptionProperty,
+)
 
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.scene.node import Node3D
 
 
-class Camera(Node3D):
-    # Kivy properties to allow reactive auto-binding inside the Scene class
-    eye = ObjectProperty(None, allownone=True)
-    target = ObjectProperty(None, allownone=True)
-    up = ObjectProperty(None, allownone=True)
+class View(Node3D):
 
-    fov = NumericProperty(45.0)
-    near = NumericProperty(1.0)
-    far = NumericProperty(1000.0)
+    position: Vector3 = ObjectProperty(None, allownone=True)
+    target: Vector3 = ObjectProperty(None, allownone=True)
+    up: Vector3 = ObjectProperty(None, allownone=True)
 
-    ortho_size = NumericProperty(20.0)
+    fov: float = NumericProperty(45.0)
+    near: float = NumericProperty(1.0)
+    far: float = NumericProperty(1000.0)
+
+    ortho_size: float = NumericProperty(20.0)
     perspective: int = NumericProperty(1.0)
     projection_type: Literal[
         "perspective",
@@ -29,11 +33,11 @@ class Camera(Node3D):
 
     def __repr__(self) -> str:
         return (
-            "Camera(\n"
+            "View(\n"
             f"  name={self.name!r},\n"
             f"  projection_type={self.projection_type!r},\n"
             f"  fov={self.fov:.1f},\n"
-            f"  eye={self.eye},\n"
+            f"  position={self.position},\n"
             f"  target={self.target},\n"
             f"  up={self.up}\n"
             ")"
@@ -42,7 +46,7 @@ class Camera(Node3D):
     def __init__(
         self,
         name: str = "camera",
-        eye: Vector3 | None = None,
+        position: Vector3 | None = None,
         target: Vector3 | None = None,
         up: Vector3 | None = None,
         **kwargs,
@@ -52,7 +56,7 @@ class Camera(Node3D):
             **kwargs,
         )
 
-        self.eye = eye or Vector3(0.0, 0.0, 10.0)
+        self.position = position or Vector3(0.0, 0.0, 10.0)
         self.target = target or Vector3.zero()
         self.up = up or Vector3(0.0, 1.0, 0.0)
 
@@ -66,9 +70,9 @@ class Camera(Node3D):
     def get_view_matrix(self) -> Matrix:
         matrix = Matrix()
         return matrix.look_at(
-            self.eye.x,
-            self.eye.y,
-            self.eye.z,
+            self.position.x,
+            self.position.y,
+            self.position.z,
             self.target.x,
             self.target.y,
             self.target.z,
@@ -112,11 +116,11 @@ class Camera(Node3D):
 
     def set_look_at(
         self,
-        eye: Vector3,
+        position: Vector3,
         target: Vector3,
         up: Vector3 | None = None,
     ) -> None:
-        self.eye = eye
+        self.position = position
         self.target = target
 
         if up is not None:

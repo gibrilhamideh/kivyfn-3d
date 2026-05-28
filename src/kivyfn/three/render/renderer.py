@@ -18,6 +18,7 @@ from kivyfn.three.scene.node import Node3D
 
 if TYPE_CHECKING:
     from kivyfn.three.lights.manager import LightManager
+    from kivyfn.three.scene.view import View
 
 
 RenderPassOutput = Literal[
@@ -56,9 +57,6 @@ class Renderer(EventDispatcher):
             on_material_dirty=self.queue_material_dirty,
         )
 
-        self._modelview_mat: Matrix | None = None
-        self._projection_mat: Matrix | None = None
-
     def __repr__(self) -> str:
         return (
             "Renderer("
@@ -91,7 +89,6 @@ class Renderer(EventDispatcher):
         )
 
         self.canvas.add(context.ctx)
-        self.sync_context_view(context)
 
         return context
 
@@ -118,7 +115,6 @@ class Renderer(EventDispatcher):
 
         self.contexts.show_context(name)
         self.canvas.add(context.ctx)
-        self.sync_context_view(context)
 
     def destroy_context(
         self,
@@ -156,7 +152,6 @@ class Renderer(EventDispatcher):
         )
 
         self.canvas.add(context.ctx)
-        self.sync_context_view(context)
 
         return context
 
@@ -306,34 +301,28 @@ class Renderer(EventDispatcher):
     # =================================== #
     def update_view(
         self,
-        camera,
+        view: View,
+        contexts: tuple[str, ...],
         aspect: float,
     ) -> None:
-        self._projection_mat = camera.get_projection_matrix(aspect)
-        self._modelview_mat = camera.get_view_matrix()
+        projection_mat = view.get_projection_matrix(aspect)
+        modelview_mat = view.get_view_matrix()
 
-        for ctx in self.contexts.context_values():
-            self.sync_context_view(ctx)
-
-        for ctx in self.contexts.render_pass_values():
-            self.sync_context_view(ctx)
+        for name in contexts:
+            ctx = self.contexts.get(name)
+            self.sync_context_view(
+                ctx,
+                projection_mat,
+                modelview_mat,
+            )
 
     def sync_context_view(
         self,
         ctx: RenderContext,
+        projection_mat: Matrix,
+        modelview_mat: Matrix,
     ) -> None:
-        if self._projection_mat is not None:
-            ctx["projection_mat"] = self._projection_mat
+        ctx["projection_mat"] = projection_mat
+        ctx["modelview_mat"] = modelview_mat
 
-        if self._modelview_mat is not None:
-            ctx["modelview_mat"] = self._modelview_mat
 
-    @property
-    def modelview_mat(self) -> Matrix:
-        assert self._modelview_mat is not None
-        return self._modelview_mat
-
-    @property
-    def projection_mat(self) -> Matrix:
-        assert self._projection_mat is not None
-        return self._projection_mat
