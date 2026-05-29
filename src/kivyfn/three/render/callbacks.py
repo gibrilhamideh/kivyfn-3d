@@ -4,12 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numpy as np
+from kivy.graphics import Callback
 
-from kivy.graphics import Callback, MatrixInstruction
-from kivy.graphics.transformation import Matrix
-
-from kivyfn.three.math.matrix import Matrix4
+from kivyfn.three.math.matrix import Matrix3, Matrix4
 
 if TYPE_CHECKING:
     from kivyfn.three.objects.material import Material
@@ -21,44 +18,38 @@ class TransformCallback(Callback):
         self,
         *,
         ctx: RenderContext,
-        matrix_instruction: MatrixInstruction,
         **kwargs,
-    ) -> None:
+    ):
         self.ctx = ctx
-        self.matrix_instruction = matrix_instruction
+
+        self.model_mat = Matrix4.identity()
+        self.normal_mat = Matrix3.identity()
 
         super().__init__(
             self.apply,
             **kwargs,
         )
 
-    def apply(
+    def sync(
         self,
-        *_,
+        model_mat: Matrix4,
+        normal_mat: Matrix3,
     ) -> None:
-        self.ctx.apply_uniform("world_mat", self.matrix)
+        self.model_mat = model_mat
+        self.normal_mat = normal_mat
 
-    # @property
-    # def matrix(self):
-    #     return self.matrix_instruction.matrix
+        self.ask_update()
 
-    # @property
-    # def matrix(self) -> Matrix:
-    #     matrix4 = Matrix4(self.matrix_instruction.matrix.tolist())
-    #     return matrix4.transpose().to_kivy_matrix()
+    def apply(self, *_):
+        self.ctx.apply_uniform(
+            "model_mat",
+            self.model_mat.to_uniform(),
+        )
 
-    @property
-    def matrix(self) -> Matrix:
-        values = np.array(
-            self.matrix_instruction.matrix.tolist(),
-            dtype=np.float32,
-        ).T
-
-        matrix = Matrix()
-        matrix.set(array=values.tolist())
-
-        return matrix
-
+        self.ctx.apply_uniform(
+            "normal_mat",
+            self.normal_mat.to_uniform(),
+        )
 
 class MaterialCallback(Callback):
     def __init__(

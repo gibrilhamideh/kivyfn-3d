@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from kivy.graphics.transformation import Matrix
 import numpy as np
+from kivy.graphics.transformation import Matrix
 
 
 class Matrix3:
@@ -14,19 +14,27 @@ class Matrix3:
             self.values = np.array(values, dtype=np.float32).reshape((3, 3))
 
     @classmethod
-    def identity(cls) -> "Matrix3":
+    def identity(cls) -> Matrix3:
         return cls()
 
-    def transpose(self) -> "Matrix3":
+    def transpose(self) -> Matrix3:
         return Matrix3(self.values.T)
 
-    def inverse(self) -> "Matrix3":
+    def inverse(self) -> Matrix3:
         return Matrix3(np.linalg.inv(self.values))
 
     def tolist(self):
         return self.values.tolist()
 
-    def __matmul__(self, other: "Matrix3") -> "Matrix3":
+    def to_matrix4(self) -> Matrix4:
+        matrix = np.identity(4, dtype=np.float32)
+        matrix[:3, :3] = self.values
+        return Matrix4(matrix)
+
+    def to_uniform(self) -> Matrix:
+        return self.to_matrix4().to_uniform()
+
+    def __matmul__(self, other: Matrix3) -> Matrix3:
         return Matrix3(self.values @ other.values)
 
     def __repr__(self) -> str:
@@ -47,49 +55,62 @@ class Matrix4:
             self.values = np.array(values, dtype=np.float32).reshape((4, 4))
 
     @classmethod
-    def identity(cls) -> "Matrix4":
+    def identity(cls) -> Matrix4:
         return cls()
 
-    def transpose(self) -> "Matrix4":
+    def transpose(self) -> Matrix4:
         return Matrix4(self.values.T)
 
-    def inverse(self) -> "Matrix4":
+    def inverse(self) -> Matrix4:
         return Matrix4(np.linalg.inv(self.values))
 
     def compute_normal_matrix(self) -> Matrix3:
         rotation = self.values[:3, :3].astype(np.float64)
-
         normal = np.linalg.inv(rotation).T
-
         return Matrix3(normal.astype(np.float32))
 
-    def transform_point(self, x: float, y: float, z: float):
-        result = self.values @ np.array([x, y, z, 1.0], dtype=np.float32)
+    def transform_point(
+        self,
+        x: float,
+        y: float,
+        z: float,
+    ):
+        result = self.values @ np.array(
+            [x, y, z, 1.0],
+            dtype=np.float32,
+        )
 
         w = result[3]
+
         if w != 0.0 and w != 1.0:
             result = result / w
 
         return result[0], result[1], result[2]
 
-
-    def transform_direction(self, x: float, y: float, z: float):
-        result = self.values @ np.array([x, y, z, 0.0], dtype=np.float32)
+    def transform_direction(
+        self,
+        x: float,
+        y: float,
+        z: float,
+    ):
+        result = self.values @ np.array(
+            [x, y, z, 0.0],
+            dtype=np.float32,
+        )
 
         return result[0], result[1], result[2]
-
 
     def tolist(self):
         return self.values.tolist()
 
-    def to_kivy_matrix(self) -> Matrix:
+    def to_uniform(self) -> Matrix:
         matrix = Matrix()
         matrix.set(
-            array=self.transpose().tolist()
+            array=self.values.T.tolist(),
         )
         return matrix
 
-    def __matmul__(self, other: "Matrix4") -> "Matrix4":
+    def __matmul__(self, other: Matrix4) -> Matrix4:
         return Matrix4(self.values @ other.values)
 
     def __repr__(self) -> str:

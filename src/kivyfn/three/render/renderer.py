@@ -272,10 +272,18 @@ class Renderer(EventDispatcher):
     ) -> None:
         for object3d in node.walk_objects():
             object_id = id(object3d)
-            matrix = object3d.world_matrix.to_kivy_matrix()
 
-            for instructions in self.instructions.by_object.get(object_id, {}).values():
-                instructions.sync_transform(matrix)
+            model_mat = object3d.world_matrix
+            normal_mat = model_mat.compute_normal_matrix()
+
+            for instructions in self.instructions.by_object.get(
+                object_id,
+                {},
+            ).values():
+                instructions.sync_transform(
+                    model_mat=model_mat,
+                    normal_mat=normal_mat,
+                )
 
     def sync_node_material(
         self,
@@ -306,23 +314,23 @@ class Renderer(EventDispatcher):
         aspect: float,
     ) -> None:
         projection_mat = view.get_projection_matrix(aspect)
-        modelview_mat = view.get_view_matrix()
+        view_mat = view.get_view_matrix()
 
         for name in contexts:
             ctx = self.contexts.get(name)
             self.sync_context_view(
                 ctx,
                 projection_mat,
-                modelview_mat,
+                view_mat,
             )
 
     def sync_context_view(
         self,
         ctx: RenderContext,
         projection_mat: Matrix,
-        modelview_mat: Matrix,
+        view_mat: Matrix,
     ) -> None:
         ctx["projection_mat"] = projection_mat
-        ctx["modelview_mat"] = modelview_mat
+        ctx["view_mat"] = view_mat
 
 

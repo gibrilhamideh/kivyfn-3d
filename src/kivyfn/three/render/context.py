@@ -107,15 +107,16 @@ class RenderContext(EventDispatcher):
 
             self.ctx = KivyFbo(
                 size=size,
-                with_depthbuffer=True,
+                clear_color=(1.0, 1.0, 1.0, 1.0),
+                # with_depthbuffer=True,
                 compute_normal_mat=compute_normal_mat,
             )
-
             with self.ctx:
-                ClearColor(1.0, 1.0, 1.0, 1.0)
+                ClearBuffers(
+                    clear_color=True,
+                    clear_depth=True,
+                )
 
-                # ClearBuffers()
-                ClearBuffers(clear_color=True, clear_depth=True)
 
         else:
             self.ctx = KivyRenderContext(

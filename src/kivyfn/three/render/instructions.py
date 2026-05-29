@@ -4,18 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kivy.graphics.transformation import Matrix
 from kivy.event import EventDispatcher
 from kivy.graphics import (
     BindTexture,
     InstructionGroup,
-    MatrixInstruction,
     Mesh,
-    PopMatrix,
-    PushMatrix,
-    UpdateNormalMatrix,
 )
+from kivy.graphics.transformation import Matrix
 
+from kivyfn.three.math.matrix import Matrix3, Matrix4
 from kivyfn.three.render.callbacks import (
     MaterialCallback,
     ObjectIdCallback,
@@ -47,7 +44,6 @@ class BaseInstructions(EventDispatcher):
         *,
         geometry: Geometry,
         ctx: RenderContext,
-        compute_normal_matrix: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -58,17 +54,9 @@ class BaseInstructions(EventDispatcher):
 
         self.group = InstructionGroup()
 
-        self.push = PushMatrix()
-        self.matrix = MatrixInstruction()
-
         self.transform_callback = TransformCallback(
             ctx=ctx,
-            matrix_instruction=self.matrix,
         )
-
-        self.normal_matrix = None
-        if compute_normal_matrix:
-            self.normal_matrix = UpdateNormalMatrix()
 
         self.mesh = Mesh(
             vertices=geometry.vertices,
@@ -78,15 +66,9 @@ class BaseInstructions(EventDispatcher):
             texture=geometry.texture,
         )
 
-        self.pop = PopMatrix()
-
         self.instructions = [
-            self.push,
-            self.matrix,
-            self.normal_matrix,
             self.transform_callback,
             self.mesh,
-            self.pop,
         ]
 
         self.rebuild()
@@ -103,10 +85,13 @@ class BaseInstructions(EventDispatcher):
 
     def sync_transform(
         self,
-        matrix: Matrix,
+        model_mat: Matrix4,
+        normal_mat: Matrix3,
     ) -> None:
-        self.matrix.matrix = matrix
-        self.transform_callback.ask_update()
+        self.transform_callback.sync(
+            model_mat=model_mat,
+            normal_mat=normal_mat,
+        )
 
     def sync_uniforms(self, *_):
         pass
@@ -144,7 +129,6 @@ class MaterialInstructions(BaseInstructions):
         super().__init__(
             geometry=geometry,
             ctx=ctx,
-            compute_normal_matrix=True,
         )
 
         self.material = material
@@ -161,14 +145,10 @@ class MaterialInstructions(BaseInstructions):
         )
 
         self.instructions = [
-            self.push,
-            self.matrix,
-            self.normal_matrix,
             self.transform_callback,
             *self.texture_binders.values(),
             self.material_callback,
             self.mesh,
-            self.pop,
         ]
 
         self.rebuild()
@@ -213,12 +193,9 @@ class ObjectIdInstructions(BaseInstructions):
         )
 
         self.instructions = [
-            self.push,
-            self.matrix,
             self.transform_callback,
             self.object_id_callback,
             self.mesh,
-            self.pop,
         ]
 
         self.rebuild()
@@ -228,17 +205,7 @@ class ObjectIdInstructions(BaseInstructions):
 
 
 class NormalInstructions(BaseInstructions):
-    def __init__(
-        self,
-        *,
-        geometry: Geometry,
-        ctx: RenderContext,
-    ):
-        super().__init__(
-            geometry=geometry,
-            ctx=ctx,
-            compute_normal_matrix=True,
-        )
+    pass
 
 
 class DepthInstructions(BaseInstructions):
