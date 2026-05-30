@@ -10,14 +10,14 @@ from kivyfn.three.math.matrix import Matrix3, Matrix4
 
 if TYPE_CHECKING:
     from kivyfn.three.objects.material import Material
-    from kivyfn.three.render.context import RenderContext
+    from kivyfn.three.render.context import RenderContext, RenderPass
 
 
 class TransformCallback(Callback):
     def __init__(
         self,
         *,
-        ctx: RenderContext,
+        ctx: RenderContext | RenderPass,
         **kwargs,
     ):
         self.ctx = ctx
@@ -94,7 +94,7 @@ class ObjectIdCallback(Callback):
     def __init__(
         self,
         *,
-        ctx: RenderContext,
+        ctx: RenderContext | RenderPass,
         object_id: int,
         uniform: str = "object_id_color",
         **kwargs,

@@ -1,69 +1,427 @@
 # kivyfn/three/render/context_manager.py
 
 from __future__ import annotations
-from typing import Literal
 
 from dataclasses import dataclass, field
 
-from kivyfn.three.render.context import RenderContext
+from kivyfn.three.render.context import (
+    RenderContext,
+    RenderPass,
+    RenderPassOutput,
+)
+from kivyfn.three.render.context_registry import (
+    ContextSelection,
+    RenderContextRegistry,
+    RenderPassRegistry,
+)
 from kivyfn.three.render.shader import Shader
 
-
-RenderPassOutput = Literal[
-    "depth",
-    "normal",
-    "position",
-    "id",
-    "color"
-]
 
 RENDER_PASS_TEXTURE_START_SLOT = 10
 
 
-@dataclass(slots=True)
-class ManagedRenderContext:
-    name: str
-    context: RenderContext
-    tags: set[str] = field(default_factory=set)
-
+# =================================== #
+# Render Pass Link Models
+# =================================== #
 
 @dataclass(slots=True)
-class RenderPassLink:
-    target: str
-    source: str
+class RenderPassBinding:
+    pass_name: str
+    target_name: str
     output: RenderPassOutput
     uniform: str
     slot: int
 
 
+@dataclass(slots=True)
+class RenderPassLink:
+    pass_name: str
+    sources: ContextSelection
+    targets: ContextSelection
+    output: RenderPassOutput
+    uniform: str
+    bindings: list[RenderPassBinding] = field(default_factory=list)
+
+
+# =================================== #
+# Render Pass Binder
+# =================================== #
+
+class RenderPassBinder:
+    def __init__(
+        self,
+        *,
+        contexts: RenderContextRegistry,
+        passes: RenderPassRegistry,
+    ) -> None:
+        self.contexts = contexts
+        self.passes = passes
+
+        self._links: list[RenderPassLink] = []
+        self._bindings_by_target: dict[str, list[RenderPassBinding]] = {}
+
+    # =================================== #
+    # Public API
+    # =================================== #
+
+    def link(
+        self,
+        *,
+        pass_name: str,
+        uniform: str,
+        output: RenderPassOutput,
+        source_names: set[str] | None = None,
+        source_tags: set[str] | None = None,
+        target_names: set[str] | None = None,
+        target_tags: set[str] | None = None,
+    ) -> RenderPassLink:
+        render_pass = self.passes.get(pass_name)
+
+        sources = ContextSelection(
+            names=source_names,
+            tags=source_tags,
+        )
+
+        targets = ContextSelection(
+            names=target_names,
+            tags=target_tags,
+        )
+
+        existing = self._find_link(
+            pass_name=pass_name,
+            uniform=uniform,
+            output=output,
+            sources=sources,
+            targets=targets,
+        )
+
+        if existing is not None:
+            return existing
+
+        link = RenderPassLink(
+            pass_name=pass_name,
+            sources=sources,
+            targets=targets,
+            output=output,
+            uniform=uniform,
+        )
+
+        target_contexts = self.contexts.select(
+            selection=targets,
+            include_hidden=True,
+        )
+
+        for target_context in target_contexts:
+            binding, created = self._get_or_create_binding(
+                pass_name=pass_name,
+                target_name=target_context.name,
+                output=output,
+                uniform=uniform,
+            )
+
+            link.bindings.append(binding)
+
+            if created:
+                target_context.bind_texture(
+                    uniform=uniform,
+                    texture=render_pass.texture,
+                    slot=binding.slot,
+                )
+
+        self._links.append(link)
+
+        return link
+
+    def links(self) -> list[RenderPassLink]:
+        return list(self._links)
+
+    def links_for_pass(
+        self,
+        pass_name: str,
+    ) -> list[RenderPassLink]:
+        return [
+            link
+            for link in self._links
+            if link.pass_name == pass_name
+        ]
+
+    def links_for_target(
+        self,
+        target_name: str,
+    ) -> list[RenderPassLink]:
+        return [
+            link
+            for link in self._links
+            if any(
+                binding.target_name == target_name
+                for binding in link.bindings
+            )
+        ]
+
+    def links_for_source(
+        self,
+        source_name: str,
+    ) -> list[RenderPassLink]:
+        links: list[RenderPassLink] = []
+
+        for link in self._links:
+            source_contexts = self.contexts.select(
+                selection=link.sources,
+                include_hidden=True,
+            )
+
+            for context in source_contexts:
+                if context.name == source_name:
+                    links.append(link)
+                    break
+
+        return links
+
+    def bindings(self) -> list[RenderPassBinding]:
+        return [
+            binding
+            for bindings in self._bindings_by_target.values()
+            for binding in bindings
+        ]
+
+    def bindings_for_target(
+        self,
+        target_name: str,
+    ) -> list[RenderPassBinding]:
+        return list(
+            self._bindings_by_target.get(
+                target_name,
+                (),
+            )
+        )
+
+    def select_sources_for_pass(
+        self,
+        pass_name: str,
+        *,
+        include_hidden: bool = False,
+    ) -> list[RenderContext]:
+        selected: dict[str, RenderContext] = {}
+
+        for link in self.links_for_pass(pass_name):
+            source_contexts = self.contexts.select(
+                selection=link.sources,
+                include_hidden=include_hidden,
+            )
+
+            for context in source_contexts:
+                selected[context.name] = context
+
+        return list(selected.values())
+
+    def remove_context(
+        self,
+        name: str,
+    ) -> None:
+        self._bindings_by_target.pop(
+            name,
+            None,
+        )
+
+        for link in self._links:
+            link.bindings = [
+                binding
+                for binding in link.bindings
+                if binding.target_name != name
+            ]
+
+    def remove_render_pass(
+        self,
+        pass_name: str,
+    ) -> None:
+        self._links = [
+            link
+            for link in self._links
+            if link.pass_name != pass_name
+        ]
+
+        for target_name, bindings in list(self._bindings_by_target.items()):
+            remaining = [
+                binding
+                for binding in bindings
+                if binding.pass_name != pass_name
+            ]
+
+            if remaining:
+                self._bindings_by_target[target_name] = remaining
+            else:
+                self._bindings_by_target.pop(
+                    target_name,
+                    None,
+                )
+
+    # =================================== #
+    # Internals
+    # =================================== #
+
+    def _get_or_create_binding(
+        self,
+        *,
+        pass_name: str,
+        target_name: str,
+        output: RenderPassOutput,
+        uniform: str,
+    ) -> tuple[RenderPassBinding, bool]:
+        existing = self._find_binding(
+            pass_name=pass_name,
+            target_name=target_name,
+            output=output,
+            uniform=uniform,
+        )
+
+        if existing is not None:
+            return existing, False
+
+        binding = RenderPassBinding(
+            pass_name=pass_name,
+            target_name=target_name,
+            output=output,
+            uniform=uniform,
+            slot=self._next_texture_slot(
+                target_name=target_name,
+            ),
+        )
+
+        self._bindings_by_target.setdefault(
+            target_name,
+            [],
+        ).append(binding)
+
+        return binding, True
+
+    def _find_binding(
+        self,
+        *,
+        pass_name: str,
+        target_name: str,
+        output: RenderPassOutput,
+        uniform: str,
+    ) -> RenderPassBinding | None:
+        bindings = self._bindings_by_target.get(
+            target_name,
+            (),
+        )
+
+        for binding in bindings:
+            if (
+                binding.pass_name == pass_name
+                and binding.output == output
+                and binding.uniform == uniform
+            ):
+                return binding
+
+        return None
+
+    def _next_texture_slot(
+        self,
+        *,
+        target_name: str,
+    ) -> int:
+        used_slots = {
+            binding.slot
+            for binding in self._bindings_by_target.get(
+                target_name,
+                (),
+            )
+        }
+
+        slot = RENDER_PASS_TEXTURE_START_SLOT
+
+        while slot in used_slots:
+            slot += 1
+
+        return slot
+
+    def _find_link(
+        self,
+        *,
+        pass_name: str,
+        uniform: str,
+        output: RenderPassOutput,
+        sources: ContextSelection,
+        targets: ContextSelection,
+    ) -> RenderPassLink | None:
+        for link in self._links:
+            if (
+                link.pass_name == pass_name
+                and link.uniform == uniform
+                and link.output == output
+                and self._same_selection(link.sources, sources)
+                and self._same_selection(link.targets, targets)
+            ):
+                return link
+
+        return None
+
+    def _same_selection(
+        self,
+        a: ContextSelection,
+        b: ContextSelection,
+    ) -> bool:
+        return (
+            a.names == b.names
+            and a.tags == b.tags
+        )
+
+
+# =================================== #
+# Context Manager Facade
+# =================================== #
+
 class RenderContextManager:
     def __init__(self) -> None:
-        self._contexts: dict[str, ManagedRenderContext] = {}
-        self._passes: dict[str, ManagedRenderContext] = {}
-        self._hidden: set[str] = set()
-        self._render_pass_links: dict[str, list[RenderPassLink]] = {}
+        self.contexts = RenderContextRegistry()
+        self.passes = RenderPassRegistry()
+
+        self.binder = RenderPassBinder(
+            contexts=self.contexts,
+            passes=self.passes,
+        )
 
     def __len__(self) -> int:
-        return len(self._contexts)
+        return len(self.contexts)
 
     # =================================== #
     # General
     # =================================== #
+
     def get(
         self,
         name: str,
-    ) -> RenderContext:
-        if name in self._contexts:
-            return self._contexts[name].context
+    ) -> RenderContext | RenderPass:
+        if self.contexts.exists(name):
+            return self.contexts.get(name)
 
-        if name in self._passes:
-            return self._passes[name].context
+        if self.passes.exists(name):
+            return self.passes.get(name)
 
-        raise KeyError(f"Render context does not exist: {name!r}")
+        raise KeyError(
+            f"Render object does not exist: {name!r}"
+        )
+
+    def _ensure_name_available(
+        self,
+        name: str,
+    ) -> None:
+        if self.contexts.exists(name):
+            raise ValueError(
+                f"Render context already exists: {name!r}"
+            )
+
+        if self.passes.exists(name):
+            raise ValueError(
+                f"Render pass already exists: {name!r}"
+            )
 
     # =================================== #
     # Contexts
     # =================================== #
+
     def create_context(
         self,
         name: str,
@@ -74,106 +432,80 @@ class RenderContextManager:
     ) -> RenderContext:
         self._ensure_name_available(name)
 
-        context = RenderContext(
+        return self.contexts.create(
             name=name,
             shader=shader,
             hot_reload=hot_reload,
-            framebuffer=False,
+            tags=tags,
         )
-
-        self._contexts[name] = ManagedRenderContext(
-            name=name,
-            context=context,
-            tags=set(tags or ()),
-        )
-
-        return context
 
     def destroy_context(
         self,
         name: str,
     ) -> RenderContext | None:
-        managed = self._contexts.pop(name, None)
+        context = self.contexts.remove(name)
 
-        if managed is None:
-            return None
+        if context is not None:
+            self.binder.remove_context(name)
 
-        self._hidden.discard(name)
-        self._render_pass_links.pop(name, None)
-
-        return managed.context
+        return context
 
     def get_context(
         self,
         name: str,
     ) -> RenderContext:
-        try:
-            return self._contexts[name].context
-        except KeyError:
-            raise KeyError(f"Render context does not exist: {name!r}") from None
+        return self.contexts.get(name)
 
     def context_exists(
         self,
         name: str,
     ) -> bool:
-        return name in self._contexts
+        return self.contexts.exists(name)
 
     def hide_context(
         self,
         name: str,
     ) -> None:
-        if name not in self._contexts:
-            raise KeyError(f"Render context does not exist: {name!r}")
-
-        self._hidden.add(name)
+        self.contexts.hide(name)
 
     def show_context(
         self,
         name: str,
     ) -> None:
-        if name not in self._contexts:
-            raise KeyError(f"Render context does not exist: {name!r}")
-
-        self._hidden.discard(name)
+        self.contexts.show(name)
 
     def context_hidden(
         self,
         name: str,
     ) -> bool:
-        return name in self._hidden
+        return self.contexts.hidden(name)
 
     def context_names(
         self,
         *,
         include_hidden: bool = True,
     ) -> list[str]:
-        return [
-            name
-            for name in self._contexts
-            if include_hidden or name not in self._hidden
-        ]
+        return self.contexts.names(
+            include_hidden=include_hidden,
+        )
 
     def context_values(
         self,
         *,
         include_hidden: bool = True,
     ) -> list[RenderContext]:
-        return [
-            managed.context
-            for name, managed in self._contexts.items()
-            if include_hidden or name not in self._hidden
-        ]
+        return self.contexts.values(
+            include_hidden=include_hidden,
+        )
 
     def context_items(
         self,
         *,
         include_hidden: bool = True,
     ) -> list[tuple[str, RenderContext]]:
-        return [
-            (name, managed.context)
-            for name, managed in self._contexts.items()
-            if include_hidden or name not in self._hidden
-        ]
+        return self.contexts.items(
+            include_hidden=include_hidden,
+        )
 
     def select_contexts(
         self,
@@ -182,17 +514,16 @@ class RenderContextManager:
         names: set[str] | None = None,
         include_hidden: bool = True,
     ) -> list[RenderContext]:
-        return self._select(
-            self._contexts,
-            tags=tags,
+        return self.contexts.select(
             names=names,
+            tags=tags,
             include_hidden=include_hidden,
-            use_hidden=True,
         )
 
     # =================================== #
     # Render Passes
     # =================================== #
+
     def create_render_pass(
         self,
         name: str,
@@ -201,177 +532,233 @@ class RenderContextManager:
         size: tuple[int, int],
         hot_reload: bool = False,
         tags: set[str] | None = None,
-    ) -> RenderContext:
+        output: RenderPassOutput = "color",
+        clear_color: tuple[float, float, float, float] = (
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+        ),
+        with_depthbuffer: bool = True,
+    ) -> RenderPass:
         self._ensure_name_available(name)
 
-        context = RenderContext(
+        return self.passes.create(
             name=name,
             shader=shader,
-            hot_reload=hot_reload,
-            framebuffer=True,
             size=size,
+            hot_reload=hot_reload,
+            tags=tags,
+            output=output,
+            clear_color=clear_color,
+            with_depthbuffer=with_depthbuffer,
         )
 
-        self._passes[name] = ManagedRenderContext(
-            name=name,
-            context=context,
-            tags=set(tags or ()),
-        )
+    def destroy_render_pass(
+        self,
+        name: str,
+    ) -> RenderPass | None:
+        render_pass = self.passes.remove(name)
 
-        return context
+        if render_pass is not None:
+            self.binder.remove_render_pass(name)
+
+        return render_pass
 
     def get_render_pass(
         self,
         name: str,
-    ) -> RenderContext:
-        try:
-            return self._passes[name].context
-        except KeyError:
-            raise KeyError(f"Render pass does not exist: {name!r}") from None
+    ) -> RenderPass:
+        return self.passes.get(name)
 
     def render_pass_exists(
         self,
         name: str,
     ) -> bool:
-        return name in self._passes
+        return self.passes.exists(name)
 
     def render_pass_names(self) -> list[str]:
-        return list(self._passes.keys())
+        return self.passes.names()
 
-    def render_pass_values(self) -> list[RenderContext]:
-        return [
-            managed.context
-            for managed in self._passes.values()
-        ]
+    def render_pass_values(self) -> list[RenderPass]:
+        return self.passes.values()
 
-    def render_pass_items(self) -> list[tuple[str, RenderContext]]:
-        return [
-            (name, managed.context)
-            for name, managed in self._passes.items()
-        ]
+    def render_pass_items(self) -> list[tuple[str, RenderPass]]:
+        return self.passes.items()
 
     def select_render_passes(
         self,
         *,
         tags: set[str] | None = None,
         names: set[str] | None = None,
-    ) -> list[RenderContext]:
-        return self._select(
-            self._passes,
-            tags=tags,
+    ) -> list[RenderPass]:
+        return self.passes.select(
             names=names,
-            include_hidden=True,
-            use_hidden=False,
+            tags=tags,
         )
 
     # =================================== #
-    # Render Pass Links
+    # Render Pass Links / Bindings
     # =================================== #
+
+    def link_render_pass(
+        self,
+        *,
+        pass_name: str,
+        uniform: str,
+        output: RenderPassOutput,
+        source_names: set[str] | None = None,
+        source_tags: set[str] | None = None,
+        target_names: set[str] | None = None,
+        target_tags: set[str] | None = None,
+    ) -> RenderPassLink:
+        return self.binder.link(
+            pass_name=pass_name,
+            uniform=uniform,
+            output=output,
+            source_names=source_names,
+            source_tags=source_tags,
+            target_names=target_names,
+            target_tags=target_tags,
+        )
+
     def register_render_pass_link(
         self,
         *,
-        target: str,
-        source: str,
-        output: RenderPassOutput,
+        pass_name: str,
         uniform: str,
+        output: RenderPassOutput,
+        source_names: set[str] | None = None,
+        source_tags: set[str] | None = None,
+        target_names: set[str] | None = None,
+        target_tags: set[str] | None = None,
     ) -> RenderPassLink:
-        if target not in self._contexts:
-            raise KeyError(f"Target context does not exist: {target!r}")
-
-        if source not in self._passes:
-            raise KeyError(f"Render pass does not exist: {source!r}")
-
-        links = self._render_pass_links.setdefault(target, [])
-
-        for link in links:
-            if (
-                link.source == source
-                and link.output == output
-                and link.uniform == uniform
-            ):
-                return link
-
-        link = RenderPassLink(
-            target=target,
-            source=source,
-            output=output,
+        return self.link_render_pass(
+            pass_name=pass_name,
             uniform=uniform,
-            slot=self._next_render_pass_texture_slot(target=target),
+            output=output,
+            source_names=source_names,
+            source_tags=source_tags,
+            target_names=target_names,
+            target_tags=target_tags,
         )
 
-        links.append(link)
-
-        return link
+    def render_pass_links(self) -> list[RenderPassLink]:
+        return self.binder.links()
 
     def get_render_pass_links(
         self,
         context_name: str,
     ) -> list[RenderPassLink]:
-        return list(self._render_pass_links.get(context_name, ()))
+        return self.binder.links_for_target(
+            context_name,
+        )
 
-    def render_pass_links(self) -> list[RenderPassLink]:
-        return [
-            link
-            for links in self._render_pass_links.values()
-            for link in links
-        ]
+    def get_render_pass_source_links(
+        self,
+        context_name: str,
+    ) -> list[RenderPassLink]:
+        return self.binder.links_for_source(
+            context_name,
+        )
+
+    def render_pass_bindings(self) -> list[RenderPassBinding]:
+        return self.binder.bindings()
+
+    def get_render_pass_bindings(
+        self,
+        context_name: str,
+    ) -> list[RenderPassBinding]:
+        return self.binder.bindings_for_target(
+            context_name,
+        )
+
+    def select_render_pass_sources(
+        self,
+        pass_name: str,
+        *,
+        include_hidden: bool = False,
+    ) -> list[RenderContext]:
+        return self.binder.select_sources_for_pass(
+            pass_name,
+            include_hidden=include_hidden,
+        )
 
     # =================================== #
     # Context Tags
     # =================================== #
+
     def add_context_tag(
         self,
         name: str,
         tag: str,
     ) -> None:
-        self._contexts[name].tags.add(tag)
+        self.contexts.add_tag(
+            name,
+            tag,
+        )
 
     def remove_context_tag(
         self,
         name: str,
         tag: str,
     ) -> None:
-        self._contexts[name].tags.discard(tag)
+        self.contexts.remove_tag(
+            name,
+            tag,
+        )
 
     def get_context_tags(
         self,
         name: str,
     ) -> set[str]:
-        return set(self._contexts[name].tags)
+        return self.contexts.get_tags(name)
 
     # =================================== #
     # Render Pass Tags
     # =================================== #
+
     def add_render_pass_tag(
         self,
         name: str,
         tag: str,
     ) -> None:
-        self._passes[name].tags.add(tag)
+        self.passes.add_tag(
+            name,
+            tag,
+        )
 
     def remove_render_pass_tag(
         self,
         name: str,
         tag: str,
     ) -> None:
-        self._passes[name].tags.discard(tag)
+        self.passes.remove_tag(
+            name,
+            tag,
+        )
 
     def get_render_pass_tags(
         self,
         name: str,
     ) -> set[str]:
-        return set(self._passes[name].tags)
+        return self.passes.get_tags(name)
 
     # =================================== #
     # Context Uniforms
     # =================================== #
+
     def set_context_uniform(
         self,
         name: str,
         uniform: str,
         value,
     ) -> None:
-        self.get_context(name).set_uniform(uniform, value)
+        self.contexts.set_uniform(
+            name,
+            uniform,
+            value,
+        )
 
     def set_context_uniform_by_tag(
         self,
@@ -381,25 +768,28 @@ class RenderContextManager:
         *,
         include_hidden: bool = True,
     ) -> None:
-        for name, managed in self._contexts.items():
-            if not include_hidden and name in self._hidden:
-                continue
-
-            if tag not in managed.tags:
-                continue
-
-            managed.context.set_uniform(uniform, value)
+        self.contexts.set_uniform_by_tag(
+            tag,
+            uniform,
+            value,
+            include_hidden=include_hidden,
+        )
 
     # =================================== #
     # Render Pass Uniforms
     # =================================== #
+
     def set_render_pass_uniform(
         self,
         name: str,
         uniform: str,
         value,
     ) -> None:
-        self.get_render_pass(name).set_uniform(uniform, value)
+        self.passes.set_uniform(
+            name,
+            uniform,
+            value,
+        )
 
     def set_render_pass_uniform_by_tag(
         self,
@@ -407,65 +797,8 @@ class RenderContextManager:
         uniform: str,
         value,
     ) -> None:
-        for managed in self._passes.values():
-            if tag not in managed.tags:
-                continue
-
-            managed.context.set_uniform(uniform, value)
-
-
-
-    # =================================== #
-    # Internals
-    # =================================== #
-    def _ensure_name_available(
-        self,
-        name: str,
-    ) -> None:
-        if name in self._contexts:
-            raise ValueError(f"Render context already exists: {name!r}")
-
-        if name in self._passes:
-            raise ValueError(f"Render pass already exists: {name!r}")
-
-    def _select(
-        self,
-        store: dict[str, ManagedRenderContext],
-        *,
-        tags: set[str] | None,
-        names: set[str] | None,
-        include_hidden: bool,
-        use_hidden: bool,
-    ) -> list[RenderContext]:
-        selected: list[RenderContext] = []
-
-        for name, managed in store.items():
-            if use_hidden and not include_hidden and name in self._hidden:
-                continue
-
-            if names is not None and name not in names:
-                continue
-
-            if tags is not None and not tags.intersection(managed.tags):
-                continue
-
-            selected.append(managed.context)
-
-        return selected
-
-    def _next_render_pass_texture_slot(
-        self,
-        *,
-        target: str,
-    ) -> int:
-        used_slots = {
-            link.slot
-            for link in self._render_pass_links.get(target, ())
-        }
-
-        slot = RENDER_PASS_TEXTURE_START_SLOT
-
-        while slot in used_slots:
-            slot += 1
-
-        return slot
+        self.passes.set_uniform_by_tag(
+            tag,
+            uniform,
+            value,
+        )

@@ -21,7 +21,7 @@ from kivyfn.three.render.callbacks import (
 if TYPE_CHECKING:
     from kivyfn.three.objects.geometry import Geometry
     from kivyfn.three.objects.material import Material
-    from kivyfn.three.render.context import RenderContext
+    from kivyfn.three.render.context import RenderContext, RenderPass
 
 
 TEXTURE_SLOTS = {
@@ -42,7 +42,7 @@ class BaseInstructions(EventDispatcher):
         self,
         *,
         geometry: Geometry,
-        ctx: RenderContext,
+        ctx: RenderContext | RenderPass,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -169,8 +169,17 @@ class MaterialInstructions(BaseInstructions):
         self.material_callback.ask_update()
 
 
-class ColorInstructions(MaterialInstructions):
-    pass
+class ColorInstructions(BaseInstructions):
+    def __init__(
+        self,
+        *,
+        geometry: Geometry,
+        ctx: RenderPass,
+    ):
+        super().__init__(
+            geometry=geometry,
+            ctx=ctx,
+        )
 
 
 class ObjectIdInstructions(BaseInstructions):
@@ -179,7 +188,7 @@ class ObjectIdInstructions(BaseInstructions):
         *,
         geometry: Geometry,
         object_id: int,
-        ctx: RenderContext,
+        ctx: RenderPass,
     ):
         super().__init__(
             geometry=geometry,

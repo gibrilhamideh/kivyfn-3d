@@ -36,19 +36,11 @@ from kivyfn.three.objects.material import Material
 from kivyfn.three.lights.manager import LightManager
 
 if TYPE_CHECKING:
-    from kivyfn.three.render.context import RenderContext
+    from kivyfn.three.render.context import RenderContext, RenderPass, RenderPassOutput
     from kivyfn.three.render.shader import Shader
     from kivyfn.three.controls.base import SceneController
     from kivyfn.three.loaders.asset import AssetObject, SceneAsset
 
-
-RenderPassOutput = Literal[
-    "depth",
-    "normal",
-    "position",
-    "id",
-    "color"
-]
 
 
 class Scene(Widget):
@@ -171,7 +163,7 @@ class Scene(Widget):
         *,
         hot_reload: bool = False,
         tags: set[str] | None = None,
-    ) -> RenderContext:
+    ) -> RenderPass:
         view = self.views.get(view_name)
 
         ctx = self.renderer.create_render_pass(
@@ -207,18 +199,22 @@ class Scene(Widget):
 
     def link_render_pass(
         self,
-        source: str,
+        pass_name: str,
         uniform: str,
         *,
-        tags: set[str] | None = None,
-        names: set[str] | None = None,
+        source_names: set[str] | None = None,
+        source_tags: set[str] | None = None,
+        target_names: set[str] | None = None,
+        target_tags: set[str] | None = None,
         output: RenderPassOutput = "depth",
     ) -> None:
         self.renderer.link_render_pass(
-            source=source,
+            pass_name=pass_name,
             uniform=uniform,
-            tags=tags,
-            names=names,
+            source_names=source_names,
+            source_tags=source_tags,
+            target_names=target_names,
+            target_tags=target_tags,
             output=output,
         )
 

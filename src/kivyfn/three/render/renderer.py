@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Callable, TYPE_CHECKING, Literal
+from typing import Callable, TYPE_CHECKING
 
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 from kivy.graphics.transformation import Matrix
 from kivy.properties import NumericProperty
 
-from kivyfn.three.render.context import RenderContext
+from kivyfn.three.render.context import RenderContext, RenderPass
 from kivyfn.three.render.context_manager import RenderContextManager
 from kivyfn.three.render.instructions import MaterialInstructions
 from kivyfn.three.render.instructions_manager import InstructionsManager
@@ -17,17 +17,11 @@ from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.node import Node3D
 
 if TYPE_CHECKING:
+    from kivyfn.three.render.context import RenderPassOutput
     from kivyfn.three.lights.manager import LightManager
     from kivyfn.three.scene.view import View
 
 
-RenderPassOutput = Literal[
-    "depth",
-    "normal",
-    "position",
-    "id",
-    "color"
-]
 
 GLCallback = Callable[..., None]
 
@@ -142,7 +136,7 @@ class Renderer(EventDispatcher):
         *,
         hot_reload: bool = False,
         tags: set[str] | None = None,
-    ) -> RenderContext:
+    ) -> RenderPass:
         context = self.contexts.create_render_pass(
             name=name,
             shader=shader,
@@ -157,37 +151,24 @@ class Renderer(EventDispatcher):
 
     def link_render_pass(
         self,
-        source: str,
+        pass_name: str,
         uniform: str,
         *,
         output: RenderPassOutput,
-        tags: set[str] | None = None,
-        names: set[str] | None = None,
+        source_names: set[str] | None = None,
+        source_tags: set[str] | None = None,
+        target_names: set[str] | None = None,
+        target_tags: set[str] | None = None,
     ) -> None:
-        source_ctx = self.contexts.get_render_pass(source)
-
-        texture = source_ctx.texture
-        if texture is None:
-            raise RuntimeError(f"Render pass {source!r} has no output texture.")
-
-        targets = self.contexts.select_contexts(
-            tags=tags,
-            names=names,
+        self.contexts.register_render_pass_link(
+            pass_name=pass_name,
+            uniform=uniform,
+            output=output,
+            source_names=source_names,
+            source_tags=source_tags,
+            target_names=target_names,
+            target_tags=target_tags,
         )
-
-        for target_ctx in targets:
-            link = self.contexts.register_render_pass_link(
-                target=target_ctx.name,
-                source=source,
-                output=output,
-                uniform=uniform,
-            )
-
-            target_ctx.bind_texture(
-                uniform=uniform,
-                texture=texture,
-                slot=link.slot,
-            )
 
     # =================================== #
     # Build
@@ -323,7 +304,7 @@ class Renderer(EventDispatcher):
 
     def sync_context_view(
         self,
-        ctx: RenderContext,
+        ctx: RenderContext | RenderPass,
         projection_mat: Matrix,
         view_mat: Matrix,
     ) -> None:
