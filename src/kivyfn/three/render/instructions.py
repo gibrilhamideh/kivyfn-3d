@@ -10,7 +10,6 @@ from kivy.graphics import (
     InstructionGroup,
     Mesh,
 )
-from kivy.graphics.transformation import Matrix
 
 from kivyfn.three.math.matrix import Matrix3, Matrix4
 from kivyfn.three.render.callbacks import (
@@ -130,6 +129,8 @@ class MaterialInstructions(BaseInstructions):
             geometry=geometry,
             ctx=ctx,
         )
+
+        ctx["shadow_texture"] = 10
 
         self.material = material
 

@@ -7,22 +7,32 @@ from pprint import pformat
 from typing import cast, Any, Literal, TYPE_CHECKING
 
 from kivy.event import EventDispatcher
+from kivy.graphics.texture import Texture
+from kivy.graphics.opengl import (
+        GL_DEPTH_TEST,
+        glViewport,
+        glDisable,
+        glEnable,
+)
+
 from kivy.graphics import (
     BindTexture,
+    Callback,
     InstructionGroup,
-    ClearColor,
     ClearBuffers,
     Fbo as KivyFbo,
     RenderContext as KivyRenderContext,
 )
-from kivy.graphics.texture import Texture
+
 from kivy.properties import (
     BooleanProperty,
     DictProperty,
+    NumericProperty,
     ObjectProperty,
     OptionProperty,
     StringProperty,
 )
+
 
 from kivyfn.three.render.shader import Shader
 
@@ -49,6 +59,19 @@ RenderPassOutput = Literal[
 
 
 class RenderContext(EventDispatcher):
+
+    x: float = NumericProperty(0.0)
+    y: float = NumericProperty(0.0)
+    width: float = NumericProperty(100.0)
+    height: float = NumericProperty(100.0)
+
+    scene_x: float = NumericProperty()
+    scene_y: float = NumericProperty()
+    scene_width: float = NumericProperty()
+    scene_height: float = NumericProperty()
+
+    use_local_viewport: bool = BooleanProperty(False)
+
     name: str = StringProperty()
     shader: Shader = ObjectProperty()
     uniforms: dict = DictProperty()
@@ -85,7 +108,6 @@ class RenderContext(EventDispatcher):
         *,
         name: str = "",
         uniforms: dict | None = None,
-        compute_normal_mat: bool = True,
         hot_reload: bool = False,
         framebuffer: bool = False,
         size: tuple[int, int] | None = None,
@@ -105,29 +127,39 @@ class RenderContext(EventDispatcher):
                     "Framebuffer context requires a concrete size."
                 )
 
+            self.width, self.height = size
+            self.use_local_viewport = True
+
             self.ctx = KivyFbo(
                 size=size,
                 clear_color=(1.0, 1.0, 1.0, 1.0),
-                # with_depthbuffer=True,
-                compute_normal_mat=compute_normal_mat,
+                with_depthbuffer=True,
             )
             with self.ctx:
+
+                Callback(self.set_viewport)
                 ClearBuffers(
                     clear_color=True,
                     clear_depth=True,
                 )
+                self.texture_group = InstructionGroup()
+                self.object_group = InstructionGroup()
 
 
         else:
-            self.ctx = KivyRenderContext(
-                compute_normal_mat=compute_normal_mat,
-            )
+            self.ctx = KivyRenderContext()
 
-        self.texture_group = InstructionGroup()
-        self.object_group = InstructionGroup()
+            with self.ctx:
 
-        self.ctx.add(self.texture_group)
-        self.ctx.add(self.object_group)
+                Callback(self.set_viewport)
+                Callback(self.enable_depthtest)
+
+                self.texture_group = InstructionGroup()
+                self.object_group = InstructionGroup()
+
+                Callback(self.disable_depthtest)
+
+
 
         self.ctx.shader.source = str(shader.path)
 
@@ -138,6 +170,15 @@ class RenderContext(EventDispatcher):
 
         if uniforms is not None:
             self.uniforms = uniforms
+
+    # =================================== #
+    # GL Context
+    # =================================== #
+    def enable_depthtest(self, *_):
+        glEnable(GL_DEPTH_TEST)
+
+    def disable_depthtest(self, *_):
+        glDisable(GL_DEPTH_TEST)
 
     # =================================== #
     # External API
@@ -154,11 +195,12 @@ class RenderContext(EventDispatcher):
         name: str,
         value: Any,
     ) -> None:
+
         self.ctx[name] = value
 
     def sync_uniforms(self) -> None:
         for key, value in self.uniforms.items():
-            self.ctx[key] = value
+            self.apply_uniform(key, value)
 
     def bind_texture(
         self,
@@ -166,13 +208,15 @@ class RenderContext(EventDispatcher):
         texture: Texture,
         slot: int,
     ) -> BindTexture:
+
+
         instruction = BindTexture(
             texture=texture,
             index=slot,
         )
 
         self.texture_group.add(instruction)
-        self.ctx[uniform] = slot
+        self.set_uniform(uniform, slot)
 
         return instruction
 
@@ -218,7 +262,7 @@ class RenderContext(EventDispatcher):
         return self.ctx[name]
 
     def __setitem__(self, name: str, value: Any):
-        self.ctx[name] = value
+        self.set_uniform(name, value)
 
     def clear(self) -> None:
         self.texture_group.clear()
@@ -239,15 +283,46 @@ class RenderContext(EventDispatcher):
         aspect: float,
     ) -> None:
         self.ctx["projection_mat"] = view.get_projection_matrix(aspect)
-        self.ctx["modelview_mat"] = view.get_view_matrix()
+        self.ctx["view_mat"] = view.get_view_matrix()
 
     @property
     def projection_mat(self):
         return self.ctx["projection_mat"]
 
     @property
-    def modelview_mat(self):
-        return self.ctx["modelview_mat"]
+    def view_mat(self):
+        return self.ctx["view_mat"]
+
+    # =================================== #
+    # ViewPort
+    # =================================== #
+    def set_viewport(self, *_) -> None:
+        x = self.x if self.use_local_viewport else self.scene_x
+        y = self.y if self.use_local_viewport else self.scene_y
+        width =  self.width if self.use_local_viewport else self.scene_width
+        height = self.height if self.use_local_viewport else self.scene_height
+
+        glViewport(
+            int(x),
+            int(y),
+            int(width),
+            int(height),
+        )
+
+    @property
+    def aspect(self) -> float:
+        width =  self.width if self.use_local_viewport else self.scene_width
+        height = self.height if self.use_local_viewport else self.scene_height
+        if not width:
+            return 1.0
+
+        if not height:
+            return 1.0
+
+
+        return width / height
+
+
 
     # =================================== #
     # Framebuffer
@@ -259,3 +334,37 @@ class RenderContext(EventDispatcher):
 
         ctx = cast(KivyFbo, self.ctx)
         return ctx.texture
+
+    # =================================== #
+    # Debug
+    # =================================== #
+    def walk_instructions(self, instruction=None, level: int = 0) -> None:
+        """Recursively walks and prints Kivy graphics instructions, with extra detail for textures."""
+        if instruction is None:
+            instruction = self.ctx
+            print(f"\n--- Walking Context Children for: {self.name or 'Unnamed Context'} ---")
+
+        indent = "    " * level
+        
+        # Base string representation
+        info_str = f"{indent}- {instruction.__class__.__name__}: {instruction}"
+        
+        # Inspect specifically for BindTexture instructions
+        if isinstance(instruction, BindTexture):
+            # Access index (slot) and texture source if available
+            slot = getattr(instruction, "index", "Unknown Slot")
+            source = getattr(instruction, "source", "No Source")
+            info_str += f" [Slot/Index: {slot} | Source: {source!r}]"
+
+        print(info_str)
+
+        # Check if the current instruction has children to traverse
+        if hasattr(instruction, "children"):
+            for child in instruction.children: # pyright: ignore
+                self.walk_instructions(child, level + 1)
+
+    def debug(self, *_):
+
+        # TODO: add a nice way to bug the instuction tree
+        self.walk_instructions()
+

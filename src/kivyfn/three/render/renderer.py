@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Callable, TYPE_CHECKING, Literal
 
 from kivy.event import EventDispatcher
-from kivy.graphics import Canvas
+from kivy.graphics import InstructionGroup
 from kivy.graphics.transformation import Matrix
 from kivy.properties import NumericProperty
 
@@ -38,7 +38,7 @@ class Renderer(EventDispatcher):
 
     def __init__(
         self,
-        canvas: Canvas,
+        canvas: InstructionGroup,
         framerate: int | None,
         **kwargs,
     ):
@@ -196,16 +196,12 @@ class Renderer(EventDispatcher):
         self,
         node: Node3D,
         context: str,
-        setup_gl_context: GLCallback,
-        reset_gl_context: GLCallback,
     ) -> None:
         ctx = self.contexts.get_context(context)
 
         self.instructions.create(
             node=node,
             ctx=ctx,
-            setup_gl_context=setup_gl_context,
-            reset_gl_context=reset_gl_context,
         )
 
         self.sync_node_transform(node)
@@ -311,13 +307,14 @@ class Renderer(EventDispatcher):
         self,
         view: View,
         contexts: tuple[str, ...],
-        aspect: float,
     ) -> None:
-        projection_mat = view.get_projection_matrix(aspect)
-        view_mat = view.get_view_matrix()
+
 
         for name in contexts:
             ctx = self.contexts.get(name)
+
+            projection_mat = view.get_projection_matrix(ctx.aspect)
+            view_mat = view.get_view_matrix()
             self.sync_context_view(
                 ctx,
                 projection_mat,

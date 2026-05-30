@@ -4,10 +4,30 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, Tuple
 
 from kivy.core.window import Window
-from kivy.graphics import Color, Rectangle
-from kivy.graphics.opengl import GL_DEPTH_TEST, glDisable, glEnable, glViewport
-from kivy.properties import NumericProperty, ObjectProperty, ColorProperty
 from kivy.uix.widget import Widget
+from kivy.graphics import (
+        Color,
+        Rectangle,
+        Callback,
+        BindTexture,
+        InstructionGroup
+)
+
+from kivy.graphics.opengl import (
+        GL_DEPTH_TEST,
+        glDisable,
+        glEnable,
+        glViewport,
+        glGetIntegerv,
+        GL_MAX_TEXTURE_IMAGE_UNITS,
+        GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS,
+)
+
+from kivy.properties import (
+        NumericProperty,
+        ObjectProperty,
+        ColorProperty
+)
 
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.render.renderer import Renderer
@@ -34,6 +54,11 @@ RenderPassOutput = Literal[
 ]
 
 
+# TODO: Add debuging info in scene
+# print("fragment units:", glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS))
+# print("combined units:", glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS))
+
+
 class Scene(Widget):
 
     root: Node3D = ObjectProperty(None, allownone=True)
@@ -50,6 +75,15 @@ class Scene(Widget):
                 size=self.size,
             )
 
+        with self.canvas:
+            # Callback(self.enable_depthtest)
+
+            self.group = InstructionGroup()
+
+            # Callback(self.disable_depthtest)
+            Callback(self.restore_viewport)
+            
+
         self.bind(
             pos=self._update_bg_rect,
             size=self._update_bg_rect,
@@ -57,7 +91,7 @@ class Scene(Widget):
 
 
         self.views = ViewManager()
-        self.renderer = Renderer(self.canvas, framerate)
+        self.renderer = Renderer(self.group, framerate)
         self.viewport = Viewport(self)
         self.controllers = []
 
@@ -100,6 +134,16 @@ class Scene(Widget):
             hot_reload=hot_reload,
             tags=tags,
         )
+
+        ctx.scene_x = self.x
+        ctx.scene_y = self.y
+        ctx.scene_width = self.width
+        ctx.scene_height = self.height
+
+        self.bind(x=ctx.setter("scene_x"))
+        self.bind(y=ctx.setter("scene_y"))
+        self.bind(width=ctx.setter("scene_width"))
+        self.bind(height=ctx.setter("scene_height"))
 
         self.views.link(
             view.name,
@@ -146,6 +190,16 @@ class Scene(Widget):
             tags=tags,
         )
 
+        ctx.scene_x = self.x
+        ctx.scene_y = self.y
+        ctx.scene_width = self.width
+        ctx.scene_height = self.height
+
+        self.bind(x=ctx.setter("scene_x"))
+        self.bind(y=ctx.setter("scene_y"))
+        self.bind(width=ctx.setter("scene_width"))
+        self.bind(height=ctx.setter("scene_height"))
+
         self.views.link(
             view.name,
             ctx.name,
@@ -188,12 +242,7 @@ class Scene(Widget):
         parent = parent or self.root
         parent.add_child(node)
 
-        self.renderer.add(
-            node,
-            context,
-            setup_gl_context=self.setup_gl_context,
-            reset_gl_context=self.reset_gl_context,
-        )
+        self.renderer.add(node, context)
 
     def hide(
         self,
@@ -281,24 +330,13 @@ class Scene(Widget):
     # =================================== #
     # GL Context
     # =================================== #
-    def setup_gl_context(self, *_) -> None:
+    def enable_depthtest(self, *_):
         glEnable(GL_DEPTH_TEST)
 
-        x, y = self.to_window(
-            self.x,
-            self.y,
-        )
-
-        glViewport(
-            int(x),
-            int(y),
-            int(self.width),
-            int(self.height),
-        )
-
-    def reset_gl_context(self, *_) -> None:
+    def disable_depthtest(self, *_):
         glDisable(GL_DEPTH_TEST)
 
+    def restore_viewport(self, *_) -> None:
         glViewport(
             0,
             0,
@@ -326,22 +364,11 @@ class Scene(Widget):
         self,
         view: View, 
         names: Tuple[str, ...]) -> None:
-        self.renderer.update_view(
-            view,
-            names,
-            self.aspect,
-        )
+        self.renderer.update_view(view, names)
 
     def update_all_views(self,):
         pass
 
-    @property
-    def aspect(self) -> float:
-        return (
-            self.width / float(self.height)
-            if self.height
-            else 1.0
-        )
 
     # =================================== #
     # Background
@@ -426,3 +453,36 @@ class Scene(Widget):
             f"  size=({self.width}, {self.height})\n"
             ")"
         )
+
+    def walk_instructions(self, instruction=None, level: int = 0) -> None:
+        """Recursively walks and prints Kivy graphics instructions, with extra detail for textures."""
+        if instruction is None:
+            instruction = self.canvas
+            name = "Scene"
+            if hasattr(self, "name"):
+                name = self.name # pyright: ignore
+            print(f"\n--- Walking Context Children for: {name or 'Unnamed Context'} ---")
+
+        indent = "  " * level
+        
+        # Base string representation
+        info_str = f"{indent}- {instruction.__class__.__name__}: {instruction}"
+        
+        # Inspect specifically for BindTexture instructions
+        if isinstance(instruction, BindTexture):
+            # Access index (slot) and texture source if available
+            slot = getattr(instruction, "index", "Unknown Slot")
+            source = getattr(instruction, "source", "No Source")
+            info_str += f" [Slot/Index: {slot} | Source: {source!r}]"
+
+        print(info_str)
+
+        # Check if the current instruction has children to traverse
+        if hasattr(instruction, "children"):
+            for child in instruction.children: # pyright: ignore
+                self.walk_instructions(child, level + 1)
+
+    def debug(self):
+        self.walk_instructions()
+
+

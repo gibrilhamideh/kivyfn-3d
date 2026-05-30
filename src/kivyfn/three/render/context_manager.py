@@ -20,8 +20,6 @@ RenderPassOutput = Literal[
 RENDER_PASS_TEXTURE_START_SLOT = 10
 
 
-
-
 @dataclass(slots=True)
 class ManagedRenderContext:
     name: str
@@ -298,7 +296,7 @@ class RenderContextManager:
             source=source,
             output=output,
             uniform=uniform,
-            slot=self._next_render_pass_texture_slot(),
+            slot=self._next_render_pass_texture_slot(target=target),
         )
 
         links.append(link)
@@ -415,6 +413,8 @@ class RenderContextManager:
 
             managed.context.set_uniform(uniform, value)
 
+
+
     # =================================== #
     # Internals
     # =================================== #
@@ -453,11 +453,14 @@ class RenderContextManager:
 
         return selected
 
-    def _next_render_pass_texture_slot(self) -> int:
+    def _next_render_pass_texture_slot(
+        self,
+        *,
+        target: str,
+    ) -> int:
         used_slots = {
             link.slot
-            for links in self._render_pass_links.values()
-            for link in links
+            for link in self._render_pass_links.get(target, ())
         }
 
         slot = RENDER_PASS_TEXTURE_START_SLOT

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Literal, Callable, TYPE_CHECKING
 
 from kivy.event import EventDispatcher
-from kivy.graphics import Callback
 
 from kivyfn.three.render.instructions import (
     BaseInstructions,
@@ -54,7 +53,6 @@ class InstructionsManager(EventDispatcher):
         self.by_context: dict[str, dict[int, BaseInstructions]] = {}
         self.objects: dict[int, Object3D] = {}
         self._bound_objects: set[int] = set()
-
 
     # =================================== #
     # Instructions
@@ -115,10 +113,7 @@ class InstructionsManager(EventDispatcher):
         self,
         node: Node3D,
         ctx: RenderContext,
-        setup_gl_context: GLCallback,
-        reset_gl_context: GLCallback,
     ) -> None:
-        ctx.add(Callback(setup_gl_context))
 
         for object3d in node.walk_objects():
             self._create(
@@ -126,12 +121,9 @@ class InstructionsManager(EventDispatcher):
                 ctx=ctx,
             )
 
-        ctx.add(Callback(reset_gl_context))
 
         for link in self.contexts.get_render_pass_links(ctx.name):
             pass_ctx = self.contexts.get_render_pass(link.source)
-
-            pass_ctx.add(Callback(setup_gl_context))
 
             for object3d in node.walk_objects():
                 self._create(
@@ -140,7 +132,6 @@ class InstructionsManager(EventDispatcher):
                     output=link.output,
                 )
 
-            pass_ctx.add(Callback(reset_gl_context))
 
 
     def _create(
