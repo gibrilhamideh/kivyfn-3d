@@ -14,9 +14,6 @@ from kivy.graphics import (
 )
 
 from kivy.graphics.opengl import (
-        GL_DEPTH_TEST,
-        glDisable,
-        glEnable,
         glViewport,
         glGetIntegerv,
         GL_MAX_TEXTURE_IMAGE_UNITS,
@@ -52,11 +49,6 @@ RenderPassOutput = Literal[
     "id",
     "color"
 ]
-
-
-# TODO: Add debuging info in scene
-# print("fragment units:", glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS))
-# print("combined units:", glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS))
 
 
 class Scene(Widget):
@@ -328,14 +320,8 @@ class Scene(Widget):
         return nodes
 
     # =================================== #
-    # GL Context
+    # ViewPort
     # =================================== #
-    def enable_depthtest(self, *_):
-        glEnable(GL_DEPTH_TEST)
-
-    def disable_depthtest(self, *_):
-        glDisable(GL_DEPTH_TEST)
-
     def restore_viewport(self, *_) -> None:
         glViewport(
             0,
@@ -454,35 +440,73 @@ class Scene(Widget):
             ")"
         )
 
-    def walk_instructions(self, instruction=None, level: int = 0) -> None:
-        """Recursively walks and prints Kivy graphics instructions, with extra detail for textures."""
+    def get_max_fragment_texture_units(self) -> int:
+        value = glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS)
+        return value[0]
+
+
+    def get_max_combined_texture_units(self) -> int:
+        value = glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS)
+        return value[0]
+
+
+    def walk_instructions(
+        self,
+        instruction=None,
+        *,
+        debug: bool = False,
+        level: int = 0,
+    ):
         if instruction is None:
             instruction = self.canvas
-            name = "Scene"
-            if hasattr(self, "name"):
-                name = self.name # pyright: ignore
-            print(f"\n--- Walking Context Children for: {name or 'Unnamed Context'} ---")
 
-        indent = "  " * level
-        
-        # Base string representation
-        info_str = f"{indent}- {instruction.__class__.__name__}: {instruction}"
-        
-        # Inspect specifically for BindTexture instructions
-        if isinstance(instruction, BindTexture):
-            # Access index (slot) and texture source if available
-            slot = getattr(instruction, "index", "Unknown Slot")
-            source = getattr(instruction, "source", "No Source")
-            info_str += f" [Slot/Index: {slot} | Source: {source!r}]"
+        if debug:
+            indent = "  " * level
 
-        print(info_str)
+            info = (
+                f"{indent}- "
+                f"{instruction.__class__.__name__}: "
+                f"{instruction}"
+            )
 
-        # Check if the current instruction has children to traverse
+            if isinstance(instruction, BindTexture):
+                slot = getattr(
+                    instruction,
+                    "index",
+                    "Unknown Slot",
+                )
+
+                source = getattr(
+                    instruction,
+                    "source",
+                    "No Source",
+                )
+
+                info += (
+                    f" [Slot/Index: {slot}"
+                    f" | Source: {source!r}]"
+                )
+
+            print(info)
+
+        else:
+            yield instruction, level
+
         if hasattr(instruction, "children"):
-            for child in instruction.children: # pyright: ignore
-                self.walk_instructions(child, level + 1)
+            for child in instruction.children:  # pyright: ignore
+                if debug:
+                    self.walk_instructions(
+                        child,
+                        debug=True,
+                        level=level + 1,
+                    )
+                else:
+                    yield from self.walk_instructions(
+                        child,
+                        debug=False,
+                        level=level + 1,
+                    )
 
-    def debug(self):
-        self.walk_instructions()
+
 
 

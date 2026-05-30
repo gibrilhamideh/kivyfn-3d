@@ -335,36 +335,3 @@ class RenderContext(EventDispatcher):
         ctx = cast(KivyFbo, self.ctx)
         return ctx.texture
 
-    # =================================== #
-    # Debug
-    # =================================== #
-    def walk_instructions(self, instruction=None, level: int = 0) -> None:
-        """Recursively walks and prints Kivy graphics instructions, with extra detail for textures."""
-        if instruction is None:
-            instruction = self.ctx
-            print(f"\n--- Walking Context Children for: {self.name or 'Unnamed Context'} ---")
-
-        indent = "    " * level
-        
-        # Base string representation
-        info_str = f"{indent}- {instruction.__class__.__name__}: {instruction}"
-        
-        # Inspect specifically for BindTexture instructions
-        if isinstance(instruction, BindTexture):
-            # Access index (slot) and texture source if available
-            slot = getattr(instruction, "index", "Unknown Slot")
-            source = getattr(instruction, "source", "No Source")
-            info_str += f" [Slot/Index: {slot} | Source: {source!r}]"
-
-        print(info_str)
-
-        # Check if the current instruction has children to traverse
-        if hasattr(instruction, "children"):
-            for child in instruction.children: # pyright: ignore
-                self.walk_instructions(child, level + 1)
-
-    def debug(self, *_):
-
-        # TODO: add a nice way to bug the instuction tree
-        self.walk_instructions()
-
