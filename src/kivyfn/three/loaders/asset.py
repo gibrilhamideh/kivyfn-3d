@@ -13,16 +13,11 @@ class AssetObject:
     name: str
 
     geometry: Geometry | None = None
-
-    transform: Transform = field(
-        default_factory=Transform,
-    )
-
     material: Material | None = None
 
-    children: list[AssetObject] = field(
-        default_factory=list,
-    )
+    extras: dict[str, object] = field(default_factory=dict)
+    transform: Transform = field(default_factory=Transform)
+    children: list[AssetObject] = field(default_factory=list)
 
     @property
     def is_renderable(self):

@@ -23,6 +23,14 @@ class InteractionEvent:
     direction: Vector3
     distance: float | None = None
     point: Vector3 | None = None
+    _propagation_stopped: bool = False
+
+    @property
+    def propagation_stopped(self) -> bool:
+        return self._propagation_stopped
+
+    def stop_propagation(self) -> None:
+        self._propagation_stopped = True
 
     def __repr__(self) -> str:
         return (
@@ -38,7 +46,7 @@ class InteractionController(SceneController):
     def __init__(
         self,
         view_name: str = "main",
-    ):
+    ) -> None:
         super().__init__()
 
         self.view_name = view_name
@@ -96,7 +104,10 @@ class InteractionController(SceneController):
 
             distance, point = hit
 
-            if closest is None or distance < closest.distance:
+            if closest is None or (
+                closest.distance is not None
+                and distance < closest.distance
+            ):
                 closest = InteractionEvent(
                     target=object3d,
                     touch=touch,
@@ -108,9 +119,25 @@ class InteractionController(SceneController):
 
         return closest
 
+    def dispatch_interaction(
+        self,
+        target: Object3D,
+        event_name: str,
+        event: InteractionEvent,
+    ) -> None:
+        current = target
+
+        while current is not None:
+            current.dispatch(event_name, event)
+
+            if event.propagation_stopped:
+                return
+
+            current = current.parent
+
     def on_touch_down(
         self,
-        touch,
+        touch: Any,
     ) -> bool:
         event = self.pick(touch)
 
@@ -118,13 +145,18 @@ class InteractionController(SceneController):
             return False
 
         self.pressed = event.target
-        event.target.dispatch("on_press", event)
+
+        self.dispatch_interaction(
+            event.target,
+            "on_press",
+            event,
+        )
 
         return True
 
     def on_touch_move(
         self,
-        touch,
+        touch: Any,
     ) -> bool:
         if self.pressed is None:
             return False
@@ -142,13 +174,17 @@ class InteractionController(SceneController):
             direction=direction,
         )
 
-        self.pressed.dispatch("on_drag", event)
+        self.dispatch_interaction(
+            self.pressed,
+            "on_drag",
+            event,
+        )
 
         return True
 
     def on_touch_up(
         self,
-        touch,
+        touch: Any,
     ) -> bool:
         if self.pressed is None:
             return False
@@ -167,7 +203,12 @@ class InteractionController(SceneController):
             direction=direction,
         )
 
-        self.pressed.dispatch("on_release", event)
+        self.dispatch_interaction(
+            self.pressed,
+            "on_release",
+            event,
+        )
+
         self.pressed = None
 
         return True

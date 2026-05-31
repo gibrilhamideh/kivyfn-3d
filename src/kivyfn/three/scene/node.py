@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from kivyfn.three.math.vector import Vector3
     from kivyfn.three.objects import Object3D
     from kivyfn.three.objects.material import Material
+    from kivyfn.three.controls.interaction import InteractionEvent
 
 
 class Node3D(EventDispatcher):
@@ -36,6 +37,9 @@ class Node3D(EventDispatcher):
     __events__ = (
         "on_transform_dirty",
         "on_material_dirty",
+        "on_press",
+        "on_release",
+        "on_drag",
     )
 
     def __init__(
@@ -288,3 +292,24 @@ class Node3D(EventDispatcher):
         node,
     ) -> TypeGuard[Object3D]:
         return node.is_object
+
+    # =================================== #
+    # Interaction Events
+    # =================================== #
+    def on_press(
+        self,
+        event: InteractionEvent,
+    ) -> None:
+        pass
+
+    def on_release(
+        self,
+        event: InteractionEvent,
+    ) -> None:
+        pass
+
+    def on_drag(
+        self,
+        event: InteractionEvent,
+    ) -> None:
+        pass

@@ -80,7 +80,6 @@ class MainApp(App):
 
     def create_primitive(self):
         object3d = Sphere()
-        print(object3d.geometry.get_stats())
         self.scene.add(object3d, context="main")
 
 

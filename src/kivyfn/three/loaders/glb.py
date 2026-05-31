@@ -6,6 +6,7 @@ import base64
 import io
 import os
 import xxhash
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
@@ -25,8 +26,114 @@ from kivyfn.three.objects.geometry import Geometry
 from kivyfn.three.objects.material import Material
 
 
-class GlbLoader:
+@dataclass(slots=True)
+class GlbNode:
+    raw: Any
 
+    @property
+    def name(self) -> str | None:
+        return getattr(self.raw, "name", None)
+
+    @property
+    def mesh_index(self) -> int | None:
+        return getattr(self.raw, "mesh", None)
+
+    @property
+    def children(self) -> list[int]:
+        return list(getattr(self.raw, "children", None) or [])
+
+    @property
+    def matrix(self) -> list[float] | None:
+        return getattr(self.raw, "matrix", None)
+
+    @property
+    def translation(self) -> list[float] | None:
+        return getattr(self.raw, "translation", None)
+
+    @property
+    def rotation(self) -> list[float] | None:
+        return getattr(self.raw, "rotation", None)
+
+    @property
+    def scale(self) -> list[float] | None:
+        return getattr(self.raw, "scale", None)
+
+    @property
+    def extras(self) -> dict[str, object]:
+        return dict(getattr(self.raw, "extras", None) or {})
+
+
+@dataclass(slots=True)
+class GlbPrimitive:
+    raw: Any
+
+    @property
+    def attributes(self) -> Any:
+        return self.raw.attributes
+
+    @property
+    def position_index(self) -> int | None:
+        return getattr(self.attributes, "POSITION", None)
+
+    @property
+    def normal_index(self) -> int | None:
+        return getattr(self.attributes, "NORMAL", None)
+
+    @property
+    def uv_index(self) -> int | None:
+        return getattr(self.attributes, "TEXCOORD_0", None)
+
+    @property
+    def tangent_index(self) -> int | None:
+        return getattr(self.attributes, "TANGENT", None)
+
+    @property
+    def indices_index(self) -> int | None:
+        return getattr(self.raw, "indices", None)
+
+    @property
+    def material_index(self) -> int | None:
+        return getattr(self.raw, "material", None)
+
+    @property
+    def extras(self) -> dict[str, object]:
+        return dict(getattr(self.raw, "extras", None) or {})
+
+
+
+@dataclass(slots=True)
+class GlbMaterial:
+    raw: Any
+
+    @property
+    def name(self) -> str | None:
+        return getattr(self.raw, "name", None)
+
+    @property
+    def pbr(self) -> Any:
+        return getattr(self.raw, "pbrMetallicRoughness", None)
+
+    @property
+    def emissive_factor(self) -> list[float] | None:
+        return getattr(self.raw, "emissiveFactor", None)
+
+    @property
+    def normal_texture(self) -> Any:
+        return getattr(self.raw, "normalTexture", None)
+
+    @property
+    def emissive_texture(self) -> Any:
+        return getattr(self.raw, "emissiveTexture", None)
+
+    @property
+    def occlusion_texture(self) -> Any:
+        return getattr(self.raw, "occlusionTexture", None)
+
+    @property
+    def extras(self) -> dict[str, object]:
+        return dict(getattr(self.raw, "extras", None) or {})
+
+class GlbLoader:
     _DTYPE_MAP: ClassVar[dict[int, Any]] = {
         5120: np.int8,
         5121: np.uint8,
@@ -88,13 +195,7 @@ class GlbLoader:
         self._texture_cache: dict[int, Texture] = {}
         self._image_bytes_cache: dict[int, tuple[bytes, str]] = {}
         self._image_texture_cache: dict[
-            tuple[
-                str,
-                int | None,
-                int | None,
-                int | None,
-                int | None,
-            ],
+            tuple[str, int | None, int | None, int | None, int | None],
             Texture,
         ] = {}
 
@@ -122,6 +223,7 @@ class GlbLoader:
     # =================================== #
     # Scene / Node Tree
     # =================================== #
+
     def _get_scene_root_indices(self) -> list[int]:
         if self._gltf.scenes and self._gltf.scene is not None:
             scene = self._gltf.scenes[self._gltf.scene]
@@ -130,8 +232,9 @@ class GlbLoader:
         nodes = self._gltf.nodes or []
         child_indices: set[int] = set()
 
-        for node in nodes:
-            child_indices.update(node.children or [])
+        for raw_node in nodes:
+            node = GlbNode(raw_node)
+            child_indices.update(node.children)
 
         return [
             index
@@ -143,76 +246,60 @@ class GlbLoader:
         self,
         node_index: int,
     ) -> AssetObject:
-        node = self._gltf.nodes[node_index]
+        node = GlbNode(self._gltf.nodes[node_index])
 
         node_name = self._get_node_name(
             node_index=node_index,
             node=node,
         )
-        # TODO: add logger.debug when loading nodes
 
         primitives = self._get_node_primitives(node)
         local_transform = self._get_node_local_transform(node)
 
-        if len(primitives) == 1:
-            primitive = primitives[0]
-            geometry = self._process_primitive(primitive)
+        asset = AssetObject(
+            name=node_name,
+            geometry=None,
+            transform=local_transform,
+            material=None,
+            extras=node.extras.copy(),
+        )
 
-            if geometry is not None:
-                geometry.name = node_name
+        self._register_asset(asset)
 
-            asset = AssetObject(
-                name=node_name,
+        for primitive_index, primitive in enumerate(primitives):
+            name = node_name
+
+            if len(primitives) > 1:
+                index = f"{primitive_index:03d}"
+                name = self._make_unique_name(f"{name}.{index}")
+
+            geometry = self._process_primitive_geometry(primitive)
+            if geometry is None:
+                continue
+
+            geometry.name = name
+            material = self._process_material(
+                primitive=primitive,
+                fallback_name=name,
+            )
+
+            if len(primitives) == 1:
+                asset.geometry = geometry
+                asset.material = material
+                continue
+
+            primitive_asset = AssetObject(
+                name=name,
                 geometry=geometry,
-                transform=local_transform,
-                material=(
-                    self._process_material(
-                        primitive=primitive,
-                        fallback_name=node_name,
-                    )
-                    if geometry is not None
-                    else None
-                ),
+                transform=Transform(),
+                material=material,
+                extras=primitive.extras.copy(),
             )
 
-            self._register_asset(asset)
+            self._register_asset(primitive_asset)
+            asset.children.append(primitive_asset)
 
-        else:
-            asset = AssetObject(
-                name=node_name,
-                geometry=None,
-                transform=local_transform,
-                material=None,
-            )
-
-            self._register_asset(asset)
-
-            for primitive_index, primitive in enumerate(primitives):
-                geometry = self._process_primitive(primitive)
-
-                if geometry is None:
-                    continue
-
-                primitive_name = self._make_unique_name(
-                    f"{node_name}.{primitive_index:03d}"
-                )
-
-                geometry.name = primitive_name
-
-                primitive_asset = AssetObject(
-                    name=primitive_name,
-                    geometry=geometry,
-                    transform=Transform(),
-                    material=self._process_material(
-                        primitive=primitive,
-                        fallback_name=primitive_name,
-                    ),
-                )
-
-                self._register_asset(primitive_asset)
-                asset.children.append(primitive_asset)
-
-        for child_index in node.children or []:
+        for child_index in node.children:
             child_asset = self._load_node(child_index)
             asset.children.append(child_asset)
 
@@ -221,13 +308,13 @@ class GlbLoader:
     def _get_node_name(
         self,
         node_index: int,
-        node: Any,
+        node: GlbNode,
     ) -> str:
         mesh_name = None
 
-        if node.mesh is not None:
-            mesh = self._gltf.meshes[node.mesh]
-            mesh_name = mesh.name
+        if node.mesh_index is not None:
+            mesh = self._gltf.meshes[node.mesh_index]
+            mesh_name = getattr(mesh, "name", None)
 
         name = (
             node.name
@@ -262,22 +349,27 @@ class GlbLoader:
 
     def _get_node_primitives(
         self,
-        node: Any,
-    ) -> list[Any]:
-        if node.mesh is None:
+        node: GlbNode,
+    ) -> list[GlbPrimitive]:
+        if node.mesh_index is None:
             return []
 
-        mesh = self._gltf.meshes[node.mesh]
-        return list(mesh.primitives or [])
+        mesh = self._gltf.meshes[node.mesh_index]
+
+        return [
+            GlbPrimitive(raw_primitive)
+            for raw_primitive in list(mesh.primitives or [])
+        ]
 
     # =================================== #
     # Node Transforms
     # =================================== #
+
     def _get_node_local_transform(
         self,
-        node: Any,
+        node: GlbNode,
     ) -> Transform:
-        if getattr(node, "matrix", None):
+        if node.matrix:
             matrix = Matrix4(
                 np.array(
                     node.matrix,
@@ -287,9 +379,9 @@ class GlbLoader:
 
             return self._transform_from_matrix4(matrix)
 
-        translation_data = getattr(node, "translation", None)
-        rotation_data = getattr(node, "rotation", None)
-        scale_data = getattr(node, "scale", None)
+        translation_data = node.translation
+        rotation_data = node.rotation
+        scale_data = node.scale
 
         translation = (
             Vector3(
@@ -375,16 +467,13 @@ class GlbLoader:
     # =================================== #
     # Materials
     # =================================== #
+
     def _process_material(
         self,
-        primitive: Any,
+        primitive: GlbPrimitive,
         fallback_name: str,
     ) -> Material:
-        material_index = getattr(
-            primitive,
-            "material",
-            None,
-        )
+        material_index = primitive.material_index
 
         if (
             material_index is None
@@ -392,72 +481,48 @@ class GlbLoader:
             or material_index < 0
             or material_index >= len(self._gltf.materials)
         ):
-            return Material(
-                name=fallback_name,
-            )
+            return Material(name=fallback_name)
 
-        gltf_material = self._gltf.materials[material_index]
+        glb_material = GlbMaterial(
+            self._gltf.materials[material_index]
+        )
 
         material = Material(
             name=(
-                gltf_material.name
+                glb_material.name
                 or fallback_name
             ),
         )
 
-        pbr = getattr(
-            gltf_material,
-            "pbrMetallicRoughness",
-            None,
-        )
-
-        if pbr is not None:
+        if glb_material.pbr is not None:
             self._apply_pbr_material(
                 material=material,
-                pbr=pbr,
+                pbr=glb_material.pbr,
             )
 
-        emissive_factor = getattr(
-            gltf_material,
-            "emissiveFactor",
-            None,
-        )
-
-        if emissive_factor is not None:
+        if glb_material.emissive_factor is not None:
             material.emissive_factor = [
-                float(emissive_factor[0]),
-                float(emissive_factor[1]),
-                float(emissive_factor[2]),
+                float(glb_material.emissive_factor[0]),
+                float(glb_material.emissive_factor[1]),
+                float(glb_material.emissive_factor[2]),
             ]
 
         normal_texture = self._load_texture_from_info(
-            getattr(
-                gltf_material,
-                "normalTexture",
-                None,
-            )
+            glb_material.normal_texture
         )
 
         if normal_texture is not None:
             material.normal_texture = normal_texture
 
         emissive_texture = self._load_texture_from_info(
-            getattr(
-                gltf_material,
-                "emissiveTexture",
-                None,
-            )
+            glb_material.emissive_texture
         )
 
         if emissive_texture is not None:
             material.emissive_texture = emissive_texture
 
         occlusion_texture = self._load_texture_from_info(
-            getattr(
-                gltf_material,
-                "occlusionTexture",
-                None,
-            )
+            glb_material.occlusion_texture
         )
 
         if occlusion_texture is not None:
@@ -499,14 +564,10 @@ class GlbLoader:
             ]
 
         if metallic_factor is not None:
-            material.metallic_factor = float(
-                metallic_factor
-            )
+            material.metallic_factor = float(metallic_factor)
 
         if roughness_factor is not None:
-            material.roughness_factor = float(
-                roughness_factor
-            )
+            material.roughness_factor = float(roughness_factor)
 
         base_texture = self._load_texture_from_info(
             getattr(
@@ -535,6 +596,7 @@ class GlbLoader:
     # =================================== #
     # Textures / Images
     # =================================== #
+
     def _load_texture_from_info(
         self,
         texture_info: Any,
@@ -580,9 +642,7 @@ class GlbLoader:
         if image_index is None:
             return None
 
-        sampler_key = self._get_sampler_cache_key(
-            gltf_texture
-        )
+        sampler_key = self._get_sampler_cache_key(gltf_texture)
 
         texture = self._load_image_texture(
             image_index=image_index,
@@ -618,9 +678,7 @@ class GlbLoader:
 
         image_bytes, extension = image_data
 
-        image_hash = xxhash.xxh3_64_hexdigest(
-            image_bytes
-        )
+        image_hash = xxhash.xxh3_64_hexdigest(image_bytes)
 
         key = (
             image_hash,
@@ -643,6 +701,7 @@ class GlbLoader:
         )
 
         texture = image.texture
+
         if texture is None:
             return None
 
@@ -658,9 +717,7 @@ class GlbLoader:
         self,
         image_index: int,
     ) -> tuple[bytes, str] | None:
-        cached_data = self._image_bytes_cache.get(
-            image_index
-        )
+        cached_data = self._image_bytes_cache.get(image_index)
 
         if cached_data is not None:
             return cached_data
@@ -674,10 +731,7 @@ class GlbLoader:
 
         image = self._gltf.images[image_index]
 
-        image_bytes, extension = self._load_image_bytes(
-            image=image,
-        )
-
+        image_bytes, extension = self._load_image_bytes(image=image)
         if image_bytes is None:
             return None
 
@@ -721,26 +775,10 @@ class GlbLoader:
         sampler = self._gltf.samplers[sampler_index]
 
         return (
-            getattr(
-                sampler,
-                "minFilter",
-                None,
-            ),
-            getattr(
-                sampler,
-                "magFilter",
-                None,
-            ),
-            getattr(
-                sampler,
-                "wrapS",
-                None,
-            ),
-            getattr(
-                sampler,
-                "wrapT",
-                None,
-            ),
+            getattr(sampler, "minFilter", None),
+            getattr(sampler, "magFilter", None),
+            getattr(sampler, "wrapS", None),
+            getattr(sampler, "wrapT", None),
         )
 
     def _apply_sampler(
@@ -765,35 +803,19 @@ class GlbLoader:
         sampler = self._gltf.samplers[sampler_index]
 
         min_filter = self._sampler_min_filter_to_kivy(
-            getattr(
-                sampler,
-                "minFilter",
-                None,
-            )
+            getattr(sampler, "minFilter", None)
         )
 
         mag_filter = self._sampler_mag_filter_to_kivy(
-            getattr(
-                sampler,
-                "magFilter",
-                None,
-            )
+            getattr(sampler, "magFilter", None)
         )
 
         wrap_s = self._sampler_wrap_to_kivy(
-            getattr(
-                sampler,
-                "wrapS",
-                None,
-            )
+            getattr(sampler, "wrapS", None)
         )
 
         wrap_t = self._sampler_wrap_to_kivy(
-            getattr(
-                sampler,
-                "wrapT",
-                None,
-            )
+            getattr(sampler, "wrapT", None)
         )
 
         texture_options = cast(Any, texture)
@@ -878,9 +900,7 @@ class GlbLoader:
                 )
 
             if self._base_path is None:
-                raise RuntimeError(
-                    "GLB base path was not set."
-                )
+                raise RuntimeError("GLB base path was not set.")
 
             image_path = (
                 Path(uri)
@@ -906,9 +926,7 @@ class GlbLoader:
         buffer_view_index: int,
     ) -> bytes:
         if self._buffer_bytes is None:
-            raise RuntimeError(
-                "GLB buffer bytes were not loaded."
-            )
+            raise RuntimeError("GLB buffer bytes were not loaded.")
 
         view = self._gltf.bufferViews[buffer_view_index]
 
@@ -934,6 +952,7 @@ class GlbLoader:
     # =================================== #
     # Buffer Reading
     # =================================== #
+
     def _load_buffer_bytes(
         self,
         filename: Path,
@@ -972,9 +991,7 @@ class GlbLoader:
             return None
 
         if self._buffer_bytes is None:
-            raise RuntimeError(
-                "GLB buffer bytes were not loaded."
-            )
+            raise RuntimeError("GLB buffer bytes were not loaded.")
 
         buffer_bytes = self._buffer_bytes
         accessor = self._gltf.accessors[accessor_index]
@@ -990,6 +1007,7 @@ class GlbLoader:
         count = accessor.count
 
         dtype = self._DTYPE_MAP[accessor.componentType]
+
         component_count = self._COMPONENT_COUNT_MAP.get(
             accessor.type,
             1,
@@ -1023,20 +1041,15 @@ class GlbLoader:
     # =================================== #
     # Geometry
     # =================================== #
-    def _process_primitive(
-        self,
-        primitive: Any,
-    ) -> Geometry | None:
-        position_index = getattr(
-            primitive.attributes,
-            "POSITION",
-            None,
-        )
 
-        if position_index is None:
+    def _process_primitive_geometry(
+        self,
+        primitive: GlbPrimitive,
+    ) -> Geometry | None:
+        if primitive.position_index is None:
             return None
 
-        positions = self._read_accessor(position_index)
+        positions = self._read_accessor(primitive.position_index)
 
         if positions is None:
             return None
@@ -1048,10 +1061,8 @@ class GlbLoader:
 
         vertex_count = positions.shape[0]
 
-        index_index = primitive.indices
-
-        if index_index is not None:
-            indices = self._read_accessor(index_index)
+        if primitive.indices_index is not None:
+            indices = self._read_accessor(primitive.indices_index)
 
             if indices is None:
                 return None
@@ -1067,13 +1078,7 @@ class GlbLoader:
                 dtype=np.int64,
             )
 
-        normals = self._read_accessor(
-            getattr(
-                primitive.attributes,
-                "NORMAL",
-                None,
-            )
-        )
+        normals = self._read_accessor(primitive.normal_index)
 
         if normals is None or normals.shape[1] < 3:
             normals = np.zeros_like(
@@ -1086,13 +1091,7 @@ class GlbLoader:
                 copy=False,
             )
 
-        uvs = self._read_accessor(
-            getattr(
-                primitive.attributes,
-                "TEXCOORD_0",
-                None,
-            )
-        )
+        uvs = self._read_accessor(primitive.uv_index)
 
         if uvs is None or uvs.shape[1] < 2:
             uvs = np.zeros(
@@ -1111,13 +1110,7 @@ class GlbLoader:
         if self.flip_v:
             uvs[:, 1] = 1.0 - uvs[:, 1]
 
-        tangents = self._read_accessor(
-            getattr(
-                primitive.attributes,
-                "TANGENT",
-                None,
-            )
-        )
+        tangents = self._read_accessor(primitive.tangent_index)
 
         has_source_tangents = (
             tangents is not None
@@ -1135,6 +1128,7 @@ class GlbLoader:
 
         else:
             assert tangents is not None
+
             tangents = tangents[:, :4].astype(
                 np.float32,
                 copy=False,

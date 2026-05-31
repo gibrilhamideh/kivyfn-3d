@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from kivyfn.three.math.vector import Vector3
     from kivyfn.three.objects.geometry import Geometry
     from kivyfn.three.objects.material import Material
-    from kivyfn.three.controls.interaction import InteractionEvent
 
 
 Pivot = Literal[
@@ -51,12 +50,6 @@ class Object3D(Node3D):
             "left",
             "right"
         )
-    )
-
-    __events__ = (
-        "on_press",
-        "on_release",
-        "on_drag",
     )
 
     def __repr__(self) -> str:
@@ -135,23 +128,4 @@ class Object3D(Node3D):
         return self.collider.intersects_ray(origin, direction)
 
 
-    # =================================== #
-    # Interaction Events
-    # =================================== #
-    def on_press(
-        self,
-        event: InteractionEvent,
-    ) -> None:
-        pass
 
-    def on_release(
-        self,
-        event: InteractionEvent,
-    ) -> None:
-        pass
-
-    def on_drag(
-        self,
-        event: InteractionEvent,
-    ) -> None:
-        pass
