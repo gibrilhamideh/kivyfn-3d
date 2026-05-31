@@ -90,7 +90,7 @@ class InteractionController(SceneController):
 
         closest: InteractionEvent | None = None
 
-        for object3d in self.scene.root.walk_objects():
+        for object3d in self.scene.root.walk(filter="objects"):
             if not object3d.pickable:
                 continue
 

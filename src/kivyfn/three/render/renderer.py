@@ -247,7 +247,7 @@ class Renderer(EventDispatcher):
         self,
         node: Node3D,
     ) -> None:
-        for object3d in node.walk_objects():
+        for object3d in node.walk(filter="objects"):
             object_id = id(object3d)
 
             model_mat = object3d.world_matrix
@@ -266,7 +266,7 @@ class Renderer(EventDispatcher):
         self,
         node: Node3D,
     ) -> None:
-        for object3d in node.walk_objects():
+        for object3d in node.walk(filter="objects"):
             object_id = id(object3d)
             material = object3d.material
 

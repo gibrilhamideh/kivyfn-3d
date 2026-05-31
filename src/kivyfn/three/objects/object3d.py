@@ -76,6 +76,8 @@ class Object3D(Node3D):
             ")"
         )
 
+    __events__ = ("on_material_dirty", )
+
     def __init__(
         self,
         geometry: Geometry,
@@ -90,11 +92,11 @@ class Object3D(Node3D):
         )
 
         self.geometry = geometry
-        self.material = material # type: ignore[reportIncompatibleVariableOverride]
         self.pivot = pivot
         self.collider = Collider(self)
 
         self.bind_collider()
+        self.set_material(material)
 
     # =================================== #
     # Biners
@@ -126,6 +128,75 @@ class Object3D(Node3D):
     # =================================== #
     def intersects_ray(self, origin, direction):
         return self.collider.intersects_ray(origin, direction)
+
+
+    # =================================== #
+    # Material
+    # =================================== #
+    def set_material(
+        self,
+        material: Material,
+    ) -> None:
+        if self.material is not None:
+            self.unbind_material(self.material)
+
+        self.material = material
+
+        self.bind_material(material)
+        self.mark_material_dirty()
+
+    def bind_material(
+        self,
+        material: Material,
+    ) -> None:
+        material.bind(
+            uniforms=self._on_material_changed,
+            base_texture=self._on_material_changed,
+            normal_texture=self._on_material_changed,
+            emissive_texture=self._on_material_changed,
+            metallic_roughness_texture=self._on_material_changed,
+            occlusion_texture=self._on_material_changed,
+            roughness_texture=self._on_material_changed,
+            metallic_texture=self._on_material_changed,
+            specular_texture=self._on_material_changed,
+            displacement_texture=self._on_material_changed,
+        )
+
+    def unbind_material(
+        self,
+        material: Material,
+    ) -> None:
+        material.unbind(
+            uniforms=self._on_material_changed,
+            base_texture=self._on_material_changed,
+            normal_texture=self._on_material_changed,
+            emissive_texture=self._on_material_changed,
+            metallic_roughness_texture=self._on_material_changed,
+            occlusion_texture=self._on_material_changed,
+            roughness_texture=self._on_material_changed,
+            metallic_texture=self._on_material_changed,
+            specular_texture=self._on_material_changed,
+            displacement_texture=self._on_material_changed,
+        )
+
+    def _on_material_changed(self, *_):
+        self.mark_material_dirty()
+
+    # =================================== #
+    # Dirty Propagation
+    # =================================== #
+    def mark_material_dirty(self) -> None:
+        self.dispatch("on_material_dirty")
+
+    # =================================== #
+    # Events
+    # =================================== #
+    def on_material_dirty(
+        self,
+    ) -> None:
+        pass
+
+
 
 
 

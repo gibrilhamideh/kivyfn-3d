@@ -111,7 +111,7 @@ class InstructionsManager(EventDispatcher):
         node: Node3D,
         ctx: RenderContext,
     ) -> None:
-        for object3d in node.walk_objects():
+        for object3d in node.walk(filter="objects"):
             self._create(
                 object3d=object3d,
                 ctx=ctx,
@@ -122,7 +122,7 @@ class InstructionsManager(EventDispatcher):
                 link.pass_name,
             )
 
-            for object3d in node.walk_objects():
+            for object3d in node.walk(filter="objects"):
                 self._create(
                     object3d=object3d,
                     ctx=pass_ctx,
@@ -192,7 +192,7 @@ class InstructionsManager(EventDispatcher):
         node: Node3D,
         ctx: RenderContext | None = None,
     ) -> None:
-        for object3d in node.walk_objects():
+        for object3d in node.walk(filter="objects"):
             self._destroy(
                 object3d=object3d,
                 ctx=ctx,
@@ -302,7 +302,7 @@ class InstructionsManager(EventDispatcher):
         self,
         node: Node3D,
     ) -> None:
-        for object3d in node.walk_objects():
+        for object3d in node.walk(filter="objects"):
             for instructions in self.by_object.get(
                 id(object3d),
                 {},
@@ -313,7 +313,7 @@ class InstructionsManager(EventDispatcher):
         self,
         node: Node3D,
     ) -> None:
-        for object3d in node.walk_objects():
+        for object3d in node.walk(filter="objects"):
             for instructions in self.by_object.get(
                 id(object3d),
                 {},

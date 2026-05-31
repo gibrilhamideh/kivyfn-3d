@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator, TypeGuard
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    Iterator,
+    TypeGuard,
+    TypeAlias,
+    overload
+)
 
 from kivy.event import EventDispatcher
 from kivy.properties import (
@@ -10,6 +18,7 @@ from kivy.properties import (
     ListProperty,
     ObjectProperty,
     StringProperty,
+    DictProperty
 )
 
 from kivyfn.three.math.transform import Transform
@@ -19,9 +28,15 @@ if TYPE_CHECKING:
     from kivyfn.three.math.matrix import Matrix4
     from kivyfn.three.math.vector import Vector3
     from kivyfn.three.objects import Object3D
-    from kivyfn.three.objects.material import Material
     from kivyfn.three.controls.interaction import InteractionEvent
 
+NodeFilter = Literal[
+    "all",
+    "nodes",
+    "objects",
+]
+
+SceneNode: TypeAlias = "Node3D | Object3D"
 
 class Node3D(EventDispatcher):
     name = StringProperty("")
@@ -29,14 +44,13 @@ class Node3D(EventDispatcher):
 
     children: list[Node3D | Object3D] = ListProperty([])
     parent: Node3D | Object3D | None = ObjectProperty(None, allownone=True)
+    extras: dict = DictProperty()
 
-    material: Material | None = ObjectProperty(None, allownone=True)
 
     transform: Transform = ObjectProperty()
 
     __events__ = (
         "on_transform_dirty",
-        "on_material_dirty",
         "on_press",
         "on_release",
         "on_drag",
@@ -46,12 +60,10 @@ class Node3D(EventDispatcher):
         self,
         name: str = "",
         transform: Transform | None = None,
-        material: Material | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
-        self.set_material(material)
         self.name = name
         self.transform = transform or Transform()
 
@@ -149,60 +161,6 @@ class Node3D(EventDispatcher):
         self.mark_transform_dirty()
 
     # =================================== #
-    # Material
-    # =================================== #
-    def set_material(
-        self,
-        material: Material | None,
-    ) -> None:
-        if self.material is not None:
-            self.unbind_material(self.material)
-
-        self.material = material
-
-        if material is not None:
-            self.bind_material(material)
-
-        self.mark_material_dirty()
-
-    def bind_material(
-        self,
-        material: Material,
-    ) -> None:
-        material.bind(
-            uniforms=self._on_material_changed,
-            base_texture=self._on_material_changed,
-            normal_texture=self._on_material_changed,
-            emissive_texture=self._on_material_changed,
-            metallic_roughness_texture=self._on_material_changed,
-            occlusion_texture=self._on_material_changed,
-            roughness_texture=self._on_material_changed,
-            metallic_texture=self._on_material_changed,
-            specular_texture=self._on_material_changed,
-            displacement_texture=self._on_material_changed,
-        )
-
-    def unbind_material(
-        self,
-        material: Material,
-    ) -> None:
-        material.unbind(
-            uniforms=self._on_material_changed,
-            base_texture=self._on_material_changed,
-            normal_texture=self._on_material_changed,
-            emissive_texture=self._on_material_changed,
-            metallic_roughness_texture=self._on_material_changed,
-            occlusion_texture=self._on_material_changed,
-            roughness_texture=self._on_material_changed,
-            metallic_texture=self._on_material_changed,
-            specular_texture=self._on_material_changed,
-            displacement_texture=self._on_material_changed,
-        )
-
-    def _on_material_changed(self, *_):
-        self.mark_material_dirty()
-
-    # =================================== #
     # Dirty Propagation
     # =================================== #
     def mark_transform_dirty(self) -> None:
@@ -210,12 +168,6 @@ class Node3D(EventDispatcher):
 
         for child in self.children:
             child.mark_transform_dirty()
-
-    def mark_material_dirty(self) -> None:
-        self.dispatch("on_material_dirty")
-
-        for child in self.children:
-            child.mark_material_dirty()
 
     # =================================== #
     # Events
@@ -225,10 +177,6 @@ class Node3D(EventDispatcher):
     ) -> None:
         pass
 
-    def on_material_dirty(
-        self,
-    ) -> None:
-        pass
 
     # =================================== #
     # Relationships
@@ -247,7 +195,6 @@ class Node3D(EventDispatcher):
         child.parent = self
 
         child.mark_transform_dirty()
-        child.mark_material_dirty()
 
     def remove_child(
         self,
@@ -257,28 +204,12 @@ class Node3D(EventDispatcher):
         child.parent = None
 
         child.mark_transform_dirty()
-        child.mark_material_dirty()
 
     def clear_children(self) -> None:
         for child in list(self.children):
             self.remove_child(child)
 
-    # =================================== #
-    # Traversal
-    # =================================== #
-    def __iter__(self) -> Iterator[Node3D | Object3D]:
-        return iter(self.children)
 
-    def walk_tree(self) -> Iterator[Node3D | Object3D]:
-        yield self
-
-        for child in self.children:
-            yield from child.walk_tree()
-
-    def walk_objects(self) -> Iterator[Object3D]:
-        for node in self.walk_tree():
-            if self.is_object3d(node):
-                yield node
 
     # =================================== #
     # Type Helpers
@@ -313,3 +244,517 @@ class Node3D(EventDispatcher):
         event: InteractionEvent,
     ) -> None:
         pass
+
+
+    # =================================== #
+    # Traversal
+    # =================================== #
+    def __iter__(self) -> Iterator[Node3D | Object3D]:
+        return iter(self.children)
+
+    @overload
+    def walk(
+        self,
+        *,
+        filter: Literal["nodes"],
+        include_self: bool = True,
+    ) -> Iterator[Node3D]:
+        ...
+
+    @overload
+    def walk(
+        self,
+        *,
+        filter: Literal["objects"],
+        include_self: bool = True,
+    ) -> Iterator[Object3D]:
+        ...
+
+    @overload
+    def walk(
+        self,
+        *,
+        filter: Literal["all"] = "all",
+        include_self: bool = True,
+    ) -> Iterator[Node3D | Object3D]:
+        ...
+
+    def walk(
+        self,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = True,
+    ) -> Iterator[Any]:
+        if include_self and self._matches_filter(self, filter):
+            yield self
+
+        for child in self.children:
+            yield from child.walk(
+                filter=filter,
+                include_self=True,
+            )
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
+        filter: Literal["nodes"],
+        include_self: bool = False,
+    ) -> Iterator[Node3D]:
+        ...
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
+        filter: Literal["objects"],
+        include_self: bool = False,
+    ) -> Iterator[Object3D]:
+        ...
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
+        filter: Literal["all"] = "all",
+        include_self: bool = False,
+    ) -> Iterator[SceneNode]:
+        ...
+
+    def walk_ancestors(
+        self,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = False,
+    ) -> Iterator[Any]:
+        current: SceneNode | None = (
+            self if include_self else self.parent
+        )
+
+        while current is not None:
+            if self._matches_filter(
+                current,
+                filter,
+            ):
+                yield current
+
+            current = current.parent
+
+    def nodes(
+        self,
+        *,
+        include_self: bool = True,
+    ) -> list[Node3D]:
+        return list(
+            self.walk(
+                filter="nodes",
+                include_self=include_self,
+            )
+        )
+
+    def objects(
+        self,
+        *,
+        include_self: bool = True,
+    ) -> list[Object3D]:
+        return list(
+            self.walk(
+                filter="objects",
+                include_self=include_self,
+            )
+        )
+
+    @overload
+    def descendants(
+        self,
+        *,
+        filter: Literal["nodes"],
+    ) -> list[Node3D]:
+        ...
+
+    @overload
+    def descendants(
+        self,
+        *,
+        filter: Literal["objects"],
+    ) -> list[Object3D]:
+        ...
+
+    @overload
+    def descendants(
+        self,
+        *,
+        filter: Literal["all"] = "all",
+    ) -> list[Node3D | Object3D]:
+        ...
+
+    def descendants(
+        self,
+        *,
+        filter: NodeFilter = "all",
+    ) -> list[Any]:
+        return list(
+            self.walk(
+                filter=filter,
+                include_self=False,
+            )
+        )
+
+    @overload
+    def ancestors(
+        self,
+        *,
+        filter: Literal["nodes"],
+    ) -> list[Node3D]:
+        ...
+
+    @overload
+    def ancestors(
+        self,
+        *,
+        filter: Literal["objects"],
+    ) -> list[Object3D]:
+        ...
+
+    @overload
+    def ancestors(
+        self,
+        *,
+        filter: Literal["all"] = "all",
+    ) -> list[Node3D | Object3D]:
+        ...
+
+    def ancestors(
+        self,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = False,
+    ) -> list[Any]:
+        return list(
+            self.walk_ancestors(
+                filter=filter,
+                include_self=include_self,
+            )
+        )
+
+    def root(self) -> Node3D | Object3D:
+        current: Node3D | Object3D = self
+
+        while current.parent is not None:
+            current = current.parent
+
+        return current
+
+    @overload
+    def find(
+        self,
+        name: str,
+        *,
+        filter: Literal["nodes"],
+        include_self: bool = True,
+    ) -> Node3D | None:
+        ...
+
+    @overload
+    def find(
+        self,
+        name: str,
+        *,
+        filter: Literal["objects"],
+        include_self: bool = True,
+    ) -> Object3D | None:
+        ...
+
+    @overload
+    def find(
+        self,
+        name: str,
+        *,
+        filter: Literal["all"] = "all",
+        include_self: bool = True,
+    ) -> Node3D | Object3D | None:
+        ...
+
+    def find(
+        self,
+        name: str,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = True,
+    ) -> Any | None:
+        for node in self.walk(
+            filter=filter,
+            include_self=include_self,
+        ):
+            if node.name == name:
+                return node
+
+        return None
+
+    @overload
+    def find_all(
+        self,
+        name: str,
+        *,
+        filter: Literal["nodes"],
+        include_self: bool = True,
+    ) -> list[Node3D]:
+        ...
+
+    @overload
+    def find_all(
+        self,
+        name: str,
+        *,
+        filter: Literal["objects"],
+        include_self: bool = True,
+    ) -> list[Object3D]:
+        ...
+
+    @overload
+    def find_all(
+        self,
+        name: str,
+        *,
+        filter: Literal["all"] = "all",
+        include_self: bool = True,
+    ) -> list[Node3D | Object3D]:
+        ...
+
+    def find_all(
+        self,
+        name: str,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = True,
+    ) -> list[Any]:
+        return [
+            node
+            for node in self.walk(
+                filter=filter,
+                include_self=include_self,
+            )
+            if node.name == name
+        ]
+
+    @overload
+    def fuzzy_find(
+        self,
+        text: str,
+        *,
+        filter: Literal["nodes"],
+        include_self: bool = True,
+        case_sensitive: bool = False,
+    ) -> Node3D | None:
+        ...
+
+    @overload
+    def fuzzy_find(
+        self,
+        text: str,
+        *,
+        filter: Literal["objects"],
+        include_self: bool = True,
+        case_sensitive: bool = False,
+    ) -> Object3D | None:
+        ...
+
+    @overload
+    def fuzzy_find(
+        self,
+        text: str,
+        *,
+        filter: Literal["all"] = "all",
+        include_self: bool = True,
+        case_sensitive: bool = False,
+    ) -> SceneNode | None:
+        ...
+
+    def fuzzy_find(
+        self,
+        text: str,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = True,
+        case_sensitive: bool = False,
+    ) -> Any | None:
+        matches = self.fuzzy_find_all(
+            text,
+            filter=filter,
+            include_self=include_self,
+            case_sensitive=case_sensitive,
+        )
+
+        return matches[0] if matches else None
+
+    @overload
+    def fuzzy_find_all(
+        self,
+        text: str,
+        *,
+        filter: Literal["nodes"],
+        include_self: bool = True,
+        case_sensitive: bool = False,
+    ) -> list[Node3D]:
+        ...
+
+    @overload
+    def fuzzy_find_all(
+        self,
+        text: str,
+        *,
+        filter: Literal["objects"],
+        include_self: bool = True,
+        case_sensitive: bool = False,
+    ) -> list[Object3D]:
+        ...
+
+    @overload
+    def fuzzy_find_all(
+        self,
+        text: str,
+        *,
+        filter: Literal["all"] = "all",
+        include_self: bool = True,
+        case_sensitive: bool = False,
+    ) -> list[Node3D | Object3D]:
+        ...
+
+    def fuzzy_find_all(
+        self,
+        text: str,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = True,
+        case_sensitive: bool = False,
+    ) -> list[Any]:
+        needle = text if case_sensitive else text.lower()
+
+        return [
+            node
+            for node in self.walk(
+                filter=filter,
+                include_self=include_self,
+            )
+            if needle in (
+                node.name if case_sensitive else node.name.lower()
+            )
+        ]
+
+    @overload
+    def find_by_extra(
+        self,
+        key: str,
+        value: Any = None,
+        *,
+        filter: Literal["nodes"],
+        include_self: bool = True,
+        require_value: bool = False,
+    ) -> list[Node3D]:
+        ...
+
+    @overload
+    def find_by_extra(
+        self,
+        key: str,
+        value: Any = None,
+        *,
+        filter: Literal["objects"],
+        include_self: bool = True,
+        require_value: bool = False,
+    ) -> list[Object3D]:
+        ...
+
+    @overload
+    def find_by_extra(
+        self,
+        key: str,
+        value: Any = None,
+        *,
+        filter: Literal["all"] = "all",
+        include_self: bool = True,
+        require_value: bool = False,
+    ) -> list[SceneNode]:
+        ...
+
+    def find_by_extra(
+        self,
+        key: str,
+        value: Any = None,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = True,
+        require_value: bool = False,
+    ) -> list[Any]:
+        result: list[Any] = []
+
+        for node in self.walk(
+            filter=filter,
+            include_self=include_self,
+        ):
+            extras = getattr(node, "extras", None)
+
+            if not isinstance(extras, dict):
+                continue
+
+            if key not in extras:
+                continue
+
+            if require_value and extras.get(key) != value:
+                continue
+
+            result.append(node)
+
+        return result
+
+    def require(
+        self,
+        name: str,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = True,
+    ) -> Any:
+        node = self.find(
+            name,
+            filter=filter,
+            include_self=include_self,
+        )
+
+        if node is None:
+            raise ValueError(f"Node not found: {name!r}")
+
+        return node
+
+    # =================================== #
+    # Visibility
+    # =================================== #
+
+    def show(self) -> None:
+        self.visible = True
+
+    def hide(self) -> None:
+        self.visible = False
+
+    def show_all(self) -> None:
+        for node in self.walk():
+            node.visible = True
+
+    def hide_all(self) -> None:
+        for node in self.walk():
+            node.visible = False
+
+    # =================================== #
+    # Internal
+    # =================================== #
+    def _matches_filter(
+        self,
+        node: Node3D | Object3D,
+        filter: NodeFilter,
+    ) -> bool:
+        if filter == "all":
+            return True
+
+        if filter == "objects":
+            return node.is_object
+
+        return not node.is_object
