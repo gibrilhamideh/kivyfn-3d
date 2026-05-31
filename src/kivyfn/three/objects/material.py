@@ -15,6 +15,22 @@ from kivy.properties import (
     StringProperty,
 )
 
+MATERIAL_UNIFORMS = {
+    "metallic_factor",
+    "roughness_factor",
+    "emissive_factor",
+    "base_color",
+    "base_texture",
+    "normal_texture",
+    "emissive_texture",
+    "occlusion_texture",
+    "metallic_roughness_texture",
+    "roughness_texture",
+    "metallic_texture",
+    "specular_texture",
+    "displacement_texture",
+}
+
 
 class Material(EventDispatcher):
 
@@ -171,5 +187,41 @@ class Material(EventDispatcher):
 
     def set_uniform(self, name: str, value: Any) -> None:
         self.uniforms[name] = value
+
+
+
+    def copy(self, **overrides) -> Material:
+        custom_uniforms = {
+            name: value
+            for name, value in dict(self.uniforms).items()
+            if name not in MATERIAL_UNIFORMS
+        }
+
+        custom_uniforms.update(overrides.pop("uniforms", {}))
+
+        return Material(
+            name=overrides.pop("name", self.name),
+            metallic_factor=overrides.pop("metallic_factor", self.metallic_factor),
+            roughness_factor=overrides.pop("roughness_factor", self.roughness_factor),
+            emissive_factor=overrides.pop("emissive_factor", list(self.emissive_factor)),
+            base_color=overrides.pop("base_color", list(self.base_color)),
+            base_texture=overrides.pop("base_texture", self.base_texture),
+            normal_texture=overrides.pop("normal_texture", self.normal_texture),
+            emissive_texture=overrides.pop("emissive_texture", self.emissive_texture),
+            occlusion_texture=overrides.pop("occlusion_texture", self.occlusion_texture),
+            metallic_roughness_texture=overrides.pop(
+                "metallic_roughness_texture",
+                self.metallic_roughness_texture,
+            ),
+            roughness_texture=overrides.pop("roughness_texture", self.roughness_texture),
+            metallic_texture=overrides.pop("metallic_texture", self.metallic_texture),
+            specular_texture=overrides.pop("specular_texture", self.specular_texture),
+            displacement_texture=overrides.pop(
+                "displacement_texture",
+                self.displacement_texture,
+            ),
+            **custom_uniforms,
+            **overrides,
+        )
 
 

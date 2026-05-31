@@ -1,7 +1,7 @@
 # kivyfn/three/scene/scene.py
 
 from __future__ import annotations
-from typing import TYPE_CHECKING, Literal, Tuple
+from typing import TYPE_CHECKING
 
 from kivy.core.window import Window
 from kivy.uix.widget import Widget
@@ -60,13 +60,11 @@ class Scene(Widget):
             )
 
         with self.canvas:
-            # Callback(self.enable_depthtest)
 
             self.group = InstructionGroup()
 
-            # Callback(self.disable_depthtest)
             Callback(self.restore_viewport)
-            
+
 
         self.bind(
             pos=self._update_bg_rect,
@@ -232,18 +230,6 @@ class Scene(Widget):
 
         self.renderer.add(node, context)
 
-    def hide(
-        self,
-        node: Node3D,
-    ) -> None:
-        self.renderer.hide(node)
-
-    def show(
-        self,
-        node: Node3D,
-    ) -> None:
-        self.renderer.show(node)
-
     def destroy(self, node: Node3D) -> None:
         if node.parent is not None:
             node.parent.remove_child(node)
@@ -265,7 +251,7 @@ class Scene(Widget):
         if asset.is_renderable:
             node = Object3D(
                 geometry=asset.require_geometry(),
-                material=(asset.material or Material(name=asset.name)),
+                material=asset.require_material(copy=True),
                 name=asset.name,
                 transform=asset.transform.copy(),
                 pickable=pickable,
@@ -334,7 +320,7 @@ class Scene(Widget):
         self,
         manager: ViewManager,
         view: View,
-        contexts: Tuple[str, ...]
+        contexts: tuple[str, ...]
     ) -> None:
         self.update_view(view, contexts)
 
@@ -345,7 +331,7 @@ class Scene(Widget):
     def update_view(
         self,
         view: View, 
-        names: Tuple[str, ...]) -> None:
+        names: tuple[str, ...]) -> None:
         self.renderer.update_view(view, names)
 
     def update_all_views(self,):
@@ -426,7 +412,7 @@ class Scene(Widget):
     # =================================== #
     # Helpers
     # =================================== #
-    def debug_info(self) -> str:
+    def info(self) -> str:
         return (
             "Scene(\n"
             f"  root={self.root.name!r},\n"

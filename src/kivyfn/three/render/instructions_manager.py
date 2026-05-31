@@ -35,6 +35,7 @@ class InstructionsManager(EventDispatcher):
     __events__ = (
         "on_transform_dirty",
         "on_material_dirty",
+        "on_visibility_dirty"
     )
 
     def __init__(
@@ -336,6 +337,7 @@ class InstructionsManager(EventDispatcher):
         object3d.bind(
             on_transform_dirty=self._on_object_transform_dirty,
             on_material_dirty=self._on_object_material_dirty,
+            on_visibility_dirty=self._on_object_visibility_dirty
         )
 
         self._bound_objects.add(object_id)
@@ -352,6 +354,7 @@ class InstructionsManager(EventDispatcher):
         object3d.unbind(
             on_transform_dirty=self._on_object_transform_dirty,
             on_material_dirty=self._on_object_material_dirty,
+            on_visibility_dirty=self._on_object_visibility_dirty
         )
 
         self._bound_objects.discard(object_id)
@@ -378,6 +381,15 @@ class InstructionsManager(EventDispatcher):
             _node,
         )
 
+    def _on_object_visibility_dirty(
+        self,
+        _node: Node3D,
+    ) -> None:
+        self.dispatch(
+            "on_visibility_dirty",
+            _node,
+        )
+
     def on_transform_dirty(
         self,
         _node: Node3D,
@@ -387,5 +399,11 @@ class InstructionsManager(EventDispatcher):
     def on_material_dirty(
         self,
         _node: Node3D,
+    ) -> None:
+        pass
+
+    def on_visibility_dirty(
+        self,
+        _node: Node3D
     ) -> None:
         pass

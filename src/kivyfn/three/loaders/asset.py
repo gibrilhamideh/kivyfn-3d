@@ -28,6 +28,15 @@ class AssetObject:
             raise TypeError(f"AssetObject {self.name!r} is not renderable.")
         return self.geometry
 
+    def require_material(self, copy=False) -> Material:
+        if self.material is None:
+            raise TypeError(f"AssetObject {self.name!r} is not renderable.")
+
+        if copy:
+            return self.material.copy()
+
+        return self.material
+
     def __repr__(self) -> str:
         geometry_name = (
             self.geometry.name

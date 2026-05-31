@@ -51,6 +51,7 @@ class Node3D(EventDispatcher):
 
     __events__ = (
         "on_transform_dirty",
+        "on_visibility_dirty",
         "on_press",
         "on_release",
         "on_drag",
@@ -169,10 +170,21 @@ class Node3D(EventDispatcher):
         for child in self.children:
             child.mark_transform_dirty()
 
+    def mark_visibility_dirty(self) -> None:
+        self.dispatch("on_visibility_dirty")
+
+        for child in self.children:
+            child.mark_visibility_dirty()
+
     # =================================== #
     # Events
     # =================================== #
     def on_transform_dirty(
+        self,
+    ) -> None:
+        pass
+
+    def on_visibility_dirty(
         self,
     ) -> None:
         pass
@@ -728,20 +740,24 @@ class Node3D(EventDispatcher):
     # =================================== #
     # Visibility
     # =================================== #
-
     def show(self) -> None:
         self.visible = True
 
     def hide(self) -> None:
         self.visible = False
 
-    def show_all(self) -> None:
-        for node in self.walk():
-            node.visible = True
+    @property
+    def visible_in_tree(self) -> bool:
+        if not self.visible:
+            return False
 
-    def hide_all(self) -> None:
-        for node in self.walk():
-            node.visible = False
+        if self.parent is None:
+            return True
+
+        return self.parent.visible_in_tree
+
+    def on_visible(self, *_):
+        self.mark_visibility_dirty()
 
     # =================================== #
     # Internal

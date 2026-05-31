@@ -94,6 +94,9 @@ class InteractionController(SceneController):
             if not object3d.pickable:
                 continue
 
+            if not object3d.visible_in_tree:
+                continue
+
             hit = object3d.intersects_ray(
                 origin,
                 direction,

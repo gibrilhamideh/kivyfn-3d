@@ -157,6 +157,11 @@ class MaterialInstructions(BaseInstructions):
         self.sync_textures()
 
     def sync_textures(self, *_):
+        # BUG:
+        # Texture binders are never cleared when a material texture
+        # becomes None. This may leave a previously bound texture
+        # active in OpenGL state. Need a strategy for handling
+        # missing textures (default textures vs use_* uniforms flags).
         for name, binder in self.texture_binders.items():
             texture = getattr(self.material, name, None)
 
@@ -167,6 +172,16 @@ class MaterialInstructions(BaseInstructions):
 
     def sync_uniforms(self, *_):
         self.material_callback.ask_update()
+
+    def set_material(
+        self,
+        material: Material,
+    ) -> None:
+        self.material = material
+        self.material_callback.material = material
+
+        self.sync_uniforms()
+        self.sync_textures()
 
 
 class ColorInstructions(BaseInstructions):

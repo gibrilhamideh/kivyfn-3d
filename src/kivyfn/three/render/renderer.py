@@ -45,10 +45,12 @@ class Renderer(EventDispatcher):
 
         self.transform_dirty: set[int] = set()
         self.material_dirty: set[int] = set()
+        self.visibility_dirty: set[int] = set()
 
         self.instructions.bind(
             on_transform_dirty=self.queue_transform_dirty,
             on_material_dirty=self.queue_material_dirty,
+            on_visibility_dirty=self.queue_visibility_dirty
         )
 
     def __repr__(self) -> str:
@@ -188,18 +190,6 @@ class Renderer(EventDispatcher):
         self.sync_node_transform(node)
         self.sync_node_material(node)
 
-    def hide(
-        self,
-        node: Node3D,
-    ) -> None:
-        self.instructions.hide(node)
-
-    def show(
-        self,
-        node: Node3D,
-    ) -> None:
-        self.instructions.show(node)
-
     def destroy(
         self,
         node: Node3D,
@@ -225,6 +215,14 @@ class Renderer(EventDispatcher):
         self.material_dirty.add(id(node))
         self.flush_dirty()
 
+    def queue_visibility_dirty(
+        self,
+        manager: InstructionsManager,
+        node: Node3D,
+    ) -> None:
+        self.visibility_dirty.add(id(node))
+        self.flush_dirty()
+
     def flush_dirty(self, *_) -> None:
         while self.transform_dirty:
             node_id = self.transform_dirty.pop()
@@ -239,6 +237,13 @@ class Renderer(EventDispatcher):
 
             if node is not None:
                 self.sync_node_material(node)
+
+        while self.visibility_dirty:
+            node_id = self.visibility_dirty.pop()
+            node = self.instructions.objects.get(node_id)
+
+            if node is not None:
+                self.sync_node_visiblity(node)
 
     # =================================== #
     # Sync
@@ -269,17 +274,22 @@ class Renderer(EventDispatcher):
         for object3d in node.walk(filter="objects"):
             object_id = id(object3d)
             material = object3d.material
-
-            if material is None:
-                continue
-
             for instructions in self.instructions.by_object.get(object_id, {}).values():
                 if not isinstance(instructions, MaterialInstructions):
                     continue
 
-                instructions.material = material
-                instructions.sync_uniforms()
-                instructions.sync_textures()
+                instructions.set_material(material)
+
+    def sync_node_visiblity(
+        self,
+        node: Node3D,
+    ) -> None:
+        if node.visible_in_tree:
+            self.instructions.show(node)
+            return
+
+        self.instructions.hide(node)
+
 
     # =================================== #
     # View
