@@ -1,8 +1,12 @@
 # kivyfn/three/render/context_manager.py
 
 from __future__ import annotations
-
+from typing import Callable
+from functools import partial
 from dataclasses import dataclass, field
+
+from kivy.graphics import BindTexture
+from kivy.graphics.texture import Texture
 
 from kivyfn.three.render.context import (
     RenderContext,
@@ -30,6 +34,9 @@ class RenderPassBinding:
     output: RenderPassOutput
     uniform: str
     slot: int
+
+    instruction: BindTexture | None = None
+    texture_callback: Callable | None = None
 
 
 @dataclass(slots=True)
@@ -121,10 +128,10 @@ class RenderPassBinder:
             link.bindings.append(binding)
 
             if created:
-                target_context.bind_texture(
-                    uniform=uniform,
-                    texture=render_pass.texture,
-                    slot=binding.slot,
+                self._attach_binding(
+                    binding=binding,
+                    render_pass=render_pass,
+                    target_context=target_context,
                 )
 
         self._links.append(link)
@@ -217,10 +224,13 @@ class RenderPassBinder:
         self,
         name: str,
     ) -> None:
-        self._bindings_by_target.pop(
+        bindings = self._bindings_by_target.pop(
             name,
-            None,
+            [],
         )
+
+        for binding in bindings:
+            self._detach_binding(binding)
 
         for link in self._links:
             link.bindings = [
@@ -233,6 +243,11 @@ class RenderPassBinder:
         self,
         pass_name: str,
     ) -> None:
+        for bindings in self._bindings_by_target.values():
+            for binding in bindings:
+                if binding.pass_name == pass_name:
+                    self._detach_binding(binding)
+
         self._links = [
             link
             for link in self._links
@@ -366,6 +381,70 @@ class RenderPassBinder:
             a.names == b.names
             and a.tags == b.tags
         )
+
+
+    def _detach_binding(
+        self,
+        binding: RenderPassBinding,
+    ) -> None:
+        if binding.texture_callback is None:
+            return
+
+        try:
+            render_pass = self.passes.get(binding.pass_name)
+        except KeyError:
+            render_pass = None
+
+        if render_pass is not None:
+            render_pass.unbind(
+                texture_ref=binding.texture_callback,
+            )
+
+        binding.texture_callback = None
+        binding.instruction = None
+
+    def _attach_binding(
+        self,
+        *,
+        binding: RenderPassBinding,
+        render_pass: RenderPass,
+        target_context: RenderContext,
+    ) -> None:
+        if binding.instruction is not None:
+            return
+
+        instruction = target_context.bind_texture(
+            uniform=binding.uniform,
+            texture=render_pass.texture_ref,
+            slot=binding.slot,
+        )
+
+        callback = partial(
+            self._update_binding_texture,
+            binding,
+            target_context,
+        )
+
+        render_pass.bind(
+            texture_ref=callback,
+        )
+
+        binding.instruction = instruction
+        binding.texture_callback = callback
+
+
+    def _update_binding_texture(
+        self,
+        binding: RenderPassBinding,
+        target_context: RenderContext,
+        render_pass: RenderPass,
+        texture: Texture,
+    ) -> None:
+        if binding.instruction is None:
+            return
+
+        binding.instruction.texture = texture
+        target_context.ctx.ask_update()
 
 
 # =================================== #
@@ -520,12 +599,12 @@ class RenderContextManager:
         self,
         name: str,
     ) -> RenderPass | None:
-        render_pass = self.passes.remove(name)
+        if not self.passes.exists(name):
+            return None
 
-        if render_pass is not None:
-            self.binder.remove_render_pass(name)
+        self.binder.remove_render_pass(name)
 
-        return render_pass
+        return self.passes.remove(name)
 
     def get_render_pass(
         self,

@@ -6,7 +6,6 @@ from typing import Callable, TYPE_CHECKING
 
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
-from kivy.graphics.transformation import Matrix
 
 from kivyfn.three.render.context import RenderContext, RenderPass
 from kivyfn.three.render.context_manager import RenderContextManager
@@ -249,25 +248,12 @@ class Renderer(EventDispatcher):
         contexts: tuple[str, ...],
     ) -> None:
 
-
         for name in contexts:
             ctx = self.contexts.get(name)
+            ctx.update_view(view)
 
-            projection_mat = view.get_projection_matrix(ctx.aspect)
-            view_mat = view.get_view_matrix()
-            self.sync_context_view(
-                ctx,
-                projection_mat,
-                view_mat,
-            )
 
-    def sync_context_view(
-        self,
-        ctx: RenderContext | RenderPass,
-        projection_mat: Matrix,
-        view_mat: Matrix,
-    ) -> None:
-        ctx["projection_mat"] = projection_mat
-        ctx["view_mat"] = view_mat
+
+
 
 

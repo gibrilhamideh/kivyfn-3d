@@ -25,7 +25,6 @@ from kivy.graphics.opengl import (
 )
 
 from kivy.properties import (
-        NumericProperty,
         ObjectProperty,
         ColorProperty
 )
@@ -50,7 +49,6 @@ class Scene(Widget):
 
     root: Node3D = ObjectProperty(None, allownone=True)
     bg_color: tuple[float, float, float, float] = ColorProperty()
-    framerate: int | None = NumericProperty(30, allownone=True)
 
     def __init__(self, root: Node3D | None = None, **kwargs):
         super().__init__(**kwargs)
@@ -93,10 +91,11 @@ class Scene(Widget):
 
         self.previews: dict[str, tuple[Color, Rectangle, Callable]] = {}
 
-        self.bind(framerate=self.renderer.setter("framerate"))
+        self.bind(
+            size=self._on_viewport_changed,
+            pos=self._on_viewport_changed
 
-        self.bind(size=self._on_viewport_changed)
-        self.bind(pos=self._on_viewport_changed)
+        )
 
         self.views.bind(on_view_update=self._on_view_udpate)
 
@@ -188,7 +187,7 @@ class Scene(Widget):
         view_name: str,
         output: RenderPassOutput,
         *,
-        color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+        color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
         hot_reload: bool = False,
         tags: set[str] | None = None,
         local_viewport_x: int = 0,
@@ -220,13 +219,13 @@ class Scene(Widget):
             shader=shader,
             hot_reload=hot_reload,
             output=output,
-            color=color,
             local_viewport_x=local_viewport_x,
             local_viewport_y=local_viewport_y,
             local_viewport_width=local_viewport_width,
             local_viewport_height=local_viewport_height,
             use_local_viewport=use_local_viewport,
             use_viewport_size=use_viewport_size,
+            fbo_color=color,
             fbo_width=fbo_width,
             fbo_height=fbo_height,
             with_depthbuffer=with_depthbuffer,

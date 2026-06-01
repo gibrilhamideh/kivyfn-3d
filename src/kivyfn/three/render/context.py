@@ -106,28 +106,24 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     viewport_x = AliasProperty(
         _get_viewport_x,
         None,
-        cache=True,
         bind=["scene_x", "local_viewport_x", "use_local_viewport"]
     )
 
     viewport_y = AliasProperty(
         _get_viewport_y,
         None,
-        cache=True,
         bind=["scene_y", "local_viewport_y", "use_local_viewport"]
     )
 
     viewport_width = AliasProperty(
         _get_viewport_width,
         None,
-        cache=True,
         bind=["scene_width", "local_viewport_width", "use_local_viewport"]
     )
 
     viewport_height = AliasProperty(
         _get_viewport_height,
         None,
-        cache=True,
         bind=["scene_height", "local_viewport_height", "use_local_viewport"]
     )
 
@@ -144,7 +140,6 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     aspect: float = AliasProperty(
         _get_aspect,
         None,
-        cache=True,
         bind=["viewport_width", "viewport_height"]
     )
 
@@ -304,6 +299,8 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # Viewport
     # =================================== #
     def _set_viewport(self, *_) -> None:
+
+        # print(self.name, getattr(self, "fbo_size", None))
         glViewport(
             self.viewport_x,
             self.viewport_y,
@@ -355,7 +352,7 @@ class RenderContext(BaseRenderContext[KivyRenderContext]):
 class RenderPass(BaseRenderContext[KivyFbo]):
 
     texture_ref: Texture = ObjectProperty(None, rebind=True)
-    color = ColorProperty([0.0, 0.0, 0.0, 0.0])
+    fbo_color = ColorProperty()
     fbo_width: int = NumericProperty(1024)
     fbo_height: int = NumericProperty(1024)
     use_viewport_size: bool = BooleanProperty(False)
@@ -373,7 +370,6 @@ class RenderPass(BaseRenderContext[KivyFbo]):
     fbo_size: tuple[int, int] = AliasProperty(
         _get_fbo_size,
         None,
-        cache=True,
         bind=[
             "fbo_width",
             "fbo_height",
@@ -415,11 +411,9 @@ class RenderPass(BaseRenderContext[KivyFbo]):
 
         super().__init__(**kwargs)
 
-        self._fbo_trigger = Clock.create_trigger(self._update_fbo, -1)
-
         self.ctx: KivyFbo = KivyFbo(
             size=(self.fbo_width, self.fbo_height),
-            clear_color=self.color,
+            clear_color=self.fbo_color,
             push_viewport=False,
             with_depthbuffer=with_depthbuffer,
             with_stencilbuffer=with_stencilbuffer
@@ -449,24 +443,22 @@ class RenderPass(BaseRenderContext[KivyFbo]):
 
         self.texture_ref = self.texture
 
-        self.bind(
-            fbo_size=self._fbo_trigger,
-            color=self._fbo_trigger
-        )
-
-        self._fbo_trigger()
+        self.bind(fbo_size=self._update_fbo_size)
+        self.bind(fbo_color=self._update_fbo_color)
 
 
-
-    def _update_fbo(self, *_):
+    def _update_fbo_size(self, *_):
         old_texture = self.texture
 
-        self.ctx.size = self.fbo_size
-        self.ctx.clear_color = self.color
+        if self.ctx.size != self.fbo_size:
+            self.ctx.size = self.fbo_size
 
         if self.ctx.texture is not old_texture:
+
             self.texture_ref = self.texture
 
+    def _update_fbo_color(self, *_):
+        self.ctx.clear_color = self.fbo_color
 
 
     def get_pixel_color(self, wx: int, wy: int):
