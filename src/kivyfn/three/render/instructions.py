@@ -188,7 +188,10 @@ class ColorInstructions(BaseInstructions):
         *,
         geometry: Geometry,
         ctx: RenderPass,
+        uniform_name: str
     ):
+
+        self.uniform_name = uniform_name
         super().__init__(
             geometry=geometry,
             ctx=ctx,
@@ -202,18 +205,19 @@ class ObjectIdInstructions(BaseInstructions):
         geometry: Geometry,
         render_id: int,
         ctx: RenderPass,
+        uniform_name: str
     ):
         super().__init__(
             geometry=geometry,
             ctx=ctx,
         )
 
-        # TODO: must pass uniform name to callbacl and instruction
         self.render_id = render_id
-
+        self.uniform_name = uniform_name
         self.object_id_callback = ObjectIdCallback(
             ctx=ctx,
             render_id=render_id,
+            uniform_name=uniform_name
         )
 
         self.instructions = [
@@ -229,12 +233,47 @@ class ObjectIdInstructions(BaseInstructions):
 
 
 class NormalInstructions(BaseInstructions):
-    pass
+    def __init__(
+        self,
+        *,
+        geometry: Geometry,
+        ctx: RenderPass,
+        uniform_name: str
+    ):
+        super().__init__(
+            geometry=geometry,
+            ctx=ctx,
+        )
 
+        self.uniform_name = uniform_name
 
 class DepthInstructions(BaseInstructions):
-    pass
+    def __init__(
+        self,
+        *,
+        geometry: Geometry,
+        ctx: RenderPass,
+        uniform_name: str
+    ):
+        super().__init__(
+            geometry=geometry,
+            ctx=ctx,
+        )
+
+        self.uniform_name = uniform_name
 
 
 class PositionInstructions(BaseInstructions):
-    pass
+    def __init__(
+        self,
+        *,
+        geometry: Geometry,
+        ctx: RenderPass,
+        uniform_name: str
+    ):
+        super().__init__(
+            geometry=geometry,
+            ctx=ctx,
+        )
+
+        self.uniform_name = uniform_name

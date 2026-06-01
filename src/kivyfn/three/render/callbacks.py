@@ -96,12 +96,12 @@ class ObjectIdCallback(Callback):
         *,
         ctx: RenderContext | RenderPass,
         render_id: int,
-        uniform: str = "id_color",
+        uniform_name: str,
         **kwargs,
     ) -> None:
         self.ctx = ctx
         self.render_id = render_id
-        self.uniform = uniform
+        self.uniform_name = uniform_name
 
         super().__init__(
             self.apply,
@@ -129,4 +129,4 @@ class ObjectIdCallback(Callback):
             1.0,
         ]
 
-        self.ctx.apply_uniform(self.uniform, id)
+        self.ctx.apply_uniform(self.uniform_name, id)

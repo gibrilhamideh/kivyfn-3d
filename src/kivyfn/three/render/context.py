@@ -86,45 +86,57 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     local_viewport_width: int = NumericProperty(100)
     local_viewport_height: int = NumericProperty(100)
 
-    scene_x: float = NumericProperty(0)
-    scene_y: float = NumericProperty(0)
-    scene_width: float = NumericProperty(100)
-    scene_height: float = NumericProperty(100)
+    scene_viewport_x: int = NumericProperty(0)
+    scene_viewport_y: int = NumericProperty(0)
+    scene_viewport_width: int = NumericProperty(100)
+    scene_viewport_height: int = NumericProperty(100)
 
     def _get_viewport_x(self):
-        return self.local_viewport_x if self.use_local_viewport else int(self.scene_x)
+        if self.use_local_viewport:
+            return self.local_viewport_x + self.scene_viewport_x
+
+        return self.scene_viewport_x
 
     def _get_viewport_y(self):
-        return self.local_viewport_y if self.use_local_viewport else int(self.scene_y)
+        if self.use_local_viewport:
+            return self.local_viewport_y + self.scene_viewport_y
+
+        return self.scene_viewport_y
 
     def _get_viewport_width(self):
-        return self.local_viewport_width if self.use_local_viewport else int(self.scene_width)
+        if self.use_local_viewport:
+            return self.local_viewport_width
+
+        return self.scene_viewport_width
 
     def _get_viewport_height(self):
-        return self.local_viewport_height if self.use_local_viewport else int(self.scene_height)
+        if self.use_local_viewport:
+            return self.local_viewport_height
+
+        return self.scene_viewport_height
 
     viewport_x = AliasProperty(
         _get_viewport_x,
         None,
-        bind=["scene_x", "local_viewport_x", "use_local_viewport"]
+        bind=["scene_viewport_x", "local_viewport_x", "use_local_viewport"]
     )
 
     viewport_y = AliasProperty(
         _get_viewport_y,
         None,
-        bind=["scene_y", "local_viewport_y", "use_local_viewport"]
+        bind=["scene_viewport_y", "local_viewport_y", "use_local_viewport"]
     )
 
     viewport_width = AliasProperty(
         _get_viewport_width,
         None,
-        bind=["scene_width", "local_viewport_width", "use_local_viewport"]
+        bind=["scene_viewport_width", "local_viewport_width", "use_local_viewport"]
     )
 
     viewport_height = AliasProperty(
         _get_viewport_height,
         None,
-        bind=["scene_height", "local_viewport_height", "use_local_viewport"]
+        bind=["scene_viewport_height", "local_viewport_height", "use_local_viewport"]
     )
 
     def _get_aspect(self) -> float:
@@ -163,7 +175,7 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # =================================== #
     def bind_texture(
         self,
-        uniform: str,
+        uniform_name: str,
         texture: Texture,
         slot: int,
     ) -> BindTexture:
@@ -175,7 +187,7 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
         self.texture_group.add(instruction)
 
         self.set_uniform(
-            uniform,
+            uniform_name,
             slot,
         )
 

@@ -25,8 +25,10 @@ from kivy.graphics.opengl import (
 )
 
 from kivy.properties import (
+        NumericProperty,
         ObjectProperty,
-        ColorProperty
+        ColorProperty,
+        AliasProperty
 )
 
 from kivyfn.three.scene.node import Node3D
@@ -49,6 +51,48 @@ class Scene(Widget):
 
     root: Node3D = ObjectProperty(None, allownone=True)
     bg_color: tuple[float, float, float, float] = ColorProperty()
+
+    viewport_origin_x: int = NumericProperty(0)
+    viewport_origin_y: int = NumericProperty(0)
+
+    def _get_scene_viewport_x(self):
+        return int(self.x + self.viewport_origin_x)
+
+
+    def _get_scene_viewport_y(self):
+        return int(self.y + self.viewport_origin_y)
+
+    def _get_scene_viewport_width(self):
+
+        return int(self.width)
+
+    def _get_scene_viewport_height(self):
+        return int(self.height)
+
+    scene_viewport_x: int = AliasProperty(
+        _get_scene_viewport_x,
+        None,
+        bind=["x", "viewport_origin_x"]
+    )
+
+    scene_viewport_y: int = AliasProperty(
+        _get_scene_viewport_y,
+        None,
+        bind=["y", "viewport_origin_y"]
+    )
+
+    scene_viewport_width: int = AliasProperty(
+        _get_scene_viewport_width,
+        None,
+        bind=["width"]
+    )
+
+    scene_viewport_height: int = AliasProperty(
+        _get_scene_viewport_height,
+        None,
+        bind=["height"]
+    )
+    
 
     def __init__(self, root: Node3D | None = None, **kwargs):
         super().__init__(**kwargs)
@@ -79,7 +123,6 @@ class Scene(Widget):
         self.controllers = []
 
 
-
         self.root = root or Node3D(name="root")
         self.lights = LightManager(self.root)
         self.lights.bind(on_dirty=self.renderer.sync_lights)
@@ -91,13 +134,10 @@ class Scene(Widget):
 
         self.previews: dict[str, tuple[Color, Rectangle, Callable]] = {}
 
-        self.bind(
-            size=self._on_viewport_changed,
-            pos=self._on_viewport_changed
+        self.bind(size=self._on_viewport_dirty)
+        self.bind(pos=self._on_viewport_dirty)
 
-        )
-
-        self.views.bind(on_view_update=self._on_view_udpate)
+        self.views.bind(on_view_update=self._on_view_dirty)
 
 
 
@@ -145,15 +185,15 @@ class Scene(Widget):
             use_local_viewport=use_local_viewport,
         )
 
-        ctx.scene_x = self.x
-        ctx.scene_y = self.y
-        ctx.scene_width = self.width
-        ctx.scene_height = self.height
+        ctx.scene_viewport_x = self.scene_viewport_x
+        ctx.scene_viewport_y = self.scene_viewport_y
+        ctx.scene_viewport_width = self.scene_viewport_width
+        ctx.scene_viewport_height = self.scene_viewport_height
 
-        self.bind(x=ctx.setter("scene_x"))
-        self.bind(y=ctx.setter("scene_y"))
-        self.bind(width=ctx.setter("scene_width"))
-        self.bind(height=ctx.setter("scene_height"))
+        self.bind(scene_viewport_x=ctx.setter("scene_viewport_x"))
+        self.bind(scene_viewport_y=ctx.setter("scene_viewport_y"))
+        self.bind(scene_viewport_width=ctx.setter("scene_viewport_width"))
+        self.bind(scene_viewport_height=ctx.setter("scene_viewport_height"))
 
         self.views.link(
             view.name,
@@ -235,15 +275,15 @@ class Scene(Widget):
             clear_stencil=clear_stencil,
         )
 
-        self.bind(x=ctx.setter("scene_x"))
-        self.bind(y=ctx.setter("scene_y"))
-        self.bind(width=ctx.setter("scene_width"))
-        self.bind(height=ctx.setter("scene_height"))
+        ctx.scene_viewport_x = self.scene_viewport_x
+        ctx.scene_viewport_y = self.scene_viewport_y
+        ctx.scene_viewport_width = self.scene_viewport_width
+        ctx.scene_viewport_height = self.scene_viewport_height
 
-        ctx.scene_x = self.x
-        ctx.scene_y = self.y
-        ctx.scene_width = self.width
-        ctx.scene_height = self.height
+        self.bind(scene_viewport_x=ctx.setter("scene_viewport_x"))
+        self.bind(scene_viewport_y=ctx.setter("scene_viewport_y"))
+        self.bind(scene_viewport_width=ctx.setter("scene_viewport_width"))
+        self.bind(scene_viewport_height=ctx.setter("scene_viewport_height"))
 
         self.views.link(
             view.name,
@@ -261,7 +301,7 @@ class Scene(Widget):
     def link_render_pass(
         self,
         pass_name: str,
-        uniform: str,
+        uniform_name: str,
         *,
         source_names: set[str] | None = None,
         source_tags: set[str] | None = None,
@@ -271,7 +311,7 @@ class Scene(Widget):
     ) -> None:
         self.renderer.link_render_pass(
             pass_name=pass_name,
-            uniform=uniform,
+            uniform_name=uniform_name,
             source_names=source_names,
             source_tags=source_tags,
             target_names=target_names,
@@ -444,11 +484,10 @@ class Scene(Widget):
             Window.height,
         )
 
-    def _on_viewport_changed(self, *_) -> None:
-        for view, contexts in self.views.get_links():
-            self.update_view(view, contexts)
+    def _on_viewport_dirty(self, *_) -> None:
+        self.sync_views()
 
-    def _on_view_udpate(
+    def _on_view_dirty(
         self,
         manager: ViewManager,
         view: View,
@@ -466,8 +505,9 @@ class Scene(Widget):
         names: tuple[str, ...]) -> None:
         self.renderer.update_view(view, names)
 
-    def update_all_views(self,):
-        pass
+    def sync_views(self):
+        for view, contexts in self.views.get_links():
+            self.update_view(view, contexts)
 
 
     # =================================== #

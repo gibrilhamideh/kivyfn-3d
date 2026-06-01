@@ -72,23 +72,27 @@ class InstructionsManager(EventDispatcher):
         object3d: Object3D,
         ctx: RenderPass,
         output: RenderPassOutput,
+        uniform_name: str
     ) -> BaseInstructions:
         if output == "depth":
             return DepthInstructions(
                 geometry=object3d.geometry,
                 ctx=ctx,
+                uniform_name=uniform_name
             )
 
         if output == "position":
             return PositionInstructions(
                 geometry=object3d.geometry,
                 ctx=ctx,
+                uniform_name=uniform_name
             )
 
         if output == "normal":
             return NormalInstructions(
                 geometry=object3d.geometry,
                 ctx=ctx,
+                uniform_name=uniform_name
             )
 
         if output == "id":
@@ -96,11 +100,13 @@ class InstructionsManager(EventDispatcher):
                 geometry=object3d.geometry,
                 render_id=object3d.require_render_id(),
                 ctx=ctx,
+                uniform_name=uniform_name
             )
 
         return ColorInstructions(
             geometry=object3d.geometry,
             ctx=ctx,
+            uniform_name=uniform_name
         )
 
     # =================================== #
@@ -123,11 +129,13 @@ class InstructionsManager(EventDispatcher):
                 link.pass_name,
             )
 
+
             for object3d in node.walk(filter="objects"):
                 self._create(
                     object3d=object3d,
                     ctx=pass_ctx,
                     output=link.output,
+                    uniform_name=link.uniform_name
                 )
 
     def _create(
@@ -135,6 +143,7 @@ class InstructionsManager(EventDispatcher):
         object3d: Object3D,
         ctx: RenderContext | RenderPass,
         *,
+        uniform_name: str | None = None,
         output: RenderPassOutput | None = None,
     ) -> BaseInstructions:
         object_id = id(object3d)
@@ -160,10 +169,16 @@ class InstructionsManager(EventDispatcher):
                     "Expected a RenderPassOutput when creating pass instructions."
                 )
 
+            if uniform_name is None:
+                raise ValueError(
+                    f"Render pass '{ctx.name}' requires an texture uniform name. "
+                )
+
             instructions = self.create_pass_instructions(
                 object3d=object3d,
                 ctx=ctx,
                 output=output,
+                uniform_name=uniform_name
             )
 
         ctx.add(instructions.group)

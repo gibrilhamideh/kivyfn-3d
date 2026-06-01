@@ -32,7 +32,7 @@ class RenderPassBinding:
     pass_name: str
     target_name: str
     output: RenderPassOutput
-    uniform: str
+    uniform_name: str
     slot: int
 
     instruction: BindTexture | None = None
@@ -45,7 +45,7 @@ class RenderPassLink:
     sources: ContextSelection
     targets: ContextSelection
     output: RenderPassOutput
-    uniform: str
+    uniform_name: str
     bindings: list[RenderPassBinding] = field(default_factory=list)
 
 
@@ -74,7 +74,7 @@ class RenderPassBinder:
         self,
         *,
         pass_name: str,
-        uniform: str,
+        uniform_name: str,
         output: RenderPassOutput,
         source_names: set[str] | None = None,
         source_tags: set[str] | None = None,
@@ -95,7 +95,7 @@ class RenderPassBinder:
 
         existing = self._find_link(
             pass_name=pass_name,
-            uniform=uniform,
+            uniform_name=uniform_name,
             output=output,
             sources=sources,
             targets=targets,
@@ -109,7 +109,7 @@ class RenderPassBinder:
             sources=sources,
             targets=targets,
             output=output,
-            uniform=uniform,
+            uniform_name=uniform_name,
         )
 
         target_contexts = self.contexts.select(
@@ -122,7 +122,7 @@ class RenderPassBinder:
                 pass_name=pass_name,
                 target_name=target_context.name,
                 output=output,
-                uniform=uniform,
+                uniform_name=uniform_name,
             )
 
             link.bindings.append(binding)
@@ -279,13 +279,13 @@ class RenderPassBinder:
         pass_name: str,
         target_name: str,
         output: RenderPassOutput,
-        uniform: str,
+        uniform_name: str,
     ) -> tuple[RenderPassBinding, bool]:
         existing = self._find_binding(
             pass_name=pass_name,
             target_name=target_name,
             output=output,
-            uniform=uniform,
+            uniform_name=uniform_name,
         )
 
         if existing is not None:
@@ -295,7 +295,7 @@ class RenderPassBinder:
             pass_name=pass_name,
             target_name=target_name,
             output=output,
-            uniform=uniform,
+            uniform_name=uniform_name,
             slot=self._next_texture_slot(
                 target_name=target_name,
             ),
@@ -314,7 +314,7 @@ class RenderPassBinder:
         pass_name: str,
         target_name: str,
         output: RenderPassOutput,
-        uniform: str,
+        uniform_name: str,
     ) -> RenderPassBinding | None:
         bindings = self._bindings_by_target.get(
             target_name,
@@ -325,7 +325,7 @@ class RenderPassBinder:
             if (
                 binding.pass_name == pass_name
                 and binding.output == output
-                and binding.uniform == uniform
+                and binding.uniform_name == uniform_name
             ):
                 return binding
 
@@ -355,7 +355,7 @@ class RenderPassBinder:
         self,
         *,
         pass_name: str,
-        uniform: str,
+        uniform_name: str,
         output: RenderPassOutput,
         sources: ContextSelection,
         targets: ContextSelection,
@@ -363,7 +363,7 @@ class RenderPassBinder:
         for link in self._links:
             if (
                 link.pass_name == pass_name
-                and link.uniform == uniform
+                and link.uniform_name == uniform_name
                 and link.output == output
                 and self._same_selection(link.sources, sources)
                 and self._same_selection(link.targets, targets)
@@ -414,7 +414,7 @@ class RenderPassBinder:
             return
 
         instruction = target_context.bind_texture(
-            uniform=binding.uniform,
+            uniform_name=binding.uniform_name,
             texture=render_pass.texture_ref,
             slot=binding.slot,
         )
