@@ -7,17 +7,14 @@ from typing import Callable, TYPE_CHECKING
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 from kivy.graphics.transformation import Matrix
-from kivy.properties import NumericProperty
 
 from kivyfn.three.render.context import RenderContext, RenderPass
 from kivyfn.three.render.context_manager import RenderContextManager
 from kivyfn.three.render.instructions import MaterialInstructions
 from kivyfn.three.render.instructions_manager import InstructionsManager
-from kivyfn.three.render.shader import Shader
 from kivyfn.three.scene.node import Node3D
 
 if TYPE_CHECKING:
-    from kivyfn.three.render.context import RenderPassOutput
     from kivyfn.three.lights.manager import LightManager
     from kivyfn.three.scene.view import View
 
@@ -28,17 +25,13 @@ GLCallback = Callable[..., None]
 
 class Renderer(EventDispatcher):
 
-    framerate: int | None = NumericProperty(30, allownone=True)
-
     def __init__(
         self,
         canvas: InstructionGroup,
-        framerate: int | None,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
-        self.framerate = framerate
         self.canvas = canvas
         self.contexts = RenderContextManager()
         self.instructions = InstructionsManager(self.contexts)
@@ -70,22 +63,11 @@ class Renderer(EventDispatcher):
     # =================================== #
     # Contexts
     # =================================== #
-    def create_context(
-        self,
-        name: str,
-        shader: Shader,
-        hot_reload: bool,
-        tags: set[str] | None = None,
-    ) -> RenderContext:
-        context = self.contexts.create_context(
-            name=name,
-            shader=shader,
-            hot_reload=hot_reload,
-            tags=tags,
-        )
+    def create_context(self, **kwargs) -> RenderContext:
+
+        context = self.contexts.create_context(**kwargs)
 
         self.canvas.add(context.ctx)
-
         return context
 
     def hide_context(
@@ -130,47 +112,14 @@ class Renderer(EventDispatcher):
     # =================================== #
     # Render Pass
     # =================================== #
-    def create_render_pass(
-        self,
-        name: str,
-        shader: Shader,
-        size: tuple[int, int],
-        *,
-        hot_reload: bool = False,
-        tags: set[str] | None = None,
-    ) -> RenderPass:
-        context = self.contexts.create_render_pass(
-            name=name,
-            shader=shader,
-            size=size,
-            hot_reload=hot_reload,
-            tags=tags,
-        )
+    def create_render_pass(self, **kwargs) -> RenderPass:
+        context = self.contexts.create_render_pass(**kwargs)
 
         self.canvas.add(context.ctx)
-
         return context
 
-    def link_render_pass(
-        self,
-        pass_name: str,
-        uniform: str,
-        *,
-        output: RenderPassOutput,
-        source_names: set[str] | None = None,
-        source_tags: set[str] | None = None,
-        target_names: set[str] | None = None,
-        target_tags: set[str] | None = None,
-    ) -> None:
-        self.contexts.register_render_pass_link(
-            pass_name=pass_name,
-            uniform=uniform,
-            output=output,
-            source_names=source_names,
-            source_tags=source_tags,
-            target_names=target_names,
-            target_tags=target_tags,
-        )
+    def link_render_pass(self, **kwargs) -> None:
+        self.contexts.register_render_pass_link(**kwargs)
 
     # =================================== #
     # Build

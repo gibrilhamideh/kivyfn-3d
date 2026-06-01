@@ -39,13 +39,14 @@ NodeFilter = Literal[
 SceneNode: TypeAlias = "Node3D | Object3D"
 
 class Node3D(EventDispatcher):
-    name = StringProperty("")
-    visible = BooleanProperty(True)
+
+    uid: str | None = StringProperty(None, allownone=True)
+    name: str = StringProperty("")
+    visible: bool = BooleanProperty(True)
 
     children: list[Node3D | Object3D] = ListProperty([])
     parent: Node3D | Object3D | None = ObjectProperty(None, allownone=True)
     extras: dict = DictProperty()
-
 
     transform: Transform = ObjectProperty()
 
@@ -61,10 +62,12 @@ class Node3D(EventDispatcher):
         self,
         name: str = "",
         transform: Transform | None = None,
+        uid: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
+        self.uid = uid
         self.name = name
         self.transform = transform or Transform()
 
@@ -229,6 +232,7 @@ class Node3D(EventDispatcher):
     @property
     def is_object(self) -> bool:
         return False
+
 
     def is_object3d(
         self,

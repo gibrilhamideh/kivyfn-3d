@@ -8,10 +8,7 @@ from typing import Generic, TypeVar
 from kivyfn.three.render.context import (
     RenderContext,
     RenderPass,
-    RenderPassOutput,
 )
-from kivyfn.three.render.shader import Shader
-
 
 TContext = TypeVar(
     "TContext",
@@ -258,20 +255,8 @@ class RenderContextRegistry(RenderObjectRegistry[RenderContext]):
     # Creation
     # =================================== #
 
-    def create(
-        self,
-        name: str,
-        shader: Shader,
-        *,
-        hot_reload: bool = False,
-        tags: set[str] | None = None,
-    ) -> RenderContext:
-        context = RenderContext(
-            name=name,
-            shader=shader,
-            hot_reload=hot_reload,
-        )
-
+    def create(self, name: str, tags: set[str] | None, **kwargs) -> RenderContext:
+        context = RenderContext(name=name, **kwargs)
         return self.add(
             name,
             context,
@@ -415,33 +400,8 @@ class RenderPassRegistry(RenderObjectRegistry[RenderPass]):
     # Creation
     # =================================== #
 
-    def create(
-        self,
-        name: str,
-        shader: Shader,
-        *,
-        size: tuple[int, int],
-        hot_reload: bool = False,
-        tags: set[str] | None = None,
-        output: RenderPassOutput = "color",
-        clear_color: tuple[float, float, float, float] = (
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-        ),
-        with_depthbuffer: bool = True,
-    ) -> RenderPass:
-        render_pass = RenderPass(
-            name=name,
-            shader=shader,
-            size=size,
-            hot_reload=hot_reload,
-            output=output,
-            clear_color=clear_color,
-            with_depthbuffer=with_depthbuffer,
-        )
-
+    def create(self, name: str, tags: set[str] | None, **kwargs) -> RenderPass:
+        render_pass = RenderPass(name=name, **kwargs)
         return self.add(
             name,
             render_pass,

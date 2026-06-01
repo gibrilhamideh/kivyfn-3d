@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
+from typing import Any
 
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.objects.geometry import Geometry
@@ -15,9 +16,13 @@ class AssetObject:
     geometry: Geometry | None = None
     material: Material | None = None
 
-    extras: dict[str, object] = field(default_factory=dict)
+    extras: dict[str, Any] = field(default_factory=dict)
     transform: Transform = field(default_factory=Transform)
     children: list[AssetObject] = field(default_factory=list)
+
+    @property
+    def uid(self) -> str | None:
+        return self.extras.get("uid")
 
     @property
     def is_renderable(self):

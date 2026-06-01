@@ -1,10 +1,14 @@
 # kivyfn/three/scene/scene.py
 
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
+
+from functools import partial
 
 from kivy.core.window import Window
+from kivy.graphics.texture import Texture
 from kivy.uix.widget import Widget
+from kivy.input.providers.mouse import MouseMotionEvent
 from kivy.graphics import (
         Color,
         Rectangle,
@@ -32,7 +36,6 @@ from kivyfn.three.scene.view import View
 from kivyfn.three.scene.view_manager import ViewManager
 from kivyfn.three.scene.viewport import Viewport
 from kivyfn.three.objects.object3d import Object3D
-from kivyfn.three.objects.material import Material
 from kivyfn.three.lights.manager import LightManager
 
 if TYPE_CHECKING:
@@ -49,7 +52,7 @@ class Scene(Widget):
     bg_color: tuple[float, float, float, float] = ColorProperty()
     framerate: int | None = NumericProperty(30, allownone=True)
 
-    def __init__(self, root: Node3D | None = None, framerate: int | None = 30, **kwargs):
+    def __init__(self, root: Node3D | None = None, **kwargs):
         super().__init__(**kwargs)
 
         with self.canvas.before:
@@ -73,16 +76,23 @@ class Scene(Widget):
 
 
         self.views = ViewManager()
-        self.renderer = Renderer(self.group, framerate)
+        self.renderer = Renderer(self.group)
         self.viewport = Viewport(self)
         self.controllers = []
+
+
 
         self.root = root or Node3D(name="root")
         self.lights = LightManager(self.root)
         self.lights.bind(on_dirty=self.renderer.sync_lights)
 
 
-        self.framerate = framerate
+        self._next_render_id = 1
+        self.by_uid: dict[str, Node3D] = {}
+        self.by_render_id: dict[int, Object3D] = {}
+
+        self.previews: dict[str, tuple[Color, Rectangle, Callable]] = {}
+
         self.bind(framerate=self.renderer.setter("framerate"))
 
         self.bind(size=self._on_viewport_changed)
@@ -104,17 +114,36 @@ class Scene(Widget):
         name: str,
         shader: Shader,
         view_name: str,
+        *,
         hot_reload: bool = False,
         tags: set[str] | None = None,
+        local_viewport_x: int = 0,
+        local_viewport_y: int  = 0,
+        local_viewport_width: int = 1024,
+        local_viewport_height: int = 1024,
+        use_local_viewport: bool = False,
+
+
     ) -> RenderContext:
-        # Validate that the view exists before creating/linking the context.
-        view = self.views.get(view_name)
+
+        try:
+            view = self.views.get(view_name)
+        except KeyError:
+            raise ValueError(
+                f"Cannot create context {name!r}: "
+                f"view {view_name!r} was not found."
+            )
 
         ctx = self.renderer.create_context(
             name=name,
+            tags=tags,
             shader=shader,
             hot_reload=hot_reload,
-            tags=tags,
+            local_viewport_x=local_viewport_x,
+            local_viewport_y=local_viewport_y,
+            local_viewport_width=local_viewport_width,
+            local_viewport_height=local_viewport_height,
+            use_local_viewport=use_local_viewport,
         )
 
         ctx.scene_x = self.x
@@ -157,30 +186,65 @@ class Scene(Widget):
         name: str,
         shader: Shader,
         view_name: str,
-        size: tuple[int, int],
+        output: RenderPassOutput,
         *,
+        color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
         hot_reload: bool = False,
         tags: set[str] | None = None,
+        local_viewport_x: int = 0,
+        local_viewport_y: int  = 0,
+        local_viewport_width: int = 1024,
+        local_viewport_height: int = 1024,
+        use_local_viewport: bool = False,
+        use_viewport_size: bool = False,
+        fbo_width: int = 1024,
+        fbo_height: int = 1024,
+        with_depthbuffer: bool = True,
+        with_stencilbuffer: bool = False,
+        clear_color: bool = True,
+        clear_depth: bool=True,
+        clear_stencil: bool =False
     ) -> RenderPass:
-        view = self.views.get(view_name)
+
+        try:
+            view = self.views.get(view_name)
+        except KeyError:
+            raise ValueError(
+                f"Cannot create context {name!r}: "
+                f"view {view_name!r} was not found."
+            )
 
         ctx = self.renderer.create_render_pass(
             name=name,
-            shader=shader,
-            size=size,
-            hot_reload=hot_reload,
             tags=tags,
+            shader=shader,
+            hot_reload=hot_reload,
+            output=output,
+            color=color,
+            local_viewport_x=local_viewport_x,
+            local_viewport_y=local_viewport_y,
+            local_viewport_width=local_viewport_width,
+            local_viewport_height=local_viewport_height,
+            use_local_viewport=use_local_viewport,
+            use_viewport_size=use_viewport_size,
+            fbo_width=fbo_width,
+            fbo_height=fbo_height,
+            with_depthbuffer=with_depthbuffer,
+            with_stencilbuffer=with_stencilbuffer,
+            clear_color=clear_color,
+            clear_depth=clear_depth,
+            clear_stencil=clear_stencil,
         )
-
-        ctx.scene_x = self.x
-        ctx.scene_y = self.y
-        ctx.scene_width = self.width
-        ctx.scene_height = self.height
 
         self.bind(x=ctx.setter("scene_x"))
         self.bind(y=ctx.setter("scene_y"))
         self.bind(width=ctx.setter("scene_width"))
         self.bind(height=ctx.setter("scene_height"))
+
+        ctx.scene_x = self.x
+        ctx.scene_y = self.y
+        ctx.scene_width = self.width
+        ctx.scene_height = self.height
 
         self.views.link(
             view.name,
@@ -217,26 +281,6 @@ class Scene(Widget):
         )
 
     # =================================== #
-    # Node Lifecycle API
-    # =================================== #
-    def add(
-        self,
-        node: Node3D,
-        context: str,
-        parent: Node3D | None = None,
-    ) -> None:
-        parent = parent or self.root
-        parent.add_child(node)
-
-        self.renderer.add(node, context)
-
-    def destroy(self, node: Node3D) -> None:
-        if node.parent is not None:
-            node.parent.remove_child(node)
-
-        self.renderer.destroy(node)
-
-    # =================================== #
     # Load API
     # =================================== #
     def load_asset(
@@ -250,9 +294,10 @@ class Scene(Widget):
 
         if asset.is_renderable:
             node = Object3D(
+                name=asset.name,
+                uid=asset.uid,
                 geometry=asset.require_geometry(),
                 material=asset.require_material(copy=True),
-                name=asset.name,
                 transform=asset.transform.copy(),
                 pickable=pickable,
             )
@@ -260,6 +305,7 @@ class Scene(Widget):
         else:
             node = Node3D(
                 name=asset.name,
+                uid=asset.uid,
                 transform=asset.transform.copy(),
             )
 
@@ -300,6 +346,93 @@ class Scene(Widget):
             nodes.append(node)
 
         return nodes
+
+    # =================================== #
+    # Node Lifecycle API
+    # =================================== #
+    def add(
+        self,
+        node: Node3D,
+        context: str,
+        parent: Node3D | None = None,
+    ) -> None:
+        parent = parent or self.root
+        parent.add_child(node)
+
+        for current in node.walk(filter="all"):
+            self.register_node(current)
+
+        self.renderer.add(node, context)
+
+
+    def destroy(self, node: Node3D) -> None:
+
+        assert node.parent is not None
+
+        for current in node.walk(filter="all"):
+            self.unregister_node(current)
+
+        node.parent.remove_child(node)
+
+        self.renderer.destroy(node)
+
+    # =================================== #
+    # ID Handling
+    # =================================== #
+    def register_node(
+        self,
+        node: Node3D,
+    ) -> None:
+        if node.uid is not None:
+            if node.uid in self.by_uid:
+                raise ValueError(f"Duplicate node uid: {node.uid!r}")
+
+            self.by_uid[node.uid] = node
+
+        if node.is_object3d(node):
+            self.register_render_id(node)
+
+    def unregister_node(
+        self,
+        node: Node3D,
+    ) -> None:
+        if node.uid is not None:
+            self.by_uid.pop(node.uid)
+
+        if node.is_object3d(node):
+            self.unregister_render_id(node)
+
+    def register_render_id(
+        self,
+        object3d: Object3D,
+    ) -> None:
+        if object3d.render_id is None:
+            object3d.render_id = self.generate_render_id()
+
+        if object3d.render_id in self.by_render_id:
+            raise ValueError(
+                f"Duplicate render_id: {object3d.render_id!r}"
+            )
+
+        self.by_render_id[object3d.render_id] = object3d
+
+    def unregister_render_id(
+        self,
+        object3d: Object3D,
+    ) -> None:
+        assert object3d.render_id is not None
+        self.by_render_id.pop(object3d.render_id)
+
+    def generate_render_id(self) -> int:
+        render_id = self._next_render_id
+        self._next_render_id += 1
+        return render_id
+
+    def get_by_render_id(self, render_id: int) -> Object3D | None:
+        return self.by_render_id.get(render_id)
+
+    def get_by_uid(self, uid: str) -> Node3D | Object3D | None:
+        return self.by_uid.get(uid)
 
     # =================================== #
     # ViewPort
@@ -379,7 +512,7 @@ class Scene(Widget):
     # =================================== #
     # Touch Events
     # =================================== #
-    def on_touch_down(self, touch):
+    def on_touch_down(self, touch: MouseMotionEvent):
         if not self.collide_point(*touch.pos):
             return super().on_touch_down(touch)
 
@@ -389,14 +522,14 @@ class Scene(Widget):
 
         return super().on_touch_down(touch)
 
-    def on_touch_move(self, touch):
+    def on_touch_move(self, touch: MouseMotionEvent):
         for _, controller in self.controllers:
             if controller.on_touch_move(touch):
                 return True
 
         return super().on_touch_move(touch)
 
-    def on_touch_up(self, touch):
+    def on_touch_up(self, touch: MouseMotionEvent):
         for _, controller in self.controllers:
             if controller.on_touch_up(touch):
                 return True
@@ -408,6 +541,68 @@ class Scene(Widget):
     # =================================== #
     def on_bg_color(self, *_):
         self._bg_color.rgba = self.bg_color
+
+    # =================================== #
+    # RenderPass Helpers
+    # =================================== #
+    def create_render_pass_preview(
+        self,
+        pass_name: str,
+        *,
+        pos=(20, 20),
+        size=(256, 256),
+    ) -> None:
+
+        try:
+            ctx = self.contexts.get_render_pass(pass_name)
+        except KeyError:
+            raise ValueError(
+                f"Render pass {pass_name!r} does not exist."
+            ) from None
+
+        with self.canvas.after:
+            color = Color(1.0, 1.0, 1.0, 1.0)
+
+            rect = Rectangle(
+                pos=pos,
+                size=size,
+                texture=ctx.texture,
+            )
+
+        callback = partial(self.update_preview_texture, rect)
+        ctx.bind(texture_ref=callback)
+        self.previews[pass_name] = (
+            color,
+            rect,
+            callback
+        )
+
+
+    def destroy_render_pass_preview(
+        self,
+        pass_name: str,
+    ) -> None:
+
+        try:
+            ctx = self.contexts.get_render_pass(pass_name)
+        except KeyError:
+            raise ValueError(
+                f"Render pass {pass_name!r} does not exist."
+            ) from None
+
+        if pass_name not in self.previews:
+            raise ValueError(
+                f"Render pass preview {pass_name!r} does not exist."
+            )
+
+        color, rect, callback = self.previews.pop(pass_name)
+        ctx.unbind(texture_ref=callback)
+
+        self.canvas.after.remove(color)
+        self.canvas.after.remove(rect)
+
+    def update_preview_texture(self, rect: Rectangle, ctx: RenderPass, texture: Texture):
+        rect.texture = texture
 
     # =================================== #
     # Helpers

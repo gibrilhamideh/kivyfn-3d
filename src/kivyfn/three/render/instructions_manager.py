@@ -91,10 +91,10 @@ class InstructionsManager(EventDispatcher):
                 ctx=ctx,
             )
 
-        if output == "object_id":
+        if output == "id":
             return ObjectIdInstructions(
                 geometry=object3d.geometry,
-                object_id=id(object3d),
+                render_id=object3d.require_render_id(),
                 ctx=ctx,
             )
 

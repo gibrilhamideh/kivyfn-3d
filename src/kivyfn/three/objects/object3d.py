@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, TYPE_CHECKING
+from typing import Literal, NoReturn, TYPE_CHECKING
 
 from kivy.properties import (
         NumericProperty,
@@ -30,6 +30,8 @@ Pivot = Literal[
 
 
 class Object3D(Node3D):
+
+    render_id : int | None = NumericProperty(None)
     geometry: Geometry = ObjectProperty()
     material: Material = ObjectProperty()
 
@@ -84,10 +86,12 @@ class Object3D(Node3D):
         material: Material,
         name: str = "",
         pivot: Pivot = "center",
+        uid: str | None = None,
         **kwargs,
     ):
         super().__init__(
             name=name,
+            uid=uid,
             **kwargs,
         )
 
@@ -99,11 +103,23 @@ class Object3D(Node3D):
         self.set_material(material)
 
     # =================================== #
-    # Biners
+    # Property Helpers
     # =================================== #
     @property
     def is_object(self) -> bool:
         return True
+
+    # =================================== #
+    # Requirements
+    # =================================== #
+    def require_render_id(self) -> int | NoReturn:
+        if self.render_id is None:
+            raise ValueError(
+                f"Object3D '{self.name}' has no render_id assigned. "
+                "Add the object to a Scene before accessing render_id."
+            )
+
+        return self.render_id 
 
     # =================================== #
     # Biners

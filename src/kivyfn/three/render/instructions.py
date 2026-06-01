@@ -130,8 +130,6 @@ class MaterialInstructions(BaseInstructions):
             ctx=ctx,
         )
 
-        ctx["shadow_texture"] = 10
-
         self.material = material
 
         self.texture_binders = {
@@ -202,7 +200,7 @@ class ObjectIdInstructions(BaseInstructions):
         self,
         *,
         geometry: Geometry,
-        object_id: int,
+        render_id: int,
         ctx: RenderPass,
     ):
         super().__init__(
@@ -210,11 +208,12 @@ class ObjectIdInstructions(BaseInstructions):
             ctx=ctx,
         )
 
-        self.object_id = object_id
+        # TODO: must pass uniform name to callbacl and instruction
+        self.render_id = render_id
 
         self.object_id_callback = ObjectIdCallback(
             ctx=ctx,
-            object_id=object_id,
+            render_id=render_id,
         )
 
         self.instructions = [

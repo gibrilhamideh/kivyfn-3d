@@ -14,7 +14,6 @@ from kivyfn.three.render.context_registry import (
     RenderContextRegistry,
     RenderPassRegistry,
 )
-from kivyfn.three.render.shader import Shader
 
 
 RENDER_PASS_TEXTURE_START_SLOT = 10
@@ -422,22 +421,10 @@ class RenderContextManager:
     # Contexts
     # =================================== #
 
-    def create_context(
-        self,
-        name: str,
-        shader: Shader,
-        *,
-        hot_reload: bool = False,
-        tags: set[str] | None = None,
-    ) -> RenderContext:
+    def create_context(self, name: str, **kwargs) -> RenderContext:
         self._ensure_name_available(name)
+        return self.contexts.create(name=name, **kwargs)
 
-        return self.contexts.create(
-            name=name,
-            shader=shader,
-            hot_reload=hot_reload,
-            tags=tags,
-        )
 
     def destroy_context(
         self,
@@ -524,35 +511,10 @@ class RenderContextManager:
     # Render Passes
     # =================================== #
 
-    def create_render_pass(
-        self,
-        name: str,
-        shader: Shader,
-        *,
-        size: tuple[int, int],
-        hot_reload: bool = False,
-        tags: set[str] | None = None,
-        output: RenderPassOutput = "color",
-        clear_color: tuple[float, float, float, float] = (
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-        ),
-        with_depthbuffer: bool = True,
-    ) -> RenderPass:
+    def create_render_pass(self, name: str, **kwargs) -> RenderPass:
         self._ensure_name_available(name)
+        return self.passes.create(name=name, **kwargs)
 
-        return self.passes.create(
-            name=name,
-            shader=shader,
-            size=size,
-            hot_reload=hot_reload,
-            tags=tags,
-            output=output,
-            clear_color=clear_color,
-            with_depthbuffer=with_depthbuffer,
-        )
 
     def destroy_render_pass(
         self,
@@ -601,47 +563,11 @@ class RenderContextManager:
     # Render Pass Links / Bindings
     # =================================== #
 
-    def link_render_pass(
-        self,
-        *,
-        pass_name: str,
-        uniform: str,
-        output: RenderPassOutput,
-        source_names: set[str] | None = None,
-        source_tags: set[str] | None = None,
-        target_names: set[str] | None = None,
-        target_tags: set[str] | None = None,
-    ) -> RenderPassLink:
-        return self.binder.link(
-            pass_name=pass_name,
-            uniform=uniform,
-            output=output,
-            source_names=source_names,
-            source_tags=source_tags,
-            target_names=target_names,
-            target_tags=target_tags,
-        )
+    def link_render_pass(self, **kwargs) -> RenderPassLink:
+        return self.binder.link(**kwargs)
 
-    def register_render_pass_link(
-        self,
-        *,
-        pass_name: str,
-        uniform: str,
-        output: RenderPassOutput,
-        source_names: set[str] | None = None,
-        source_tags: set[str] | None = None,
-        target_names: set[str] | None = None,
-        target_tags: set[str] | None = None,
-    ) -> RenderPassLink:
-        return self.link_render_pass(
-            pass_name=pass_name,
-            uniform=uniform,
-            output=output,
-            source_names=source_names,
-            source_tags=source_tags,
-            target_names=target_names,
-            target_tags=target_tags,
-        )
+    def register_render_pass_link(self, **kwargs) -> RenderPassLink:
+        return self.link_render_pass(**kwargs)
 
     def render_pass_links(self) -> list[RenderPassLink]:
         return self.binder.links()

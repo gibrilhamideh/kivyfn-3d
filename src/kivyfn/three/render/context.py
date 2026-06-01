@@ -6,6 +6,7 @@ from pathlib import Path
 from pprint import pformat
 from typing import Any, Literal, TypeVar, Generic, TYPE_CHECKING
 
+from kivy.clock import Clock
 from kivy.event import EventDispatcher
 from kivy.graphics.texture import Texture
 from kivy.graphics.opengl import (
@@ -25,7 +26,9 @@ from kivy.graphics import (
 )
 
 from kivy.properties import (
+    AliasProperty,
     BooleanProperty,
+    ColorProperty,
     DictProperty,
     NumericProperty,
     ObjectProperty,
@@ -59,90 +62,135 @@ RenderPassOutput = Literal[
     "position",
     "emissive",
     "material",
-    "object_id",
+    "id",
 ]
 
 
 class BaseRenderContext(EventDispatcher, Generic[TContext]):
 
     ctx: TContext
+    viewport_cb: Callback
     texture_group: InstructionGroup
     object_group: InstructionGroup
 
-    x: float = NumericProperty(0.0)
-    y: float = NumericProperty(0.0)
-    width: float = NumericProperty(100.0)
-    height: float = NumericProperty(100.0)
-
-    scene_x: float = NumericProperty()
-    scene_y: float = NumericProperty()
-    scene_width: float = NumericProperty()
-    scene_height: float = NumericProperty()
-
-    use_local_viewport: bool = BooleanProperty(False)
 
     name: str = StringProperty()
     shader: Shader = ObjectProperty()
     uniforms: dict = DictProperty()
     hot_reload: bool = BooleanProperty(False)
 
-    framebuffer: bool = BooleanProperty(False)
+    use_local_viewport: bool = BooleanProperty(False)
 
-    output: RenderPassOutput = OptionProperty(
-        "color",
-        options=(
-            "color",
-            "depth",
-            "normal",
-            "position",
-            "emissive",
-            "material",
-            "object_id",
-        ),
+    local_viewport_x: int = NumericProperty(0)
+    local_viewport_y: int = NumericProperty(0)
+    local_viewport_width: int = NumericProperty(100)
+    local_viewport_height: int = NumericProperty(100)
+
+    scene_x: float = NumericProperty(0)
+    scene_y: float = NumericProperty(0)
+    scene_width: float = NumericProperty(100)
+    scene_height: float = NumericProperty(100)
+
+    def _get_viewport_x(self):
+        return self.local_viewport_x if self.use_local_viewport else int(self.scene_x)
+
+    def _get_viewport_y(self):
+        return self.local_viewport_y if self.use_local_viewport else int(self.scene_y)
+
+    def _get_viewport_width(self):
+        return self.local_viewport_width if self.use_local_viewport else int(self.scene_width)
+
+    def _get_viewport_height(self):
+        return self.local_viewport_height if self.use_local_viewport else int(self.scene_height)
+
+    viewport_x = AliasProperty(
+        _get_viewport_x,
+        None,
+        cache=True,
+        bind=["scene_x", "local_viewport_x", "use_local_viewport"]
     )
 
-    def __init__(
-        self,
-        shader: Shader,
-        *,
-        name: str = "",
-        uniforms: dict | None = None,
-        hot_reload: bool = False,
-        **kwargs,
-    ):
+    viewport_y = AliasProperty(
+        _get_viewport_y,
+        None,
+        cache=True,
+        bind=["scene_y", "local_viewport_y", "use_local_viewport"]
+    )
+
+    viewport_width = AliasProperty(
+        _get_viewport_width,
+        None,
+        cache=True,
+        bind=["scene_width", "local_viewport_width", "use_local_viewport"]
+    )
+
+    viewport_height = AliasProperty(
+        _get_viewport_height,
+        None,
+        cache=True,
+        bind=["scene_height", "local_viewport_height", "use_local_viewport"]
+    )
+
+    def _get_aspect(self) -> float:
+        if not self.viewport_width:
+            return 1.0
+
+        if not self.viewport_height:
+            return 1.0
+
+        return self.viewport_width / self.viewport_height
+
+
+    aspect: float = AliasProperty(
+        _get_aspect,
+        None,
+        cache=True,
+        bind=["viewport_width", "viewport_height"]
+    )
+
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-        self.shader = shader
-        self.name = name
+
+    # =================================== #
+    # Initialization
+    # =================================== #
+    def initialize(self):
+        self.ctx.shader.source = str(self.shader.path)
+
+        self.bind(hot_reload=self.shader.setter("hot_reload"))
+        self.shader.bind(on_reload=self.on_shader_reload)
 
 
 
-
-        self.ctx.shader.source = str(shader.path)
-        self.bind(hot_reload=shader.setter("hot_reload"))
-
-        shader.bind(on_reload=self.on_shader_reload)
-        self.hot_reload = hot_reload
-
-        if uniforms is not None:
-            self.uniforms = uniforms
-
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}("
-            f"name={self.name!r}, "
-            f"shader={self.shader.name!r}, "
-            f"framebuffer={self.framebuffer!r}, "
-            f"output={self.output!r}, "
-            f"uniforms={pformat(self.uniforms)}"
-            ")"
+    # =================================== #
+    # Bindings
+    # =================================== #
+    def bind_texture(
+        self,
+        uniform: str,
+        texture: Texture,
+        slot: int,
+    ) -> BindTexture:
+        instruction = BindTexture(
+            texture=texture,
+            index=slot,
         )
+
+        self.texture_group.add(instruction)
+
+        self.set_uniform(
+            uniform,
+            slot,
+        )
+
+        return instruction
+
 
 
     # =================================== #
     # External API
     # =================================== #
-
     def set_uniform(
         self,
         name: str,
@@ -176,7 +224,6 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # =================================== #
     # Property Events
     # =================================== #
-
     def on_uniforms(self, *_):
         self.sync_uniforms()
 
@@ -190,8 +237,9 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
             return
 
         self.ctx.shader.source = str(path)
-        self.sync_uniforms()
         self.ctx.ask_update()
+        self.sync_uniforms()
+
 
     # =================================== #
     # Context Mirroring
@@ -240,12 +288,8 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # View & Projections
     # =================================== #
 
-    def update_view(
-        self,
-        view: View,
-        aspect: float,
-    ) -> None:
-        self.ctx["projection_mat"] = view.get_projection_matrix(aspect)
+    def update_view(self, view: View) -> None:
+        self.ctx["projection_mat"] = view.get_projection_matrix(self.aspect)
         self.ctx["view_mat"] = view.get_view_matrix()
 
     @property
@@ -259,96 +303,12 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # =================================== #
     # Viewport
     # =================================== #
-
-    def set_viewport(self, *_) -> None:
-        x = self.x if self.use_local_viewport else self.scene_x
-        y = self.y if self.use_local_viewport else self.scene_y
-        width = self.width if self.use_local_viewport else self.scene_width
-        height = self.height if self.use_local_viewport else self.scene_height
-
+    def _set_viewport(self, *_) -> None:
         glViewport(
-            int(x),
-            int(y),
-            int(width),
-            int(height),
-        )
-
-    @property
-    def aspect(self) -> float:
-        width = self.width if self.use_local_viewport else self.scene_width
-        height = self.height if self.use_local_viewport else self.scene_height
-
-        if not width:
-            return 1.0
-
-        if not height:
-            return 1.0
-
-        return width / height
-
-    # =================================== #
-    # Bindings
-    # =================================== #
-    def bind_texture(
-        self,
-        uniform: str,
-        texture: Texture,
-        slot: int,
-    ) -> BindTexture:
-        instruction = BindTexture(
-            texture=texture,
-            index=slot,
-        )
-
-        self.texture_group.add(instruction)
-
-        self.set_uniform(
-            uniform,
-            slot,
-        )
-
-        return instruction
-
-
-class RenderContext(BaseRenderContext[KivyRenderContext]):
-
-    def __repr__(self) -> str:
-        return (
-            "RenderContext("
-            f"name={self.name!r}, "
-            f"shader={self.shader.name!r}, "
-            f"uniforms={pformat(self.uniforms)}"
-            ")"
-        )
-
-    def __init__(
-        self,
-        shader: Shader,
-        *,
-        name: str = "",
-        uniforms: dict | None = None,
-        hot_reload: bool = False,
-        **kwargs,
-    ):
-
-
-        self.ctx = KivyRenderContext()
-
-        with self.ctx:
-            Callback(self.set_viewport)
-            Callback(self.enable_depthtest)
-
-            self.texture_group = InstructionGroup()
-            self.object_group = InstructionGroup()
-
-            Callback(self.disable_depthtest)
-
-        super().__init__(
-            shader=shader,
-            name=name,
-            uniforms=uniforms,
-            hot_reload=hot_reload,
-            **kwargs,
+            self.viewport_x,
+            self.viewport_y,
+            self.viewport_width,
+            self.viewport_height,
         )
 
     # =================================== #
@@ -362,7 +322,80 @@ class RenderContext(BaseRenderContext[KivyRenderContext]):
         glDisable(GL_DEPTH_TEST)
 
 
+
+class RenderContext(BaseRenderContext[KivyRenderContext]):
+
+    def __repr__(self) -> str:
+        return (
+            "RenderContext("
+            f"name={self.name!r}, "
+            f"shader={self.shader.name!r}, "
+            f"uniforms={pformat(self.uniforms)}"
+            ")"
+        )
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.ctx = KivyRenderContext()
+        with self.ctx:
+            self.viewport_cb = Callback(self._set_viewport)
+            Callback(self.enable_depthtest)
+
+            self.texture_group = InstructionGroup()
+            self.object_group = InstructionGroup()
+
+            Callback(self.disable_depthtest)
+
+        self.initialize()
+
+
+
+
 class RenderPass(BaseRenderContext[KivyFbo]):
+
+    texture_ref: Texture = ObjectProperty(None, rebind=True)
+    color = ColorProperty([0.0, 0.0, 0.0, 0.0])
+    fbo_width: int = NumericProperty(1024)
+    fbo_height: int = NumericProperty(1024)
+    use_viewport_size: bool = BooleanProperty(False)
+
+    clear_color: bool = BooleanProperty(True)
+    clear_depth: bool = BooleanProperty(True)
+    clear_stencil: bool = BooleanProperty(False)
+
+    def _get_fbo_size(self) -> tuple[int, int]:
+        if self.use_viewport_size:
+            return self.viewport_width, self.viewport_height
+
+        return self.fbo_width, self.fbo_height
+
+    fbo_size: tuple[int, int] = AliasProperty(
+        _get_fbo_size,
+        None,
+        cache=True,
+        bind=[
+            "fbo_width",
+            "fbo_height",
+            "viewport_width",
+            "viewport_height",
+            "use_viewport_size"
+        ]
+
+    )
+
+    output: RenderPassOutput = OptionProperty(
+        "depth",
+        options=(
+            "color",
+            "depth",
+            "normal",
+            "position",
+            "emissive",
+            "material",
+            "id",
+        ),
+    )
 
     def __repr__(self) -> str:
         return (
@@ -370,62 +403,79 @@ class RenderPass(BaseRenderContext[KivyFbo]):
             f"name={self.name!r}, "
             f"shader={self.shader.name!r}, "
             f"output={self.output!r}, "
-            f"size={self.size!r}, "
             f"uniforms={pformat(self.uniforms)}"
             ")"
         )
 
     def __init__(
         self,
-        shader: Shader,
-        *,
-        name: str = "",
-        size: tuple[int, int],
-        uniforms: dict | None = None,
-        hot_reload: bool = False,
-        output: RenderPassOutput = "color",
-        clear_color: tuple[float, float, float, float] = (
-            1.0,
-            1.0,
-            1.0,
-            1.0,
-        ),
-        with_depthbuffer: bool = True,
-        **kwargs,
-    ):
-        self.size = size
-        self.output = output
-        self.clear_color = clear_color
-        self.with_depthbuffer = with_depthbuffer
+        with_depthbuffer: bool,
+        with_stencilbuffer: bool,
+        **kwargs):
 
-        self.use_local_viewport = True
-        self.width, self.height = size
+        super().__init__(**kwargs)
+
+        self._fbo_trigger = Clock.create_trigger(self._update_fbo, -1)
 
         self.ctx: KivyFbo = KivyFbo(
-            size=self.size,
-            clear_color=self.clear_color,
-            with_depthbuffer=self.with_depthbuffer,
+            size=(self.fbo_width, self.fbo_height),
+            clear_color=self.color,
+            push_viewport=False,
+            with_depthbuffer=with_depthbuffer,
+            with_stencilbuffer=with_stencilbuffer
         )
 
         with self.ctx:
-            Callback(self.set_viewport)
 
+            self.viewport_cb = Callback(self._set_viewport)
+
+            Callback(self.enable_depthtest)
             ClearBuffers(
-                clear_color=True,
-                clear_depth=True,
+                clear_color=self.clear_color,
+                clear_depth=self.clear_depth,
+                clear_stencil=self.clear_stencil
             )
 
             self.texture_group = InstructionGroup()
             self.object_group = InstructionGroup()
 
-        super().__init__(
-            shader=shader,
-            name=name,
-            uniforms=uniforms,
-            hot_reload=hot_reload,
-            output=output,
-            **kwargs,
+            Callback(self.disable_depthtest)
+
+        self.initialize()
+
+
+    def initialize(self):
+        super().initialize()
+
+        self.texture_ref = self.texture
+
+        self.bind(
+            fbo_size=self._fbo_trigger,
+            color=self._fbo_trigger
         )
+
+        self._fbo_trigger()
+
+
+
+    def _update_fbo(self, *_):
+        old_texture = self.texture
+
+        self.ctx.size = self.fbo_size
+        self.ctx.clear_color = self.color
+
+        if self.ctx.texture is not old_texture:
+            self.texture_ref = self.texture
+
+
+
+    def get_pixel_color(self, wx: int, wy: int):
+        return self.ctx.get_pixel_color(wx, wy)
+
+
+    @property
+    def pixels(self):
+        return self.ctx.pixels
 
 
     @property
