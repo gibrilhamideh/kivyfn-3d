@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from kivyfn.three.types import RenderStage, RenderPassOutput
+from kivyfn.three.types import RenderStage
 from kivyfn.three.render.context import (
     RenderContext,
     RenderPass,
@@ -17,7 +17,6 @@ from kivyfn.three.render.binder_registry import (
     RenderBinderRegistry,
 )
 from kivyfn.three.render.binder_manager import (
-    RenderTextureBinding,
     RenderBinderManager,
 )
 
@@ -170,25 +169,13 @@ class RenderContextManager:
         self,
         name: str,
     ) -> RenderContext:
-        stage = self.registry.require(name)
-
-        if not isinstance(stage, RenderContext):
-            raise TypeError(
-                f"Render stage '{name}' is not a RenderContext."
-            )
-
-        return stage
+        return self.registry.require_context(name)
 
     def get_context(
         self,
         name: str,
     ) -> RenderContext | None:
-        stage = self.registry.get(name)
-
-        if isinstance(stage, RenderContext):
-            return stage
-
-        return None
+        return self.registry.get_context(name)
 
     def remove_context(
         self,
@@ -243,12 +230,7 @@ class RenderContextManager:
         self,
         name: str,
     ) -> RenderPass | None:
-        stage = self.registry.get(name)
-
-        if isinstance(stage, RenderPass):
-            return stage
-
-        return None
+        return self.registry.get_pass(name)
 
     def remove_pass(
         self,

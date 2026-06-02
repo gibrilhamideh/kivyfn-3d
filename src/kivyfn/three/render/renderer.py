@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
@@ -19,10 +19,6 @@ if TYPE_CHECKING:
     from kivyfn.three.render.link_registry import RenderLinkRecord
     from kivyfn.three.lights.manager import LightManager
     from kivyfn.three.scene.view import View
-
-
-
-GLCallback = Callable[..., None]
 
 
 class Renderer(EventDispatcher):

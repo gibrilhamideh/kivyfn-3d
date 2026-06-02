@@ -9,7 +9,8 @@ from typing import Callable
 from kivy.graphics import BindTexture
 from kivy.graphics.texture import Texture
 
-from kivyfn.three.render.context import RenderContext, RenderPass
+from kivyfn.three.types import RenderStage
+from kivyfn.three.render.context import RenderPass
 from kivyfn.three.render.context_registry import RenderRegistry
 from kivyfn.three.render.binder_registry import RenderBinderRecord, RenderBinderRegistry
 
@@ -20,8 +21,8 @@ RENDER_PASS_TEXTURE_START_SLOT = 10
 @dataclass(slots=True)
 class RenderTextureBinding:
     record: RenderBinderRecord
-    instruction: BindTexture | None = None
-    callback: Callable | None = None
+    instruction: BindTexture
+    callback: Callable
 
 
 class RenderBinderManager:
@@ -44,8 +45,8 @@ class RenderBinderManager:
         target_name: str,
         index: int | None = None,
     ) -> RenderBinderRecord:
-        render_pass = self._require_pass(pass_name)
-        target = self._require_context(target_name)
+        render_pass = self._context_registry.require_pass(pass_name)
+        target = self._context_registry.require(target_name)
 
         if index is None:
             index = self._next_texture_slot(target_name)
@@ -56,15 +57,8 @@ class RenderBinderManager:
             index=index,
         )
 
-        if record in self._texture_bindings:
-            return record
-
-        texture_binding = RenderTextureBinding(record=record)
-
-        self._texture_bindings[record] = texture_binding
-
         self._attach_texture_binding(
-            texture_binding=texture_binding,
+            record=record,
             render_pass=render_pass,
             target=target,
         )
@@ -78,70 +72,45 @@ class RenderBinderManager:
         texture_binding = self._texture_bindings.pop(record)
         return texture_binding
 
-    def texture_bindings(self) -> list[RenderTextureBinding]:
-        return list(self._texture_bindings.values())
 
-    def texture_binding_for(
+    def _attach_texture_binding(
         self,
+        *,
         record: RenderBinderRecord,
-    ) -> RenderTextureBinding | None:
-        return self._texture_bindings.get(record)
+        render_pass: RenderPass,
+        target: RenderStage,
+    ) -> None:
 
-    def texture_bindings_for_target(
+        instruction = target.create_texture_binder(
+            output_uniform=render_pass.output_uniform,
+            texture=render_pass.texture,
+            slot=record.index,
+        )
+
+        callback = partial(
+            self._update_texture,
+            instruction,
+            target
+        )
+
+        render_pass.bind(texture_ref=callback)
+
+        self._texture_bindings[record] = RenderTextureBinding(
+            record=record,
+            instruction=instruction,
+            callback=callback
+        )
+
+
+
+    def _update_texture(
         self,
-        target_name: str,
-    ) -> list[RenderTextureBinding]:
-        records = self._binder_registry.incoming(target_name)
-
-        if not records:
-            return []
-
-        return [
-            texture_binding
-            for record in records
-            if (texture_binding := self._texture_bindings.get(record)) is not None
-        ]
-
-    def texture_bindings_for_source(
-        self,
-        source_name: str,
-    ) -> list[RenderTextureBinding]:
-        records = self._binder_registry.outgoing(source_name)
-
-        if not records:
-            return []
-
-        return [
-            texture_binding
-            for record in records
-            if (texture_binding := self._texture_bindings.get(record)) is not None
-        ]
-
-    def _require_context(
-        self,
-        name: str,
-    ) -> RenderContext:
-        stage = self._context_registry.require(name)
-
-        if not isinstance(stage, RenderContext):
-            raise TypeError(
-                f"Render stage '{name}' is not a RenderContext."
-            )
-
-        return stage
-
-    def _require_pass(
-        self,
-        name: str,
-    ) -> RenderPass:
-        stage = self._context_registry.require(name)
-
-        if not isinstance(stage, RenderPass):
-            raise TypeError(
-                f"Render stage '{name}' is not a RenderPass."
-            )
-
-        return stage
+        instruction: BindTexture,
+        target: RenderStage,
+        render_pass: RenderPass,
+        texture: Texture,
+    ) -> None:
+        instruction.texture = texture
 
     def _next_texture_slot(
         self,
@@ -158,38 +127,3 @@ class RenderBinderManager:
             index += 1
 
         return index
-
-    def _attach_texture_binding(
-        self,
-        *,
-        texture_binding: RenderTextureBinding,
-        render_pass: RenderPass,
-        target: RenderContext,
-    ) -> None:
-        if texture_binding.instruction is not None:
-            return
-
-        callback = partial(
-            self._update_texture,
-            texture_binding,
-            target,
-        )
-
-        render_pass.bind(
-            texture_ref=callback,
-        )
-
-        texture_binding.callback = callback
-
-    def _update_texture(
-        self,
-        texture_binding: RenderTextureBinding,
-        target: RenderContext,
-        render_pass: RenderPass,
-        texture: Texture,
-    ) -> None:
-        if texture_binding.instruction is None:
-            return
-
-        texture_binding.instruction.texture = texture
-        target.ctx.ask_update()

@@ -63,6 +63,34 @@ class RenderRegistry:
 
         return stage
 
+    def exists(
+        self,
+        name: str,
+    ) -> bool:
+        return self.get(name) is not None
+
+    def get(
+        self,
+        name: str,
+    ) -> RenderStage | None:
+        context = self._contexts.get(name)
+        if context is not None:
+            return context
+
+        return self._passes.get(name)
+
+    def get_context(
+        self,
+        name: str,
+    ) -> RenderContext | None:
+        return self._contexts.get(name)
+
+    def get_pass(
+        self,
+        name: str,
+    ) -> RenderPass | None:
+        return self._passes.get(name)
+
     def require(
         self,
         name: str,
@@ -79,21 +107,31 @@ class RenderRegistry:
             f"Render stage '{name}' is not registered."
         )
 
-    def get(
+    def require_context(
         self,
         name: str,
-    ) -> RenderStage | None:
-        context = self._contexts.get(name)
-        if context is not None:
-            return context
+    ) -> RenderContext:
+        stage = self.require(name)
 
-        return self._passes.get(name)
+        if not isinstance(stage, RenderContext):
+            raise TypeError(
+                f"Render stage '{name}' is not a RenderContext."
+            )
 
-    def exists(
+        return stage
+
+    def require_pass(
         self,
         name: str,
-    ) -> bool:
-        return self.get(name) is not None
+    ) -> RenderPass:
+        stage = self.require(name)
+
+        if not isinstance(stage, RenderPass):
+            raise TypeError(
+                f"Render stage '{name}' is not a RenderPass."
+            )
+
+        return stage
 
     # =================================== #
     # Tag Registrations

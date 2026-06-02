@@ -27,5 +27,4 @@ uniform vec4 id_color;
 
 void main(void) {
     gl_FragColor = id_color;
-    // gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
 }

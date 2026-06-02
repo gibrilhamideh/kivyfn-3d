@@ -110,7 +110,7 @@ class Scene(Widget):
 
             self.group = InstructionGroup()
 
-            Callback(self.restore_viewport)
+            Callback(self._restore_viewport)
 
 
         self.bind(
@@ -507,7 +507,7 @@ class Scene(Widget):
     # =================================== #
     # ViewPort
     # =================================== #
-    def restore_viewport(self, *_) -> None:
+    def _restore_viewport(self, *_) -> None:
         glViewport(
             0,
             0,

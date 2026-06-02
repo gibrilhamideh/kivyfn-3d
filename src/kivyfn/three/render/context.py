@@ -160,16 +160,16 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
         self.shader.bind(on_reload=self.on_shader_reload)
 
 
-
     # =================================== #
     # Bindings
     # =================================== #
-    def bind_texture(
+    def create_texture_binder(
         self,
-        uniform_name: str,
+        output_uniform: str,
         texture: Texture,
         slot: int,
     ) -> BindTexture:
+
         instruction = BindTexture(
             texture=texture,
             index=slot,
@@ -178,7 +178,7 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
         self.texture_group.add(instruction)
 
         self.set_uniform(
-            uniform_name,
+            output_uniform,
             slot,
         )
 
@@ -302,8 +302,6 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # Viewport
     # =================================== #
     def _set_viewport(self, *_) -> None:
-
-        # print(self.name, getattr(self, "fbo_size", None))
         glViewport(
             self.viewport_x,
             self.viewport_y,
@@ -354,7 +352,7 @@ class RenderContext(BaseRenderContext[KivyRenderContext]):
 
 class RenderPass(BaseRenderContext[KivyFbo]):
 
-    texture_ref: Texture = ObjectProperty(None, rebind=True)
+    texture_ref: Texture = ObjectProperty()
     fbo_color = ColorProperty()
     fbo_width: int = NumericProperty(1024)
     fbo_height: int = NumericProperty(1024)
@@ -417,7 +415,7 @@ class RenderPass(BaseRenderContext[KivyFbo]):
         super().__init__(**kwargs)
 
         self.ctx: KivyFbo = KivyFbo(
-            size=(self.fbo_width, self.fbo_height),
+            size=self.fbo_size,
             clear_color=self.fbo_color,
             push_viewport=False,
             with_depthbuffer=with_depthbuffer,
