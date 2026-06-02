@@ -6,7 +6,6 @@ from pathlib import Path
 from pprint import pformat
 from typing import Any, Literal, TypeVar, Generic, TYPE_CHECKING
 
-from kivy.clock import Clock
 from kivy.event import EventDispatcher
 from kivy.graphics.texture import Texture
 from kivy.graphics.opengl import (
@@ -36,6 +35,7 @@ from kivy.properties import (
     StringProperty,
 )
 
+from kivyfn.three.types import RenderPassOutput
 from kivyfn.three.render.shader import Shader
 
 if TYPE_CHECKING:
@@ -55,15 +55,6 @@ ShaderReloadEvent = Literal[
     "moved",
 ]
 
-RenderPassOutput = Literal[
-    "color",
-    "depth",
-    "normal",
-    "position",
-    "emissive",
-    "material",
-    "id",
-]
 
 
 class BaseRenderContext(EventDispatcher, Generic[TContext]):
@@ -404,6 +395,8 @@ class RenderPass(BaseRenderContext[KivyFbo]):
             "id",
         ),
     )
+
+    output_uniform: str = StringProperty()
 
     def __repr__(self) -> str:
         return (

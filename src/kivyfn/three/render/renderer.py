@@ -13,7 +13,10 @@ from kivyfn.three.render.instructions import MaterialInstructions
 from kivyfn.three.render.instructions_manager import InstructionsManager
 from kivyfn.three.scene.node import Node3D
 
+
 if TYPE_CHECKING:
+    from kivyfn.three.render.binder_registry import RenderBinderRecord
+    from kivyfn.three.render.link_registry import RenderLinkRecord
     from kivyfn.three.lights.manager import LightManager
     from kivyfn.three.scene.view import View
 
@@ -38,6 +41,8 @@ class Renderer(EventDispatcher):
         self.transform_dirty: set[int] = set()
         self.material_dirty: set[int] = set()
         self.visibility_dirty: set[int] = set()
+
+        self.hidden: set[str] = set()
 
         self.instructions.bind(
             on_transform_dirty=self.queue_transform_dirty,
@@ -69,56 +74,64 @@ class Renderer(EventDispatcher):
         self.canvas.add(context.ctx)
         return context
 
-    def hide_context(
-        self,
-        name: str,
-    ) -> None:
-        if self.contexts.context_hidden(name):
-            return
-
-        context = self.contexts.get_context(name)
-
-        self.contexts.hide_context(name)
-        self.canvas.remove(context.ctx)
-
-    def show_context(
-        self,
-        name: str,
-    ) -> None:
-        if not self.contexts.context_hidden(name):
-            return
-
-        context = self.contexts.get_context(name)
-
-        self.contexts.show_context(name)
-        self.canvas.add(context.ctx)
-
-    def destroy_context(
-        self,
-        name: str,
-    ) -> None:
-        hidden = self.contexts.context_hidden(name)
-        context = self.contexts.destroy_context(name)
-
-        if context is None:
-            return
-
-        if not hidden:
-            self.canvas.remove(context.ctx)
-
-        context.destroy()
 
     # =================================== #
     # Render Pass
     # =================================== #
-    def create_render_pass(self, **kwargs) -> RenderPass:
-        context = self.contexts.create_render_pass(**kwargs)
+    def create_pass(self, **kwargs) -> RenderPass:
+        context = self.contexts.create_pass(**kwargs)
 
         self.canvas.add(context.ctx)
         return context
 
-    def link_render_pass(self, **kwargs) -> None:
-        self.contexts.register_render_pass_link(**kwargs)
+    def attach_pass(self, **kwargs) -> RenderBinderRecord | list[RenderBinderRecord]:
+        return self.contexts.attach_pass(**kwargs)
+
+    # =================================== #
+    # Shared
+    # =================================== #
+    def link_stage(self, **kwargs) -> RenderLinkRecord | list[RenderLinkRecord]:
+        return self.contexts.link(**kwargs)
+
+    def unlink_stage(self, **kwargs) -> RenderLinkRecord | list[RenderLinkRecord]:
+        return self.contexts.unlink(**kwargs)
+
+    def hide_stage(
+        self,
+        name: str,
+    ) -> None:
+
+        if name in self.hidden:
+            return
+
+
+
+        stage = self.contexts.require(name)
+        self.canvas.remove(stage.ctx)
+        self.hidden.add(name)
+
+    def show_stage(
+        self,
+        name: str,
+    ) -> None:
+
+        if name not in self.hidden:
+            return
+
+        stage = self.contexts.require(name)
+        self.canvas.add(stage.ctx)
+        self.hidden.remove(name)
+
+    def destroy_stage(
+        self,
+        name: str,
+    ) -> None:
+
+        if name not in self.hidden:
+            stage = self.contexts.require(name)
+            self.canvas.remove(stage.ctx)
+
+        self.contexts.destroy(name)
 
     # =================================== #
     # Build
@@ -128,7 +141,7 @@ class Renderer(EventDispatcher):
         node: Node3D,
         context: str,
     ) -> None:
-        ctx = self.contexts.get_context(context)
+        ctx = self.contexts.require_context(context)
 
         self.instructions.create(
             node=node,
@@ -249,7 +262,7 @@ class Renderer(EventDispatcher):
     ) -> None:
 
         for name in contexts:
-            ctx = self.contexts.get(name)
+            ctx = self.contexts.require(name)
             ctx.update_view(view)
 
 

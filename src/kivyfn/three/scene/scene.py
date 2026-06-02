@@ -40,6 +40,8 @@ from kivyfn.three.objects.object3d import Object3D
 from kivyfn.three.lights.manager import LightManager
 
 if TYPE_CHECKING:
+    from kivyfn.three.render.binder_registry import RenderBinderRecord
+    from kivyfn.three.render.link_registry import RenderLinkRecord
     from kivyfn.three.render.context import RenderContext, RenderPass, RenderPassOutput
     from kivyfn.three.render.shader import Shader
     from kivyfn.three.controls.base import SceneController
@@ -154,8 +156,8 @@ class Scene(Widget):
         shader: Shader,
         view_name: str,
         *,
-        hot_reload: bool = False,
         tags: set[str] | None = None,
+        hot_reload: bool = False,
         local_viewport_x: int = 0,
         local_viewport_y: int  = 0,
         local_viewport_width: int = 1024,
@@ -208,28 +210,22 @@ class Scene(Widget):
 
         return ctx
 
-    def hide_context(self, name: str) -> None:
-        self.renderer.hide_context(name)
 
-    def show_context(self, name: str) -> None:
-        self.renderer.show_context(name)
-
-    def destroy_context(self, name: str) -> None:
-        self.renderer.destroy_context(name)
 
     # =================================== #
-    # FrameBuffer / Render Pass API
+    # Render Pass API
     # =================================== #
-    def create_render_pass(
+    def create_pass(
         self,
         name: str,
         shader: Shader,
         view_name: str,
         output: RenderPassOutput,
+        output_uniform: str,
         *,
+        tags: set[str] | None = None,
         color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
         hot_reload: bool = False,
-        tags: set[str] | None = None,
         local_viewport_x: int = 0,
         local_viewport_y: int  = 0,
         local_viewport_width: int = 1024,
@@ -253,12 +249,13 @@ class Scene(Widget):
                 f"view {view_name!r} was not found."
             )
 
-        ctx = self.renderer.create_render_pass(
+        ctx = self.renderer.create_pass(
             name=name,
             tags=tags,
             shader=shader,
             hot_reload=hot_reload,
             output=output,
+            output_uniform=output_uniform,
             local_viewport_x=local_viewport_x,
             local_viewport_y=local_viewport_y,
             local_viewport_width=local_viewport_width,
@@ -298,26 +295,60 @@ class Scene(Widget):
 
         return ctx
 
-    def link_render_pass(
+
+    def attach_pass(
         self,
-        pass_name: str,
-        uniform_name: str,
         *,
-        source_names: set[str] | None = None,
-        source_tags: set[str] | None = None,
-        target_names: set[str] | None = None,
+        pass_name: str,
+        target_name: str | None = None,
         target_tags: set[str] | None = None,
-        output: RenderPassOutput = "depth",
-    ) -> None:
-        self.renderer.link_render_pass(
+        index: int | None = None,
+    ) -> RenderBinderRecord | list[RenderBinderRecord]:
+        return self.renderer.attach_pass(
             pass_name=pass_name,
-            uniform_name=uniform_name,
-            source_names=source_names,
-            source_tags=source_tags,
-            target_names=target_names,
+            target_name=target_name,
             target_tags=target_tags,
-            output=output,
+            index=index
+
         )
+
+    # =================================== #
+    # Stage API
+    # =================================== #
+    def link_stage(
+        self,
+        *,
+        source: str,
+        target_name: str | None = None,
+        target_tags: set[str] | None = None,
+    ) -> RenderLinkRecord | list[RenderLinkRecord]:
+        return self.renderer.link_stage(
+            source=source,
+            target_name=target_name,
+            target_tags=target_tags,
+        )
+
+    def unlink_stage(
+        self,
+        *,
+        source: str,
+        target_name: str | None = None,
+        target_tags: set[str] | None = None,
+    ) -> RenderLinkRecord | list[RenderLinkRecord]:
+        return self.renderer.unlink_stage(
+            source=source,
+            target_name=target_name,
+            target_tags=target_tags,
+        )
+
+    def hide_stage(self, name: str) -> None:
+        self.renderer.hide_stage(name)
+
+    def show_stage(self, name: str) -> None:
+        self.renderer.show_stage(name)
+
+    def destroy_stage(self, name: str) -> None:
+        self.renderer.destroy_stage(name)
 
     # =================================== #
     # Load API
@@ -592,12 +623,7 @@ class Scene(Widget):
         size=(256, 256),
     ) -> None:
 
-        try:
-            ctx = self.contexts.get_render_pass(pass_name)
-        except KeyError:
-            raise ValueError(
-                f"Render pass {pass_name!r} does not exist."
-            ) from None
+        ctx = self.contexts.require_pass(pass_name)
 
         with self.canvas.after:
             color = Color(1.0, 1.0, 1.0, 1.0)
@@ -622,12 +648,7 @@ class Scene(Widget):
         pass_name: str,
     ) -> None:
 
-        try:
-            ctx = self.contexts.get_render_pass(pass_name)
-        except KeyError:
-            raise ValueError(
-                f"Render pass {pass_name!r} does not exist."
-            ) from None
+        ctx = self.contexts.require_pass(pass_name)
 
         if pass_name not in self.previews:
             raise ValueError(

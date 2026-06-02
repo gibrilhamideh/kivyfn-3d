@@ -181,43 +181,32 @@ class MaterialInstructions(BaseInstructions):
         self.sync_uniforms()
         self.sync_textures()
 
-
-class ColorInstructions(BaseInstructions):
+class RenderPassBaseInstructions(BaseInstructions):
     def __init__(
         self,
         *,
-        geometry: Geometry,
-        ctx: RenderPass,
-        uniform_name: str
+        output_uniform: str,
+        **kwargs
     ):
 
-        self.uniform_name = uniform_name
-        super().__init__(
-            geometry=geometry,
-            ctx=ctx,
-        )
+        self.output_uniform = output_uniform
+        super().__init__(**kwargs)
 
 
-class ObjectIdInstructions(BaseInstructions):
+class ObjectIdInstructions(RenderPassBaseInstructions):
     def __init__(
         self,
         *,
-        geometry: Geometry,
         render_id: int,
-        ctx: RenderPass,
-        uniform_name: str
+        **kwargs,
     ):
-        super().__init__(
-            geometry=geometry,
-            ctx=ctx,
-        )
+        super().__init__(**kwargs)
 
         self.render_id = render_id
-        self.uniform_name = uniform_name
         self.object_id_callback = ObjectIdCallback(
-            ctx=ctx,
-            render_id=render_id,
-            uniform_name=uniform_name
+            ctx=self.ctx,
+            render_id=self.render_id,
+            output_uniform=self.output_uniform
         )
 
         self.instructions = [
@@ -231,49 +220,15 @@ class ObjectIdInstructions(BaseInstructions):
     def sync_uniforms(self, *_):
         self.object_id_callback.ask_update()
 
-
-class NormalInstructions(BaseInstructions):
-    def __init__(
-        self,
-        *,
-        geometry: Geometry,
-        ctx: RenderPass,
-        uniform_name: str
-    ):
-        super().__init__(
-            geometry=geometry,
-            ctx=ctx,
-        )
-
-        self.uniform_name = uniform_name
-
-class DepthInstructions(BaseInstructions):
-    def __init__(
-        self,
-        *,
-        geometry: Geometry,
-        ctx: RenderPass,
-        uniform_name: str
-    ):
-        super().__init__(
-            geometry=geometry,
-            ctx=ctx,
-        )
-
-        self.uniform_name = uniform_name
+class ColorInstructions(RenderPassBaseInstructions):
+    pass
 
 
-class PositionInstructions(BaseInstructions):
-    def __init__(
-        self,
-        *,
-        geometry: Geometry,
-        ctx: RenderPass,
-        uniform_name: str
-    ):
-        super().__init__(
-            geometry=geometry,
-            ctx=ctx,
-        )
+class NormalInstructions(RenderPassBaseInstructions):
+    pass
 
-        self.uniform_name = uniform_name
+class DepthInstructions(RenderPassBaseInstructions):
+    pass
+
+class PositionInstructions(RenderPassBaseInstructions):
+    pass

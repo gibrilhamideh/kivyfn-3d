@@ -6,6 +6,7 @@ from typing import Callable, TYPE_CHECKING
 
 from kivy.event import EventDispatcher
 
+from kivyfn.three.types import RenderStage
 from kivyfn.three.render.context import (
     RenderContext,
     RenderPass,
@@ -72,27 +73,27 @@ class InstructionsManager(EventDispatcher):
         object3d: Object3D,
         ctx: RenderPass,
         output: RenderPassOutput,
-        uniform_name: str
+        output_uniform: str,
     ) -> BaseInstructions:
         if output == "depth":
             return DepthInstructions(
                 geometry=object3d.geometry,
                 ctx=ctx,
-                uniform_name=uniform_name
+                output_uniform=output_uniform,
             )
 
         if output == "position":
             return PositionInstructions(
                 geometry=object3d.geometry,
                 ctx=ctx,
-                uniform_name=uniform_name
+                output_uniform=output_uniform,
             )
 
         if output == "normal":
             return NormalInstructions(
                 geometry=object3d.geometry,
                 ctx=ctx,
-                uniform_name=uniform_name
+                output_uniform=output_uniform,
             )
 
         if output == "id":
@@ -100,13 +101,13 @@ class InstructionsManager(EventDispatcher):
                 geometry=object3d.geometry,
                 render_id=object3d.require_render_id(),
                 ctx=ctx,
-                uniform_name=uniform_name
+                output_uniform=output_uniform,
             )
 
         return ColorInstructions(
             geometry=object3d.geometry,
             ctx=ctx,
-            uniform_name=uniform_name
+            output_uniform=output_uniform,
         )
 
     # =================================== #
@@ -116,34 +117,37 @@ class InstructionsManager(EventDispatcher):
     def create(
         self,
         node: Node3D,
-        ctx: RenderContext,
+        ctx: RenderStage,
     ) -> None:
+        stage_names = {
+            ctx.name,
+            *(self.contexts.links.dependencies(ctx.name) or ()),
+        }
+
         for object3d in node.walk(filter="objects"):
-            self._create(
-                object3d=object3d,
-                ctx=ctx,
-            )
+            for stage_name in stage_names:
+                stage = self.contexts.require(stage_name)
 
-        for link in self.contexts.get_render_pass_source_links(ctx.name):
-            pass_ctx = self.contexts.get_render_pass(
-                link.pass_name,
-            )
+                if isinstance(stage, RenderContext):
+                    self._create(
+                        object3d=object3d,
+                        ctx=stage,
+                    )
+                    continue
 
-
-            for object3d in node.walk(filter="objects"):
                 self._create(
                     object3d=object3d,
-                    ctx=pass_ctx,
-                    output=link.output,
-                    uniform_name=link.uniform_name
+                    ctx=stage,
+                    output=stage.output,
+                    output_uniform=stage.output_uniform,
                 )
 
     def _create(
         self,
         object3d: Object3D,
-        ctx: RenderContext | RenderPass,
+        ctx: RenderStage,
         *,
-        uniform_name: str | None = None,
+        output_uniform: str | None = None,
         output: RenderPassOutput | None = None,
     ) -> BaseInstructions:
         object_id = id(object3d)
@@ -169,7 +173,7 @@ class InstructionsManager(EventDispatcher):
                     "Expected a RenderPassOutput when creating pass instructions."
                 )
 
-            if uniform_name is None:
+            if output_uniform is None:
                 raise ValueError(
                     f"Render pass '{ctx.name}' requires an texture uniform name. "
                 )
@@ -178,7 +182,7 @@ class InstructionsManager(EventDispatcher):
                 object3d=object3d,
                 ctx=ctx,
                 output=output,
-                uniform_name=uniform_name
+                output_uniform=output_uniform
             )
 
         ctx.add(instructions.group)
@@ -195,7 +199,7 @@ class InstructionsManager(EventDispatcher):
             {},
         )[object_id] = instructions
 
-        self.bind_object(object3d)
+        self.bind_object3d(object3d)
 
         return instructions
 
@@ -206,31 +210,33 @@ class InstructionsManager(EventDispatcher):
     def destroy(
         self,
         node: Node3D,
-        ctx: RenderContext | None = None,
+        ctx: RenderStage | None = None,
     ) -> None:
-        for object3d in node.walk(filter="objects"):
-            self._destroy(
-                object3d=object3d,
-                ctx=ctx,
-            )
-
-            if ctx is None:
-                continue
-
-            for link in self.contexts.get_render_pass_source_links(ctx.name):
-                pass_ctx = self.contexts.get_render_pass(
-                    link.pass_name,
+        if ctx is None:
+            for object3d in node.walk(filter="objects"):
+                self._destroy(
+                    object3d=object3d,
                 )
+            return
+
+        stage_names = {
+            ctx.name,
+            *(self.contexts.links.dependencies(ctx.name) or ()),
+        }
+
+        for object3d in node.walk(filter="objects"):
+            for stage_name in stage_names:
+                stage = self.contexts.require(stage_name)
 
                 self._destroy(
                     object3d=object3d,
-                    ctx=pass_ctx,
+                    ctx=stage,
                 )
 
     def _destroy(
         self,
         object3d: Object3D,
-        ctx: RenderContext | RenderPass | None = None,
+        ctx: RenderStage | None = None,
     ) -> None:
         object_id = id(object3d)
 
@@ -241,7 +247,7 @@ class InstructionsManager(EventDispatcher):
             )
 
             if object_id not in self.by_object:
-                self.unbind_object(object3d)
+                self.unbind_object3d(object3d)
 
             return
 
@@ -256,7 +262,7 @@ class InstructionsManager(EventDispatcher):
                 context_name=context_name,
             )
 
-        self.unbind_object(object3d)
+        self.unbind_object3d(object3d)
         self.objects.pop(
             object_id,
             None,
@@ -281,7 +287,7 @@ class InstructionsManager(EventDispatcher):
         if instructions is None:
             return
 
-        ctx = self.contexts.get(context_name)
+        ctx = self.contexts.require(context_name)
         ctx.remove(instructions.group)
 
         instructions.destroy()
@@ -340,7 +346,7 @@ class InstructionsManager(EventDispatcher):
     # Object Binding
     # =================================== #
 
-    def bind_object(
+    def bind_object3d(
         self,
         object3d: Object3D,
     ) -> None:
@@ -357,7 +363,7 @@ class InstructionsManager(EventDispatcher):
 
         self._bound_objects.add(object_id)
 
-    def unbind_object(
+    def unbind_object3d(
         self,
         object3d: Object3D,
     ) -> None:

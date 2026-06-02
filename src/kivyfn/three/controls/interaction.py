@@ -187,31 +187,17 @@ class RenderIdPicker(BasePicker):
     ) -> int | None:
         assert self.scene is not None
 
-        ctx = self.scene.renderer.contexts.get_render_pass(
+        ctx = self.scene.renderer.contexts.require_pass(
             self.pass_name,
         )
 
 
-        r, g, b, a = ctx.get_pixel_color(
+        r, g, b, _ = ctx.get_pixel_color(
             int(touch.x),
             int(touch.y),
         )
 
         render_id = (r << 16) | (g << 8) | b
-
-        # print(
-        #     "R:", r,
-        #     "G:", g,
-        #     "B:", b,
-        #     "A:", a,
-        #     "ID:", render_id,
-        #     "X:", int(touch.x),
-        #     "Y:", int(touch.y),
-        # )
-
-
-        object3d = self.scene.get_by_render_id(render_id)
-        print(object3d," : ",  render_id)
 
         if render_id == 0:
             return None
