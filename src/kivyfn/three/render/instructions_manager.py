@@ -128,6 +128,13 @@ class InstructionsManager(EventDispatcher):
             for stage_name in stage_names:
                 stage = self.contexts.require(stage_name)
 
+                #TODO: uncomment when sync is ready
+                # if not all(
+                #     link_filter(object3d)
+                #     for link_filter in stage.link_filters
+                # ):
+                #     continue
+
                 if isinstance(stage, RenderContext):
                     self._create(
                         object3d=object3d,

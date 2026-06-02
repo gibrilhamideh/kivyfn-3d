@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from kivy.clock import Clock
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 
@@ -37,8 +38,12 @@ class Renderer(EventDispatcher):
         self.transform_dirty: set[int] = set()
         self.material_dirty: set[int] = set()
         self.visibility_dirty: set[int] = set()
+        self.tree_dirty: set[int] = set()
+        self.filter_dirty: set[int] = set()
 
         self.hidden: set[str] = set()
+
+        self.trigger_dirty = Clock.create_trigger(self.flush_dirty, -1)
 
         self.instructions.bind(
             on_transform_dirty=self.queue_transform_dirty,
@@ -162,7 +167,7 @@ class Renderer(EventDispatcher):
         node: Node3D,
     ) -> None:
         self.transform_dirty.add(id(node))
-        self.flush_dirty()
+        self.trigger_dirty()
 
     def queue_material_dirty(
         self,
@@ -170,7 +175,7 @@ class Renderer(EventDispatcher):
         node: Node3D,
     ) -> None:
         self.material_dirty.add(id(node))
-        self.flush_dirty()
+        self.trigger_dirty()
 
     def queue_visibility_dirty(
         self,
@@ -178,7 +183,7 @@ class Renderer(EventDispatcher):
         node: Node3D,
     ) -> None:
         self.visibility_dirty.add(id(node))
-        self.flush_dirty()
+        self.trigger_dirty()
 
     def flush_dirty(self, *_) -> None:
         while self.transform_dirty:
@@ -260,6 +265,7 @@ class Renderer(EventDispatcher):
         for name in contexts:
             ctx = self.contexts.require(name)
             ctx.update_view(view)
+
 
 
 

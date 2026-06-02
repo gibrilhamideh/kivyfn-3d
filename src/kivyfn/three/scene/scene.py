@@ -379,7 +379,7 @@ class Scene(Widget):
                 transform=asset.transform.copy(),
             )
 
-        self.add(
+        self.render(
             node,
             parent=parent,
             context=context,
@@ -420,7 +420,7 @@ class Scene(Widget):
     # =================================== #
     # Node Lifecycle API
     # =================================== #
-    def add(
+    def render(
         self,
         node: Node3D,
         context: str,

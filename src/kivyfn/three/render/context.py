@@ -29,6 +29,7 @@ from kivy.properties import (
     BooleanProperty,
     ColorProperty,
     DictProperty,
+    ListProperty,
     NumericProperty,
     ObjectProperty,
     OptionProperty,
@@ -37,6 +38,7 @@ from kivy.properties import (
 
 from kivyfn.three.types import RenderPassOutput
 from kivyfn.three.render.shader import Shader
+from kivyfn.three.render.link_filter import RenderLinkFilter
 
 if TYPE_CHECKING:
     from kivyfn.three.scene.view import View
@@ -63,6 +65,7 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     viewport_cb: Callback
     texture_group: InstructionGroup
     object_group: InstructionGroup
+    link_filters: list[RenderLinkFilter] = ListProperty()
 
 
     name: str = StringProperty()

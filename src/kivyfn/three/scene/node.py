@@ -8,7 +8,7 @@ from typing import (
     Literal,
     Iterator,
     TypeGuard,
-    TypeAlias,
+    TypeVar,
     overload
 )
 
@@ -21,6 +21,7 @@ from kivy.properties import (
     DictProperty
 )
 
+from kivyfn.three.scene.types import SceneObject
 from kivyfn.three.math.transform import Transform
 
 if TYPE_CHECKING:
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from kivyfn.three.math.vector import Vector3
     from kivyfn.three.objects import Object3D
     from kivyfn.three.controls.interaction import InteractionEvent
+    from kivyfn.three.scene.behavior import Behavior
 
 NodeFilter = Literal[
     "all",
@@ -36,7 +38,9 @@ NodeFilter = Literal[
     "objects",
 ]
 
-SceneNode: TypeAlias = "Node3D | Object3D"
+
+B = TypeVar("B", bound="Behavior")
+
 
 class Node3D(EventDispatcher):
 
@@ -70,6 +74,7 @@ class Node3D(EventDispatcher):
         self.uid = uid
         self.name = name
         self.transform = transform or Transform()
+        self.behaviors: dict[str, Behavior] = {}
 
     def __repr__(self) -> str:
         return (
@@ -334,7 +339,7 @@ class Node3D(EventDispatcher):
         *,
         filter: Literal["all"] = "all",
         include_self: bool = False,
-    ) -> Iterator[SceneNode]:
+    ) -> Iterator[SceneObject]:
         ...
 
     def walk_ancestors(
@@ -343,7 +348,7 @@ class Node3D(EventDispatcher):
         filter: NodeFilter = "all",
         include_self: bool = False,
     ) -> Iterator[Any]:
-        current: SceneNode | None = (
+        current: SceneObject | None = (
             self if include_self else self.parent
         )
 
@@ -583,7 +588,7 @@ class Node3D(EventDispatcher):
         filter: Literal["all"] = "all",
         include_self: bool = True,
         case_sensitive: bool = False,
-    ) -> SceneNode | None:
+    ) -> SceneObject | None:
         ...
 
     def fuzzy_find(
@@ -690,7 +695,7 @@ class Node3D(EventDispatcher):
         filter: Literal["all"] = "all",
         include_self: bool = True,
         require_value: bool = False,
-    ) -> list[SceneNode]:
+    ) -> list[SceneObject]:
         ...
 
     def find_by_extra(
@@ -762,6 +767,62 @@ class Node3D(EventDispatcher):
 
     def on_visible(self, *_):
         self.mark_visibility_dirty()
+
+    # =================================== #
+    # Behaviors
+    # =================================== #
+    def add_behavior(
+        self,
+        behavior_type: type[B],
+        *,
+        name: str | None = None,
+        **kwargs,
+    ) -> B:
+        behavior = behavior_type(
+            self,
+            name=name,
+            **kwargs,
+        )
+
+        if behavior.name in self.behaviors:
+            raise ValueError(
+                f"Behavior {behavior.name!r} is already attached "
+                f"to node {self.name!r}."
+            )
+
+        self.behaviors[behavior.name] = behavior
+        return behavior
+
+
+    def get_behavior(
+        self,
+        name: str,
+    ) -> Behavior | None:
+        return self.behaviors.get(name)
+
+
+    def require_behavior(
+        self,
+        name: str,
+    ) -> Behavior:
+        behavior = self.get_behavior(name)
+
+        if behavior is None:
+            raise ValueError(
+                f"Behavior not found on node {self.name!r}: {name!r}"
+            )
+
+        return behavior
+
+
+    def remove_behavior(
+        self,
+        name: str,
+    ) -> Behavior:
+        behavior = self.behaviors.pop(name)
+
+        behavior.destroy()
+        return behavior
 
     # =================================== #
     # Internal

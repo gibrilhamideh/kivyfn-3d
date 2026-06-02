@@ -210,3 +210,6 @@ __marimo__/# blender
 *.glb
 *.obj
 *.mtl
+
+# compressed Objects
+*.zip
