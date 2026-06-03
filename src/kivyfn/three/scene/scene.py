@@ -33,13 +33,12 @@ from kivy.properties import (
 
 from kivyfn.three.scene.node import Node3D
 from kivyfn.three.render.renderer import Renderer
-from kivyfn.three.scene.view import View
-from kivyfn.three.scene.view_manager import ViewManager
 from kivyfn.three.scene.viewport import Viewport
 from kivyfn.three.objects.object3d import Object3D
 from kivyfn.three.lights.manager import LightManager
 
 if TYPE_CHECKING:
+    from kivyfn.three.render.view_manager import ViewManager
     from kivyfn.three.render.binder_registry import RenderBinderRecord
     from kivyfn.three.render.link_registry import RenderLinkRecord
     from kivyfn.three.render.context import RenderContext, RenderPass, RenderPassOutput
@@ -118,8 +117,6 @@ class Scene(Widget):
             size=self._update_bg_rect,
         )
 
-
-        self.views = ViewManager()
         self.renderer = Renderer(self.group)
         self.viewport = Viewport(self)
         self.controllers = []
@@ -136,10 +133,9 @@ class Scene(Widget):
 
         self.previews: dict[str, tuple[Color, Rectangle, Callable]] = {}
 
-        self.bind(size=self._on_viewport_dirty)
-        self.bind(pos=self._on_viewport_dirty)
-
-        self.views.bind(on_view_update=self._on_view_dirty)
+        # self.bind(size=self._on_viewport_dirty)
+        # self.bind(pos=self._on_viewport_dirty)
+        #
 
 
 
@@ -200,12 +196,6 @@ class Scene(Widget):
         self.views.link(
             view.name,
             ctx.name,
-            sync=False,
-        )
-
-        self.update_view(
-            view,
-            (ctx.name,),
         )
 
         return ctx
@@ -285,12 +275,6 @@ class Scene(Widget):
         self.views.link(
             view.name,
             ctx.name,
-            sync=False,
-        )
-
-        self.update_view(
-            view,
-            (ctx.name,),
         )
 
         return ctx
@@ -432,7 +416,7 @@ class Scene(Widget):
         for current in node.walk(filter="all"):
             self.register_node(current)
 
-        self.renderer.add(node, context)
+        self.renderer.queue_render(node, context)
 
 
     def destroy(self, node: Node3D) -> None:
@@ -444,7 +428,7 @@ class Scene(Widget):
 
         node.parent.remove_child(node)
 
-        self.renderer.destroy(node)
+        self.renderer.queue_destroy(node)
 
     # =================================== #
     # ID Handling
@@ -515,31 +499,9 @@ class Scene(Widget):
             Window.height,
         )
 
-    def _on_viewport_dirty(self, *_) -> None:
-        self.sync_views()
-
-    def _on_view_dirty(
-        self,
-        manager: ViewManager,
-        view: View,
-        contexts: tuple[str, ...]
-    ) -> None:
-        self.update_view(view, contexts)
-
-
-    # =================================== #
-    # Camera
-    # =================================== #
-    def update_view(
-        self,
-        view: View, 
-        names: tuple[str, ...]) -> None:
-        self.renderer.update_view(view, names)
-
-    def sync_views(self):
-        for view, contexts in self.views.get_links():
-            self.update_view(view, contexts)
-
+    @property
+    def views(self) -> ViewManager:
+        return self.renderer.views
 
     # =================================== #
     # Background

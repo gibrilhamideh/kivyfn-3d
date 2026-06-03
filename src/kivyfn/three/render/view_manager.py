@@ -6,13 +6,11 @@ from collections.abc import Iterator
 
 from kivy.event import EventDispatcher
 
-from kivyfn.three.scene.view import View
+from kivyfn.three.render.view import View
 
 
 class ViewManager(EventDispatcher):
-    __events__ = (
-        "on_view_update",
-    )
+    __events__ = ("on_view_dirty", )
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -117,7 +115,7 @@ class ViewManager(EventDispatcher):
             self.default_name = view.name
 
         self._bind_view(view)
-        self._dispatch_view_update(view)
+        self._dipatch_dirty(view)
 
         return view
 
@@ -178,7 +176,7 @@ class ViewManager(EventDispatcher):
         contexts.add(context_name)
 
         if sync:
-            self._dispatch_view_update(view)
+            self._dipatch_dirty(view)
 
     def unlink(
         self,
@@ -197,7 +195,7 @@ class ViewManager(EventDispatcher):
         contexts.discard(context_name)
 
         if sync:
-            self._dispatch_view_update(view)
+            self._dipatch_dirty(view)
 
     def unlink_context(
         self,
@@ -217,7 +215,7 @@ class ViewManager(EventDispatcher):
                 changed_views.append(self._views[view_name])
 
         for view in changed_views:
-            self._dispatch_view_update(view)
+            self._dipatch_dirty(view)
 
     def get_links(
         self,
@@ -259,10 +257,10 @@ class ViewManager(EventDispatcher):
     # Events
     # =================================== #
 
-    def on_view_update(
+    def on_view_dirty(
         self,
         view: View,
-        context_names: tuple[str, ...],
+        name: str,
     ) -> None:
         pass
 
@@ -293,13 +291,14 @@ class ViewManager(EventDispatcher):
         view.unbind(projection_type=self._on_view_changed)
 
     def _on_view_changed(self, view: View, value) -> None:
-        self._dispatch_view_update(view)
+        self._dipatch_dirty(view)
 
-    def _dispatch_view_update(self, view: View) -> None:
+    def _dipatch_dirty(self, view: View) -> None:
         context_names = self.contexts_for(view.name)
 
-        self.dispatch(
-            "on_view_update",
-            view,
-            context_names,
-        )
+        for name in context_names:
+            self.dispatch(
+                "on_view_dirty",
+                view,
+                name,
+            )

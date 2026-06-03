@@ -13,7 +13,7 @@ from kivyfn.three.math.vector import Vector3
 if TYPE_CHECKING:
     from kivyfn.three.objects.object3d import Object3D
     from kivyfn.three.scene.scene import Scene
-    from kivyfn.three.scene.view import View
+    from kivyfn.three.render.view import View
 
 
 @dataclass(slots=True)

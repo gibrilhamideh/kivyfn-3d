@@ -41,7 +41,7 @@ from kivyfn.three.render.shader import Shader
 from kivyfn.three.render.link_filter import RenderLinkFilter
 
 if TYPE_CHECKING:
-    from kivyfn.three.scene.view import View
+    from kivyfn.three.render.view import View
 
 TContext = TypeVar(
     "TContext",
@@ -84,6 +84,10 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     scene_viewport_y: int = NumericProperty(0)
     scene_viewport_width: int = NumericProperty(100)
     scene_viewport_height: int = NumericProperty(100)
+
+    __events__ = (
+        "on_viewport_dirty",
+    )
 
     def _get_viewport_x(self):
         if self.use_local_viewport:
@@ -161,6 +165,13 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
 
         self.bind(hot_reload=self.shader.setter("hot_reload"))
         self.shader.bind(on_reload=self.on_shader_reload)
+
+        self.bind(
+            viewport_x=self.dispatch_viewport_dirty,
+            viewport_y=self.dispatch_viewport_dirty,
+            viewport_width=self.dispatch_viewport_dirty,
+            viewport_height=self.dispatch_viewport_dirty,
+        )
 
 
     # =================================== #
@@ -300,6 +311,12 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     @property
     def view_mat(self):
         return self.ctx["view_mat"]
+
+    def dispatch_viewport_dirty(self, *_):
+        self.dispatch("on_viewport_dirty")
+
+    def on_viewport_dirty(self):
+        pass
 
     # =================================== #
     # Viewport
@@ -449,21 +466,16 @@ class RenderPass(BaseRenderContext[KivyFbo]):
 
         self.texture_ref = self.texture
 
-        self.bind(fbo_size=self._update_fbo_size)
-        self.bind(fbo_color=self._update_fbo_color)
+        self.bind(fbo_size=self.sync_size)
+        self.bind(fbo_color=self.sync_color)
 
 
-    def _update_fbo_size(self, *_):
-        old_texture = self.texture
+    def sync_size(self, *_):
+        self.ctx.size = self.fbo_size
+        self.texture_ref = self.texture
+        self.dispatch_viewport_dirty()
 
-        if self.ctx.size != self.fbo_size:
-            self.ctx.size = self.fbo_size
-
-        if self.ctx.texture is not old_texture:
-
-            self.texture_ref = self.texture
-
-    def _update_fbo_color(self, *_):
+    def sync_color(self, *_):
         self.ctx.clear_color = self.fbo_color
 
 

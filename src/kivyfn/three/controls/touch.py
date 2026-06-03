@@ -24,6 +24,7 @@ Camera navigation needs continuous multitouch tracking instead.
 
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 
 import math
 from dataclasses import dataclass
@@ -31,7 +32,9 @@ from dataclasses import dataclass
 from kivyfn.three.controls.base import SceneController
 from kivyfn.three.controls.orbit import OrbitCameraController
 from kivyfn.three.math.vector import Vector3
-from kivyfn.three.scene.view import View
+
+if TYPE_CHECKING:
+    from kivyfn.three.render.view import View
 
 
 @dataclass(slots=True)
