@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from kivyfn.three.scene.scene import Scene
 
 
-class SceneController:
+class BaseController:
     def __init__(self):
         self.scene: Scene | None = None
 

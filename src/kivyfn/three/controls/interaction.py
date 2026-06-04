@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from kivy.input.providers.mouse import MouseMotionEvent
 
-from kivyfn.three.controls.base import SceneController
+from kivyfn.three.controls.base import BaseController
 from kivyfn.three.math.vector import Vector3
 
 if TYPE_CHECKING:
@@ -187,7 +187,7 @@ class RenderIdPicker(BasePicker):
     ) -> int | None:
         assert self.scene is not None
 
-        ctx = self.scene.renderer.contexts.require_pass(
+        ctx = self.scene.renderer.stages.require_pass(
             self.pass_name,
         )
 
@@ -205,7 +205,7 @@ class RenderIdPicker(BasePicker):
         return render_id
 
 
-class InteractionController(SceneController):
+class InteractionController(BaseController):
     def __init__(
         self,
         picker: RaycastPicker | RenderIdPicker,

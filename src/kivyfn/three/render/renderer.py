@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeAlias, Literal
+from typing import TYPE_CHECKING, Literal
 from dataclasses import dataclass
 from collections import deque
 
@@ -11,12 +11,13 @@ from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 
 from kivyfn.three.views.view_manager import ViewManager
-from kivyfn.three.render.context_manager import RenderContextManager
+from kivyfn.three.render.stage_manager import RenderStageManager
 from kivyfn.three.render.instruction_manager import InstructionManager
 from kivyfn.three.render.instructions import MaterialInstructions
 
 
 if TYPE_CHECKING:
+    from kivyfn.three.types import RenderStage, SceneObject
     from kivyfn.three.graph.node import Node3D
     from kivyfn.three.views.view import View
     from kivyfn.three.render.context import RenderContext, RenderPass
@@ -24,13 +25,12 @@ if TYPE_CHECKING:
     from kivyfn.three.render.link_registry import RenderLinkRecord
     from kivyfn.three.lights.manager import LightManager
 
-RenderStage: TypeAlias = "RenderPass | RenderContext"
 
 @dataclass(slots=True)
 class RenderCommand:
     op: Literal["render", "destroy"]
-    node: Node3D
-    context: str | None = None
+    node: SceneObject
+    stage_name: str | None = None
 
 class Renderer(EventDispatcher):
 
@@ -42,8 +42,8 @@ class Renderer(EventDispatcher):
         super().__init__(**kwargs)
 
         self.canvas = canvas
-        self.contexts = RenderContextManager()
-        self.instructions = InstructionManager(self.contexts)
+        self.stages = RenderStageManager()
+        self.instructions = InstructionManager(self.stages)
         self.views = ViewManager()
 
         self.views.bind(
@@ -73,7 +73,7 @@ class Renderer(EventDispatcher):
     def __repr__(self) -> str:
         return (
             "Renderer("
-            f"contexts={len(self.contexts)}, "
+            f"stages={len(self.stages)}, "
             f"instructions={len(self.instructions.by_object)}"
             ")"
         )
@@ -89,11 +89,11 @@ class Renderer(EventDispatcher):
     # =================================== #
     def create_context(self, **kwargs) -> RenderContext:
 
-        context = self.contexts.create_context(**kwargs)
-        context.bind(on_viewport_dirty=self.queue_viewport)
+        stage = self.stages.create_context(**kwargs)
+        stage.bind(on_viewport_dirty=self.queue_viewport)
 
-        self.canvas.add(context.ctx)
-        return context
+        self.canvas.add(stage.ctx)
+        return stage
 
 
     # =================================== #
@@ -101,26 +101,26 @@ class Renderer(EventDispatcher):
     # =================================== #
     def create_pass(self, **kwargs) -> RenderPass:
 
-        context = self.contexts.create_pass(**kwargs)
-        context.bind(on_viewport_dirty=self.queue_viewport)
+        stage = self.stages.create_pass(**kwargs)
+        stage.bind(on_viewport_dirty=self.queue_viewport)
 
-        self.canvas.add(context.ctx)
-        return context
+        self.canvas.add(stage.ctx)
+        return stage
 
     def attach_pass(self, **kwargs) -> RenderBindingRecord | list[RenderBindingRecord]:
 
-        return self.contexts.attach_pass(**kwargs)
+        return self.stages.attach_pass(**kwargs)
 
     # =================================== #
     # Shared
     # =================================== #
     def link_stage(self, **kwargs) -> RenderLinkRecord | list[RenderLinkRecord]:
 
-        return self.contexts.link(**kwargs)
+        return self.stages.link(**kwargs)
 
     def unlink_stage(self, **kwargs) -> RenderLinkRecord | list[RenderLinkRecord]:
 
-        return self.contexts.unlink(**kwargs)
+        return self.stages.unlink(**kwargs)
 
     def hide_stage(
         self,
@@ -130,7 +130,7 @@ class Renderer(EventDispatcher):
         if name in self.hidden:
             return
 
-        stage = self.contexts.require(name)
+        stage = self.stages.require(name)
         self.canvas.remove(stage.ctx)
         self.hidden.add(name)
 
@@ -142,7 +142,7 @@ class Renderer(EventDispatcher):
         if name not in self.hidden:
             return
 
-        stage = self.contexts.require(name)
+        stage = self.stages.require(name)
         self.canvas.add(stage.ctx)
         self.hidden.remove(name)
 
@@ -152,25 +152,25 @@ class Renderer(EventDispatcher):
     ) -> None:
 
         if name not in self.hidden:
-            stage = self.contexts.require(name)
+            stage = self.stages.require(name)
             self.canvas.remove(stage.ctx)
 
-        self.contexts.destroy(name)
+        self.stages.destroy(name)
 
     # =================================== #
     # Dirty Queue
     # =================================== #
     def queue_render(
         self,
-        node: Node3D,
-        context: str,
+        node: SceneObject,
+        stage_name: str,
     ) -> None:
 
         self._lifecycle_queue.append(
             RenderCommand(
                 op="render",
                 node=node,
-                context=context,
+                stage_name=stage_name,
             )
         )
         self._trigger_dirty()
@@ -178,7 +178,7 @@ class Renderer(EventDispatcher):
 
     def queue_destroy(
         self,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         self._lifecycle_queue.append(
             RenderCommand(
@@ -191,7 +191,7 @@ class Renderer(EventDispatcher):
     def queue_transform(
         self,
         manager: InstructionManager,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         self._transform_queue.add(id(node))
         self._trigger_dirty()
@@ -199,7 +199,7 @@ class Renderer(EventDispatcher):
     def queue_material(
         self,
         manager: InstructionManager,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         self._material_queue.add(id(node))
         self._trigger_dirty()
@@ -207,7 +207,7 @@ class Renderer(EventDispatcher):
     def queue_visibility(
         self,
         manager: InstructionManager,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         self._visibility_queue.add(id(node))
         self._trigger_dirty()
@@ -222,9 +222,9 @@ class Renderer(EventDispatcher):
 
     def queue_viewport(
             self,
-            ctx: RenderStage,
+            stage: RenderStage,
     ) -> None:
-        self._viewport_queue.add(ctx.name)
+        self._viewport_queue.add(stage.name)
         self._trigger_dirty()
 
 
@@ -238,11 +238,11 @@ class Renderer(EventDispatcher):
             command = self._lifecycle_queue.popleft()
 
             if command.op == "render":
-                assert command.context is not None
+                assert command.stage_name is not None
 
                 self.sync_render_queue(
                     command.node,
-                    command.context,
+                    command.stage_name,
                 )
                 self.sync_transform_queue(command.node)
                 self.sync_material_queue(command.node)
@@ -291,16 +291,16 @@ class Renderer(EventDispatcher):
     # =================================== #
     # Sync
     # =================================== #
-    def sync_render_queue(self, node: Node3D, context: str):
-        ctx = self.contexts.require_context(context)
-        self.instructions.create(node=node, ctx=ctx)
+    def sync_render_queue(self, node: SceneObject, stage_name: str):
+        stage = self.stages.require_context(stage_name)
+        self.instructions.create(node=node, stage=stage)
 
     def sync_destroy_queue(self, node: Node3D):
         self.instructions.destroy(node)
 
     def sync_transform_queue(
         self,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         for object3d in node.walk(filter="objects"):
             object_id = id(object3d)
@@ -319,7 +319,7 @@ class Renderer(EventDispatcher):
 
     def sync_material_queue(
         self,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         for object3d in node.walk(filter="objects"):
             object_id = id(object3d)
@@ -331,7 +331,7 @@ class Renderer(EventDispatcher):
 
     def sync_visibility_queue(
         self,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         if node.visible_in_tree:
             self.instructions.show(node)
@@ -346,20 +346,20 @@ class Renderer(EventDispatcher):
         name: str,
     ) -> None:
 
-        ctx = self.contexts.require(name)
-        ctx.update_view(view)
+        stage = self.stages.require(name)
+        stage.update_view(view)
 
     def sync_viewport_queue(
         self,
         name: str,
     ) -> None:
 
-        ctx = self.contexts.require(name)
+        stage = self.stages.require(name)
         view = self.views.view_for_stage(name)
         if view is None:
             return
 
-        ctx.update_view(view)
+        stage.update_view(view)
 
 
 

@@ -7,7 +7,7 @@ from kivyfn.three.render.context import (
     RenderContext,
     RenderPass,
 )
-from kivyfn.three.render.context_registry import RenderRegistry
+from kivyfn.three.render.stage_registry import RenderStageRegistry
 from kivyfn.three.render.link_registry import (
     RenderLinkRecord,
     RenderLinkRegistry,
@@ -21,10 +21,10 @@ from kivyfn.three.render.binder_manager import (
 )
 
 
-class RenderContextManager:
+class RenderStageManager:
 
     def __init__(self) -> None:
-        self.registry = RenderRegistry()
+        self.registry = RenderStageRegistry()
 
         self.links = RenderLinkRegistry(
             registry=self.registry,
@@ -35,7 +35,7 @@ class RenderContextManager:
         )
 
         self.binder_manager = RenderBinderManager(
-            context_registry=self.registry,
+            stage_registry=self.registry,
             binder_registry=self.bindings,
         )
 

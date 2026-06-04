@@ -10,7 +10,7 @@ from typing import Callable
 from kivy.graphics import BindTexture
 from kivy.graphics.texture import Texture
 
-from kivyfn.three.render.context_registry import RenderRegistry
+from kivyfn.three.render.stage_registry import RenderStageRegistry
 from kivyfn.three.render.binding_registry import RenderBindingRecord, RenderBindingRegistry
 
 if TYPE_CHECKING:
@@ -47,10 +47,10 @@ class RenderBinderManager:
     def __init__(
         self,
         *,
-        context_registry: RenderRegistry,
+        stage_registry: RenderStageRegistry,
         binder_registry: RenderBindingRegistry,
     ) -> None:
-        self._context_registry = context_registry
+        self._stage_registry = stage_registry
         self._binder_registry = binder_registry
 
         self._texture_bindings: dict[RenderBindingRecord, RenderTextureBinding] = {}
@@ -62,8 +62,8 @@ class RenderBinderManager:
         target_name: str,
         index: int | None = None,
     ) -> RenderBindingRecord:
-        render_pass = self._context_registry.require_pass(pass_name)
-        target = self._context_registry.require(target_name)
+        render_pass = self._stage_registry.require_pass(pass_name)
+        target = self._stage_registry.require(target_name)
 
         if index is None:
             index = self._next_texture_slot(target_name)

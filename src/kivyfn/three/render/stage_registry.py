@@ -1,3 +1,4 @@
+# kivyfn/three/render/stage_registry.py
 from __future__ import annotations
 
 from collections import defaultdict
@@ -7,7 +8,13 @@ from kivyfn.three.types import RenderStage
 from kivyfn.three.render.context import RenderContext, RenderPass
 
 
-class RenderRegistry:
+class RenderStageRegistry:
+
+    def __len__(self) -> int:
+        return (
+            len(self._contexts) +
+            len(self._passes)
+        )
 
     def __init__(self) -> None:
         self._contexts: dict[str, RenderContext] = {}
@@ -24,11 +31,17 @@ class RenderRegistry:
         }
         """
 
-    def __len__(self) -> int:
-        return (
-            len(self._contexts) +
-            len(self._passes)
-        )
+    # =================================== #
+    # Exports
+    # =================================== #
+    @property
+    def contexts(self) -> dict[str, RenderContext]:
+        return self._contexts.copy()
+
+
+    @property
+    def passes(self) -> dict[str, RenderPass]:
+        return self._passes.copy()
 
     # =================================== #
     # Context Registrations

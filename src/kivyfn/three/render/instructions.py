@@ -19,9 +19,10 @@ from kivyfn.three.render.callbacks import (
 )
 
 if TYPE_CHECKING:
+    from kivyfn.three.types import RenderStage
     from kivyfn.three.assets.geometry import Geometry
     from kivyfn.three.assets.material import Material
-    from kivyfn.three.render.context import RenderContext, RenderPass
+    from kivyfn.three.render.context import RenderContext
 
 
 TEXTURE_SLOTS = {
@@ -42,19 +43,19 @@ class BaseInstructions(EventDispatcher):
         self,
         *,
         geometry: Geometry,
-        ctx: RenderContext | RenderPass,
+        stage: RenderStage,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
-        self.ctx = ctx
+        self.stage = stage
         self.geometry = geometry
         self.visible = True
 
         self.group = InstructionGroup()
 
         self.transform_callback = TransformCallback(
-            ctx=ctx,
+            stage=stage,
         )
 
         self.mesh = Mesh(
@@ -123,11 +124,11 @@ class MaterialInstructions(BaseInstructions):
         *,
         geometry: Geometry,
         material: Material,
-        ctx: RenderContext,
+        stage: RenderContext,
     ):
         super().__init__(
             geometry=geometry,
-            ctx=ctx,
+            stage=stage,
         )
 
         self.material = material
@@ -138,7 +139,7 @@ class MaterialInstructions(BaseInstructions):
         }
 
         self.material_callback = MaterialCallback(
-            ctx=ctx,
+            stage=stage,
             material=material,
             texture_slots=TEXTURE_SLOTS,
         )
@@ -204,7 +205,7 @@ class ObjectIdInstructions(RenderPassBaseInstructions):
 
         self.render_id = render_id
         self.object_id_callback = ObjectIdCallback(
-            ctx=self.ctx,
+            stage=self.stage,
             render_id=self.render_id,
             output_uniform=self.output_uniform
         )

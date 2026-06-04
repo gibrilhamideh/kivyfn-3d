@@ -23,7 +23,7 @@ class SceneNodeRegistry:
         self.by_render_id: dict[int, Object3D] = {}
 
     def __len__(self) -> int:
-        return len(self.by_uid)
+        return len(self.by_render_id)
 
     # =================================== #
     # Node API

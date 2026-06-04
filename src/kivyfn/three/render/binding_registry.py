@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from kivyfn.three.render.context_registry import RenderRegistry
+from kivyfn.three.render.stage_registry import RenderStageRegistry
 
 
 @dataclass(slots=True, frozen=True)
@@ -17,7 +17,7 @@ class RenderBindingRecord:
 
 class RenderBindingRegistry:
 
-    def __init__(self, registry: RenderRegistry) -> None:
+    def __init__(self, registry: RenderStageRegistry) -> None:
         self.registry = registry
         self._records: set[RenderBindingRecord] = set()
         self._outgoing: defaultdict[str, set[RenderBindingRecord]] = defaultdict(set)

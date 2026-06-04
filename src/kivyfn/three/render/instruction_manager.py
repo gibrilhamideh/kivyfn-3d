@@ -23,7 +23,7 @@ from kivyfn.three.render.instructions import (
 )
 
 if TYPE_CHECKING:
-    from kivyfn.three.render.context_manager import RenderContextManager
+    from kivyfn.three.render.stage_manager import RenderStageManager
     from kivyfn.three.graph.node import Node3D
     from kivyfn.three.assets.object3d import Object3D
 
@@ -41,11 +41,11 @@ class InstructionManager(EventDispatcher):
 
     def __init__(
         self,
-        contexts: RenderContextManager,
+        stages: RenderStageManager,
     ) -> None:
         super().__init__()
 
-        self.contexts = contexts
+        self.stages = stages
 
         self.by_object: dict[int, dict[str, BaseInstructions]] = {}
         self.by_context: dict[str, dict[int, BaseInstructions]] = {}
@@ -60,39 +60,39 @@ class InstructionManager(EventDispatcher):
     def create_render_instructions(
         self,
         object3d: Object3D,
-        ctx: RenderContext,
+        stage: RenderContext,
     ) -> BaseInstructions:
         return MaterialInstructions(
             geometry=object3d.geometry,
             material=object3d.material,
-            ctx=ctx,
+            stage=stage,
         )
 
     def create_pass_instructions(
         self,
         object3d: Object3D,
-        ctx: RenderPass,
+        stage: RenderPass,
         output: RenderPassOutput,
         output_uniform: str,
     ) -> BaseInstructions:
         if output == "depth":
             return DepthInstructions(
                 geometry=object3d.geometry,
-                ctx=ctx,
+                stage=stage,
                 output_uniform=output_uniform,
             )
 
         if output == "position":
             return PositionInstructions(
                 geometry=object3d.geometry,
-                ctx=ctx,
+                stage=stage,
                 output_uniform=output_uniform,
             )
 
         if output == "normal":
             return NormalInstructions(
                 geometry=object3d.geometry,
-                ctx=ctx,
+                stage=stage,
                 output_uniform=output_uniform,
             )
 
@@ -100,13 +100,13 @@ class InstructionManager(EventDispatcher):
             return ObjectIdInstructions(
                 geometry=object3d.geometry,
                 render_id=object3d.require_render_id(),
-                ctx=ctx,
+                stage=stage,
                 output_uniform=output_uniform,
             )
 
         return ColorInstructions(
             geometry=object3d.geometry,
-            ctx=ctx,
+            ctx=stage,
             output_uniform=output_uniform,
         )
 
@@ -117,16 +117,16 @@ class InstructionManager(EventDispatcher):
     def create(
         self,
         node: Node3D,
-        ctx: RenderStage,
+        stage: RenderStage,
     ) -> None:
         stage_names = {
-            ctx.name,
-            *(self.contexts.links.dependencies(ctx.name) or ()),
+            stage.name,
+            *(self.stages.links.dependencies(stage.name) or ()),
         }
 
         for object3d in node.walk(filter="objects"):
             for stage_name in stage_names:
-                stage = self.contexts.require(stage_name)
+                stage = self.stages.require(stage_name)
 
                 if not all(
                     link_filter(object3d)
@@ -137,13 +137,13 @@ class InstructionManager(EventDispatcher):
                 if isinstance(stage, RenderContext):
                     self._create(
                         object3d=object3d,
-                        ctx=stage,
+                        stage=stage,
                     )
                     continue
 
                 self._create(
                     object3d=object3d,
-                    ctx=stage,
+                    stage=stage,
                     output=stage.output,
                     output_uniform=stage.output_uniform,
                 )
@@ -151,57 +151,57 @@ class InstructionManager(EventDispatcher):
     def _create(
         self,
         object3d: Object3D,
-        ctx: RenderStage,
+        stage: RenderStage,
         *,
         output_uniform: str | None = None,
         output: RenderPassOutput | None = None,
     ) -> BaseInstructions:
         object_id = id(object3d)
-        context_name = ctx.name
+        stage_name = stage.name
 
         existing = self.by_object.get(
             object_id,
             {},
-        ).get(context_name)
+        ).get(stage_name)
 
         if existing is not None:
             return existing
 
-        if isinstance(ctx, RenderContext):
+        if isinstance(stage, RenderContext):
             instructions = self.create_render_instructions(
                 object3d=object3d,
-                ctx=ctx,
+                stage=stage,
             )
         else:
             if output is None:
                 raise ValueError(
-                    f"Render pass '{ctx.name}' requires an output. "
+                    f"Render pass '{stage.name}' requires an output. "
                     "Expected a RenderPassOutput when creating pass instructions."
                 )
 
             if output_uniform is None:
                 raise ValueError(
-                    f"Render pass '{ctx.name}' requires an texture uniform name. "
+                    f"Render pass '{stage.name}' requires an texture uniform name. "
                 )
 
             instructions = self.create_pass_instructions(
                 object3d=object3d,
-                ctx=ctx,
+                stage=stage,
                 output=output,
                 output_uniform=output_uniform
             )
 
-        ctx.add(instructions.group)
+        stage.add(instructions.group)
 
         self.objects[object_id] = object3d
 
         self.by_object.setdefault(
             object_id,
             {},
-        )[context_name] = instructions
+        )[stage_name] = instructions
 
         self.by_context.setdefault(
-            context_name,
+            stage_name,
             {},
         )[object_id] = instructions
 
@@ -216,9 +216,9 @@ class InstructionManager(EventDispatcher):
     def destroy(
         self,
         node: Node3D,
-        ctx: RenderStage | None = None,
+        stage: RenderStage | None = None,
     ) -> None:
-        if ctx is None:
+        if stage is None:
             for object3d in node.walk(filter="objects"):
                 self._destroy(
                     object3d=object3d,
@@ -226,30 +226,30 @@ class InstructionManager(EventDispatcher):
             return
 
         stage_names = {
-            ctx.name,
-            *(self.contexts.links.dependencies(ctx.name) or ()),
+            stage.name,
+            *(self.stages.links.dependencies(stage.name) or ()),
         }
 
         for object3d in node.walk(filter="objects"):
             for stage_name in stage_names:
-                stage = self.contexts.require(stage_name)
+                stage = self.stages.require(stage_name)
 
                 self._destroy(
                     object3d=object3d,
-                    ctx=stage,
+                    stage=stage,
                 )
 
     def _destroy(
         self,
         object3d: Object3D,
-        ctx: RenderStage | None = None,
+        stage: RenderStage | None = None,
     ) -> None:
         object_id = id(object3d)
 
-        if ctx is not None:
+        if stage is not None:
             self._destroy_instruction(
                 object_id=object_id,
-                context_name=ctx.name,
+                stage_name=stage.name,
             )
 
             if object_id not in self.by_object:
@@ -257,7 +257,7 @@ class InstructionManager(EventDispatcher):
 
             return
 
-        for context_name in list(
+        for stage_name in list(
             self.by_object.get(
                 object_id,
                 {},
@@ -265,7 +265,7 @@ class InstructionManager(EventDispatcher):
         ):
             self._destroy_instruction(
                 object_id=object_id,
-                context_name=context_name,
+                stage_name=stage_name,
             )
 
         self.unbind_object3d(object3d)
@@ -278,7 +278,7 @@ class InstructionManager(EventDispatcher):
         self,
         *,
         object_id: int,
-        context_name: str,
+        stage_name: str,
     ) -> None:
         context_map = self.by_object.get(object_id)
 
@@ -286,29 +286,29 @@ class InstructionManager(EventDispatcher):
             return
 
         instructions = context_map.pop(
-            context_name,
+            stage_name,
             None,
         )
 
         if instructions is None:
             return
 
-        ctx = self.contexts.require(context_name)
-        ctx.remove(instructions.group)
+        stage = self.stages.require(stage_name)
+        stage.remove(instructions.group)
 
         instructions.destroy()
 
-        context_objects = self.by_context.get(context_name)
+        stage_objects = self.by_context.get(stage_name)
 
-        if context_objects is not None:
-            context_objects.pop(
+        if stage_objects is not None:
+            stage_objects.pop(
                 object_id,
                 None,
             )
 
-            if not context_objects:
+            if not stage_objects:
                 self.by_context.pop(
-                    context_name,
+                    stage_name,
                     None,
                 )
 

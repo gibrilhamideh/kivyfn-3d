@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 import math
 from dataclasses import dataclass
 
-from kivyfn.three.controls.base import SceneController
+from kivyfn.three.controls.base import BaseController
 from kivyfn.three.controls.orbit import OrbitCameraController
 from kivyfn.three.math.vector import Vector3
 
@@ -48,7 +48,7 @@ class TouchPoint:
         return self.x, self.y
 
 
-class TouchCameraControls(SceneController):
+class TouchCameraControls(BaseController):
     MODE_IDLE = "idle"
     MODE_ORBIT_PENDING = "orbit_pending"
     MODE_ORBIT = "orbit"

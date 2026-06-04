@@ -37,14 +37,14 @@ from typing import TYPE_CHECKING
 
 from kivy.core.window import Window
 
-from kivyfn.three.controls.base import SceneController
+from kivyfn.three.controls.base import BaseController
 from kivyfn.three.controls.orbit import OrbitCameraController
 from kivyfn.three.math.vector import Vector3
 
 if TYPE_CHECKING:
     from kivyfn.three.views.view import View
 
-class BlenderCameraControls(SceneController):
+class BlenderCameraControls(BaseController):
     def __init__(
         self,
         view_name: str = "main",
