@@ -44,12 +44,14 @@ class Scene(SceneControllerBase):
         self.loader = SceneLoader()
         self.renderer = Renderer(self.render_group)
         self.viewport = Viewport(self)
-        self.controllers = []
-
 
         self.root = root or Node3D(name="root")
         self.nodes = SceneNodeRegistry()
 
+        self.bind(scene_viewport_x=self.renderer.setter("scene_viewport_x"))
+        self.bind(scene_viewport_y=self.renderer.setter("scene_viewport_y"))
+        self.bind(scene_viewport_width=self.renderer.setter("scene_viewport_width"))
+        self.bind(scene_viewport_height=self.renderer.setter("scene_viewport_height"))
 
 
     # =================================== #
@@ -73,16 +75,9 @@ class Scene(SceneControllerBase):
 
     ) -> RenderContext:
 
-        try:
-            view = self.views.get(view_name)
-        except KeyError:
-            raise ValueError(
-                f"Cannot create context {name!r}: "
-                f"view {view_name!r} was not found."
-            )
-
-        ctx = self.renderer.create_context(
+        return self.renderer.create_context(
             name=name,
+            view_name=view_name,
             tags=tags,
             shader=shader,
             hot_reload=hot_reload,
@@ -92,24 +87,6 @@ class Scene(SceneControllerBase):
             local_viewport_height=local_viewport_height,
             use_local_viewport=use_local_viewport,
         )
-
-        ctx.scene_viewport_x = self.scene_viewport_x
-        ctx.scene_viewport_y = self.scene_viewport_y
-        ctx.scene_viewport_width = self.scene_viewport_width
-        ctx.scene_viewport_height = self.scene_viewport_height
-
-        self.bind(scene_viewport_x=ctx.setter("scene_viewport_x"))
-        self.bind(scene_viewport_y=ctx.setter("scene_viewport_y"))
-        self.bind(scene_viewport_width=ctx.setter("scene_viewport_width"))
-        self.bind(scene_viewport_height=ctx.setter("scene_viewport_height"))
-
-        self.views.link(
-            view.name,
-            ctx.name,
-        )
-
-        return ctx
-
 
 
     # =================================== #
@@ -141,16 +118,9 @@ class Scene(SceneControllerBase):
         clear_stencil: bool =False
     ) -> RenderPass:
 
-        try:
-            view = self.views.get(view_name)
-        except KeyError:
-            raise ValueError(
-                f"Cannot create context {name!r}: "
-                f"view {view_name!r} was not found."
-            )
-
-        ctx = self.renderer.create_pass(
+        return self.renderer.create_pass(
             name=name,
+            view_name=view_name,
             tags=tags,
             shader=shader,
             hot_reload=hot_reload,
@@ -171,23 +141,6 @@ class Scene(SceneControllerBase):
             clear_depth=clear_depth,
             clear_stencil=clear_stencil,
         )
-
-        ctx.scene_viewport_x = self.scene_viewport_x
-        ctx.scene_viewport_y = self.scene_viewport_y
-        ctx.scene_viewport_width = self.scene_viewport_width
-        ctx.scene_viewport_height = self.scene_viewport_height
-
-        self.bind(scene_viewport_x=ctx.setter("scene_viewport_x"))
-        self.bind(scene_viewport_y=ctx.setter("scene_viewport_y"))
-        self.bind(scene_viewport_width=ctx.setter("scene_viewport_width"))
-        self.bind(scene_viewport_height=ctx.setter("scene_viewport_height"))
-
-        self.views.link(
-            view.name,
-            ctx.name,
-        )
-
-        return ctx
 
 
     def attach_pass(
@@ -310,7 +263,6 @@ class Scene(SceneControllerBase):
     @property
     def views(self) -> ViewManager:
         return self.renderer.views
-
 
     @property
     def stages(self):

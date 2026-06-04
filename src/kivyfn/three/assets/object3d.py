@@ -77,8 +77,8 @@ class Object3D(Node3D):
     # Property Helpers
     # =================================== #
     @property
-    def is_object(self) -> bool:
-        return True
+    def kind(self):
+        return "object"
 
     # =================================== #
     # Requirements

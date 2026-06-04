@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from collections import deque
 
 from kivy.clock import Clock
+from kivy.properties import NumericProperty
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 
@@ -33,6 +34,11 @@ class RenderCommand:
     stage_name: str | None = None
 
 class Renderer(EventDispatcher):
+
+    scene_viewport_x = NumericProperty(0)
+    scene_viewport_y = NumericProperty(0)
+    scene_viewport_width = NumericProperty(100)
+    scene_viewport_height = NumericProperty(100)
 
     def __init__(
         self,
@@ -82,10 +88,27 @@ class Renderer(EventDispatcher):
     # =================================== #
     # Contexts
     # =================================== #
-    def create_context(self, **kwargs) -> RenderContext:
+    def create_context(self, name:str, view_name: str, **kwargs) -> RenderContext:
 
-        stage = self.stages.create_context(**kwargs)
+        view = self.views.require(view_name)
+
+        stage = self.stages.create_context(name=name, **kwargs)
         stage.bind(on_viewport_dirty=self.queue_viewport)
+
+        stage.scene_viewport_x = self.scene_viewport_x
+        stage.scene_viewport_y = self.scene_viewport_y
+        stage.scene_viewport_width = self.scene_viewport_width
+        stage.scene_viewport_height = self.scene_viewport_height
+
+        self.bind(scene_viewport_x=stage.setter("scene_viewport_x"))
+        self.bind(scene_viewport_y=stage.setter("scene_viewport_y"))
+        self.bind(scene_viewport_width=stage.setter("scene_viewport_width"))
+        self.bind(scene_viewport_height=stage.setter("scene_viewport_height"))
+
+        self.views.link(
+            view.name,
+            stage.name,
+        )
 
         self.canvas.add(stage.ctx)
         return stage
@@ -94,10 +117,29 @@ class Renderer(EventDispatcher):
     # =================================== #
     # Render Pass
     # =================================== #
-    def create_pass(self, **kwargs) -> RenderPass:
+    def create_pass(self, name: str, view_name: str, **kwargs) -> RenderPass:
 
-        stage = self.stages.create_pass(**kwargs)
+        view = self.views.require(view_name)
+
+
+        stage = self.stages.create_pass(name=name, **kwargs)
         stage.bind(on_viewport_dirty=self.queue_viewport)
+
+
+        stage.scene_viewport_x = self.scene_viewport_x
+        stage.scene_viewport_y = self.scene_viewport_y
+        stage.scene_viewport_width = self.scene_viewport_width
+        stage.scene_viewport_height = self.scene_viewport_height
+
+        self.bind(scene_viewport_x=stage.setter("scene_viewport_x"))
+        self.bind(scene_viewport_y=stage.setter("scene_viewport_y"))
+        self.bind(scene_viewport_width=stage.setter("scene_viewport_width"))
+        self.bind(scene_viewport_height=stage.setter("scene_viewport_height"))
+
+        self.views.link(
+            view.name,
+            stage.name,
+        )
 
         self.canvas.add(stage.ctx)
         return stage
@@ -357,9 +399,5 @@ class Renderer(EventDispatcher):
             return
 
         stage.update_view(view)
-
-
-
-
 
 

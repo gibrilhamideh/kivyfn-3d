@@ -9,7 +9,7 @@ from typing import (
     Iterator,
     TypeGuard,
     TypeVar,
-    overload
+    overload,
 )
 
 from kivy.event import EventDispatcher
@@ -18,7 +18,7 @@ from kivy.properties import (
     ListProperty,
     ObjectProperty,
     StringProperty,
-    DictProperty
+    DictProperty,
 )
 
 from kivyfn.three.math.vector import Vector3
@@ -29,13 +29,22 @@ if TYPE_CHECKING:
     from kivyfn.three.math.quaternion import Quaternion
     from kivyfn.three.math.matrix import Matrix4
     from kivyfn.three.assets.object3d import Object3D
+    from kivyfn.three.lights.sources.base import Light3D
     from kivyfn.three.controls.interaction import InteractionEvent
     from kivyfn.three.behaviors.behavior import Behavior
 
+
 NodeFilter = Literal[
     "all",
+    "lights",
     "nodes",
     "objects",
+]
+
+NodeKind = Literal[
+    "light",
+    "node",
+    "object",
 ]
 
 
@@ -48,8 +57,11 @@ class Node3D(EventDispatcher):
     name: str = StringProperty("")
     visible: bool = BooleanProperty(True)
 
-    children: list[Node3D | Object3D] = ListProperty([])
-    parent: Node3D | Object3D | None = ObjectProperty(None, allownone=True)
+    children: list[Node3D | Object3D | Light3D] = ListProperty([])
+    parent: Node3D | Object3D | Light3D | None = ObjectProperty(
+        None,
+        allownone=True,
+    )
     extras: dict = DictProperty()
 
     origin: Vector3 = ObjectProperty(Vector3.zero())
@@ -104,13 +116,11 @@ class Node3D(EventDispatcher):
     def world_position(self) -> Vector3:
         return self.world_matrix.transform_point(Vector3(0.0, 0.0, 0.0))
 
-
     @property
     def world_forward(self) -> Vector3:
         return self.world_matrix.transform_direction(
             Vector3(0.0, 0.0, -1.0)
         ).normalize()
-
 
     # =================================== #
     # Transform State
@@ -200,23 +210,18 @@ class Node3D(EventDispatcher):
     # =================================== #
     # Events
     # =================================== #
-    def on_transform_dirty(
-        self,
-    ) -> None:
+    def on_transform_dirty(self) -> None:
         pass
 
-    def on_visibility_dirty(
-        self,
-    ) -> None:
+    def on_visibility_dirty(self) -> None:
         pass
-
 
     # =================================== #
     # Relationships
     # =================================== #
     def add_child(
         self,
-        child: Node3D | Object3D,
+        child: Node3D | Object3D | Light3D,
     ) -> None:
         if child.parent is self:
             return
@@ -228,33 +233,40 @@ class Node3D(EventDispatcher):
         child.parent = self
 
         child.mark_transform_dirty()
+        child.mark_visibility_dirty()
 
     def remove_child(
         self,
-        child: Node3D | Object3D,
+        child: Node3D | Object3D | Light3D,
     ) -> None:
         self.children.remove(child)
         child.parent = None
 
         child.mark_transform_dirty()
+        child.mark_visibility_dirty()
 
     def clear_children(self) -> None:
         for child in list(self.children):
             self.remove_child(child)
 
-
-
     # =================================== #
     # Type Helpers
     # =================================== #
     @property
-    def is_object(self) -> bool:
-        return False
+    def kind(self) -> NodeKind:
+        return "node"
 
+    @property
+    def is_light(self) -> bool:
+        return self.kind == "light"
+
+    @property
+    def is_object(self) -> bool:
+        return self.kind == "object"
 
     def is_object3d(
         self,
-        node,
+        node: SceneObject,
     ) -> TypeGuard[Object3D]:
         return node.is_object
 
@@ -279,11 +291,10 @@ class Node3D(EventDispatcher):
     ) -> None:
         pass
 
-
     # =================================== #
     # Traversal
     # =================================== #
-    def __iter__(self) -> Iterator[Node3D | Object3D]:
+    def __iter__(self) -> Iterator[Node3D | Object3D | Light3D]:
         return iter(self.children)
 
     @overload
@@ -308,9 +319,18 @@ class Node3D(EventDispatcher):
     def walk(
         self,
         *,
+        filter: Literal["lights"],
+        include_self: bool = True,
+    ) -> Iterator[Light3D]:
+        ...
+
+    @overload
+    def walk(
+        self,
+        *,
         filter: Literal["all"] = "all",
         include_self: bool = True,
-    ) -> Iterator[Node3D | Object3D]:
+    ) -> Iterator[SceneObject]:
         ...
 
     def walk(
@@ -344,6 +364,15 @@ class Node3D(EventDispatcher):
         filter: Literal["objects"],
         include_self: bool = False,
     ) -> Iterator[Object3D]:
+        ...
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
+        filter: Literal["lights"],
+        include_self: bool = False,
+    ) -> Iterator[Light3D]:
         ...
 
     @overload
@@ -398,6 +427,18 @@ class Node3D(EventDispatcher):
             )
         )
 
+    def lights(
+        self,
+        *,
+        include_self: bool = True,
+    ) -> list[Light3D]:
+        return list(
+            self.walk(
+                filter="lights",
+                include_self=include_self,
+            )
+        )
+
     @overload
     def descendants(
         self,
@@ -418,8 +459,16 @@ class Node3D(EventDispatcher):
     def descendants(
         self,
         *,
+        filter: Literal["lights"],
+    ) -> list[Light3D]:
+        ...
+
+    @overload
+    def descendants(
+        self,
+        *,
         filter: Literal["all"] = "all",
-    ) -> list[Node3D | Object3D]:
+    ) -> list[SceneObject]:
         ...
 
     def descendants(
@@ -454,8 +503,16 @@ class Node3D(EventDispatcher):
     def ancestors(
         self,
         *,
+        filter: Literal["lights"],
+    ) -> list[Light3D]:
+        ...
+
+    @overload
+    def ancestors(
+        self,
+        *,
         filter: Literal["all"] = "all",
-    ) -> list[Node3D | Object3D]:
+    ) -> list[SceneObject]:
         ...
 
     def ancestors(
@@ -471,8 +528,8 @@ class Node3D(EventDispatcher):
             )
         )
 
-    def root(self) -> Node3D | Object3D:
-        current: Node3D | Object3D = self
+    def root(self) -> SceneObject:
+        current: SceneObject = self
 
         while current.parent is not None:
             current = current.parent
@@ -504,9 +561,19 @@ class Node3D(EventDispatcher):
         self,
         name: str,
         *,
+        filter: Literal["lights"],
+        include_self: bool = True,
+    ) -> Light3D | None:
+        ...
+
+    @overload
+    def find(
+        self,
+        name: str,
+        *,
         filter: Literal["all"] = "all",
         include_self: bool = True,
-    ) -> Node3D | Object3D | None:
+    ) -> SceneObject | None:
         ...
 
     def find(
@@ -550,9 +617,19 @@ class Node3D(EventDispatcher):
         self,
         name: str,
         *,
+        filter: Literal["lights"],
+        include_self: bool = True,
+    ) -> list[Light3D]:
+        ...
+
+    @overload
+    def find_all(
+        self,
+        name: str,
+        *,
         filter: Literal["all"] = "all",
         include_self: bool = True,
-    ) -> list[Node3D | Object3D]:
+    ) -> list[SceneObject]:
         ...
 
     def find_all(
@@ -591,6 +668,17 @@ class Node3D(EventDispatcher):
         include_self: bool = True,
         case_sensitive: bool = False,
     ) -> Object3D | None:
+        ...
+
+    @overload
+    def fuzzy_find(
+        self,
+        text: str,
+        *,
+        filter: Literal["lights"],
+        include_self: bool = True,
+        case_sensitive: bool = False,
+    ) -> Light3D | None:
         ...
 
     @overload
@@ -648,10 +736,21 @@ class Node3D(EventDispatcher):
         self,
         text: str,
         *,
+        filter: Literal["lights"],
+        include_self: bool = True,
+        case_sensitive: bool = False,
+    ) -> list[Light3D]:
+        ...
+
+    @overload
+    def fuzzy_find_all(
+        self,
+        text: str,
+        *,
         filter: Literal["all"] = "all",
         include_self: bool = True,
         case_sensitive: bool = False,
-    ) -> list[Node3D | Object3D]:
+    ) -> list[SceneObject]:
         ...
 
     def fuzzy_find_all(
@@ -697,6 +796,18 @@ class Node3D(EventDispatcher):
         include_self: bool = True,
         require_value: bool = False,
     ) -> list[Object3D]:
+        ...
+
+    @overload
+    def find_by_extra(
+        self,
+        key: str,
+        value: Any = None,
+        *,
+        filter: Literal["lights"],
+        include_self: bool = True,
+        require_value: bool = False,
+    ) -> list[Light3D]:
         ...
 
     @overload
@@ -778,7 +889,7 @@ class Node3D(EventDispatcher):
 
         return self.parent.visible_in_tree
 
-    def on_visible(self, *_):
+    def on_visible(self, *_) -> None:
         self.mark_visibility_dirty()
 
     # =================================== #
@@ -806,13 +917,11 @@ class Node3D(EventDispatcher):
         self.behaviors[behavior.name] = behavior
         return behavior
 
-
     def get_behavior(
         self,
         name: str,
     ) -> Behavior | None:
         return self.behaviors.get(name)
-
 
     def require_behavior(
         self,
@@ -826,7 +935,6 @@ class Node3D(EventDispatcher):
             )
 
         return behavior
-
 
     def remove_behavior(
         self,
@@ -842,7 +950,7 @@ class Node3D(EventDispatcher):
     # =================================== #
     def _matches_filter(
         self,
-        node: Node3D | Object3D,
+        node: SceneObject,
         filter: NodeFilter,
     ) -> bool:
         if filter == "all":
@@ -851,4 +959,10 @@ class Node3D(EventDispatcher):
         if filter == "objects":
             return node.is_object
 
-        return not node.is_object
+        if filter == "lights":
+            return node.is_light
+
+        if filter == "nodes":
+            return node.kind == "node"
+
+        return False

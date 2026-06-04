@@ -18,13 +18,11 @@ class ViewManager(EventDispatcher):
         self._views: dict[str, View] = {}
         self._view_stages: dict[str, set[str]] = {}
 
-        self.default_name: str | None = None
-
     def __contains__(self, name: str) -> bool:
         return name in self._views
 
     def __getitem__(self, name: str) -> View:
-        return self.get(name)
+        return self.require(name)
 
     def __iter__(self) -> Iterator[View]:
         return iter(self._views.values())
@@ -36,7 +34,6 @@ class ViewManager(EventDispatcher):
         return (
             "ViewManager(\n"
             f"  views={list(self._views.keys())!r},\n"
-            f"  default={self.default_name!r},\n"
             f"  view_contexts={self.stage_map}\n"
             ")"
         )
@@ -60,13 +57,6 @@ class ViewManager(EventDispatcher):
             for view_name, context_names in self._view_stages.items()
         }
 
-    @property
-    def default(self) -> View:
-        if self.default_name is None:
-            raise RuntimeError("No default view has been set.")
-
-        return self.get(self.default_name)
-
     # =================================== #
     # View Management
     # =================================== #
@@ -75,7 +65,6 @@ class ViewManager(EventDispatcher):
         self,
         name: str,
         *,
-        default: bool = False,
         replace: bool = False,
         **kwargs,
     ) -> View:
@@ -86,7 +75,6 @@ class ViewManager(EventDispatcher):
 
         return self.add(
             view,
-            default=default,
             replace=replace,
         )
 
@@ -94,7 +82,6 @@ class ViewManager(EventDispatcher):
         self,
         view: View,
         *,
-        default: bool = False,
         replace: bool = False,
     ) -> View:
         if not view.name:
@@ -111,9 +98,6 @@ class ViewManager(EventDispatcher):
         self._views[view.name] = view
         self._view_stages.setdefault(view.name, set())
 
-        if self.default_name is None or default:
-            self.default_name = view.name
-
         self._bind_view(view)
         self._dispatch_dirty(view)
 
@@ -121,15 +105,19 @@ class ViewManager(EventDispatcher):
 
     def get(
         self,
-        name: str | None = None,
+        name: str,
+    ) -> View | None:
+
+        return self._views.get(name)
+
+    def require(
+        self,
+        name: str,
     ) -> View:
-        if name is None:
-            return self.default
 
         view = self._views.get(name)
-
         if view is None:
-            raise KeyError(f"View not found: {name!r}")
+            raise ValueError(f"View not found: {name!r}")
 
         return view
 
@@ -142,9 +130,6 @@ class ViewManager(EventDispatcher):
         self._unbind_view(view)
         self._view_stages.pop(name, None)
 
-        if self.default_name == name:
-            self.default_name = next(iter(self._views), None)
-
         return view
 
     def clear(self) -> None:
@@ -153,7 +138,6 @@ class ViewManager(EventDispatcher):
 
         self._views.clear()
         self._view_stages.clear()
-        self.default_name = None
 
     # =================================== #
     # Context Links
@@ -166,7 +150,7 @@ class ViewManager(EventDispatcher):
         *,
         sync: bool = True,
     ) -> None:
-        view = self.get(view_name)
+        view = self.require(view_name)
 
         contexts = self._view_stages.setdefault(
             view.name,
@@ -185,7 +169,7 @@ class ViewManager(EventDispatcher):
         *,
         sync: bool = True,
     ) -> None:
-        view = self.get(view_name)
+        view = self.require(view_name)
 
         contexts = self._view_stages.get(view.name)
 
@@ -232,7 +216,7 @@ class ViewManager(EventDispatcher):
         self,
         view_name: str,
     ) -> tuple[str, ...]:
-        self.get(view_name)
+        self.require(view_name)
 
         return tuple(
             sorted(
