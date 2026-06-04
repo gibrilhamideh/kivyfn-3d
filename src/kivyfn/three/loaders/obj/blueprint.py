@@ -11,7 +11,7 @@ from kivyfn.three.assets.material import Material
 
 
 @dataclass(slots=True)
-class ObjAsset:
+class ObjBlueprint:
     name: str
     geometry: Geometry
 
@@ -25,7 +25,7 @@ class ObjAsset:
 
     def __repr__(self) -> str:
         return (
-            "ObjAsset(\n"
+            "ObjBlueprint(\n"
             f"  name={self.name!r},\n"
             f"  geometry={self.geometry.name!r},\n"
             f"  material={self.material.name!r},\n"
@@ -35,15 +35,15 @@ class ObjAsset:
 
 
 @dataclass(slots=True)
-class ObjSceneAsset:
-    objects: dict[str, ObjAsset] = field(default_factory=dict)
+class ObjSceneBlueprint:
+    objects: dict[str, ObjBlueprint] = field(default_factory=dict)
 
-    def walk_objects(self) -> Iterator[ObjAsset]:
+    def walk_objects(self) -> Iterator[ObjBlueprint]:
         yield from self.objects.values()
 
     def __repr__(self) -> str:
         return (
-            "ObjSceneAsset(\n"
+            "ObjSceneBlueprint(\n"
             f"  objects={len(self.objects)},\n"
             f"  names={list(self.objects)},\n"
             ")"

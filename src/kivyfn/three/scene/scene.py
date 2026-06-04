@@ -8,17 +8,15 @@ from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.graph.node import Node3D
 from kivyfn.three.graph.node_registry import SceneNodeRegistry
 from kivyfn.three.loaders.scene_loader import SceneLoader
-from kivyfn.three.lights.manager import LightManager
 from kivyfn.three.scene.base import SceneControllerBase
 
 if TYPE_CHECKING:
-    from kivyfn.three.types import SceneObject
+    from kivyfn.three.types import SceneObject, SceneBlueprint, AssetBlueprint
     from kivyfn.three.views.view_manager import ViewManager
     from kivyfn.three.render.binding_registry import RenderBindingRecord
     from kivyfn.three.render.link_registry import RenderLinkRecord
     from kivyfn.three.render.context import RenderContext, RenderPass, RenderPassOutput
     from kivyfn.three.render.shader import Shader
-    from kivyfn.three.loaders.glb.asset import GlbSceneAsset, GlbAsset
 
 
 class Scene(SceneControllerBase):
@@ -51,8 +49,6 @@ class Scene(SceneControllerBase):
 
         self.root = root or Node3D(name="root")
         self.nodes = SceneNodeRegistry()
-        self.lights = LightManager(self.root)
-        self.lights.bind(on_dirty=self.renderer.sync_lights)
 
 
 
@@ -268,7 +264,7 @@ class Scene(SceneControllerBase):
     def render(
         self,
         node: Node3D,
-        context: str,
+        stage_name: str,
         parent: Node3D | None = None,
     ) -> None:
         parent = parent or self.root
@@ -277,35 +273,35 @@ class Scene(SceneControllerBase):
         for current in node.walk(filter="all"):
             self.nodes.register(current)
 
-        self.renderer.queue_render(node, context)
+        self.renderer.queue_render(node, stage_name)
 
 
-    def render_asset(
+    def render_blueprint(
         self,
-        asset: GlbAsset,
-        context: str,
+        blueprint: AssetBlueprint,
+        stage_name: str,
         *,
         parent: SceneObject | None = None,
     ) -> SceneObject:
 
-        return self.loader.render_asset(
+        return self.loader.render_blueprint(
             self,
-            asset=asset,
-            context=context,
+            blueprint=blueprint,
+            stage_name=stage_name,
             parent=parent
         )
 
 
-    def render_scene(
+    def render_scene_blueprint(
         self,
-        scene_asset: GlbSceneAsset,
-        context: str,
+        scene_blueprint: SceneBlueprint,
+        stage_name: str,
     ) -> list[SceneObject]:
 
-        return self.loader.render_scene(
+        return self.loader.render_scene_blueprint(
             self,
-            scene_asset=scene_asset,
-            context=context
+            scene_blueprint=scene_blueprint,
+            stage_name=stage_name
         )
 
     # =================================== #
@@ -319,6 +315,12 @@ class Scene(SceneControllerBase):
     @property
     def stages(self):
         return self.renderer.stages
+
+    @property
+    def lights(self):
+        return self.renderer.lights
+
+
 
 
 

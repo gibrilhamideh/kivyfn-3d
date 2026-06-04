@@ -36,12 +36,12 @@ from kivy.properties import (
     StringProperty,
 )
 
-from kivyfn.three.types import RenderPassOutput
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.render.link_filter import RenderLinkFilter
 
 if TYPE_CHECKING:
     from kivyfn.three.views.view import View
+    from kivyfn.three.types import RenderPassOutput
 
 TContext = TypeVar(
     "TContext",

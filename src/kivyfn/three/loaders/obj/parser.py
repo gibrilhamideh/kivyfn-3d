@@ -9,7 +9,7 @@ import numpy as np
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.assets.geometry import Geometry, GeometryBounds
-from kivyfn.three.loaders.obj.asset import ObjSceneAsset, ObjAsset
+from kivyfn.three.loaders.obj.blueprint import ObjSceneBlueprint, ObjBlueprint
 
 
 class ObjParser:
@@ -21,7 +21,7 @@ class ObjParser:
         self.swapyz = swapyz
         self.normalize = normalize
 
-        self.scene: ObjSceneAsset = ObjSceneAsset()
+        self.scene: ObjSceneBlueprint = ObjSceneBlueprint()
 
         self.vertices: list[list[float]] = []
         self.normals: list[list[float]] = []
@@ -41,8 +41,7 @@ class ObjParser:
     def load(
         self,
         filename: str | Path,
-    ) -> ObjSceneAsset:
-        self.scene = ObjSceneAsset()
+    ) -> ObjSceneBlueprint:
 
         self.vertices = []
         self.normals = []
@@ -291,7 +290,7 @@ class ObjParser:
             bounds=bounds,
         )
 
-        self.scene.objects[self._current_object] = ObjAsset(
+        self.scene.objects[self._current_object] = ObjBlueprint(
             name=self._current_object,
             geometry=geometry,
             transform=transform,

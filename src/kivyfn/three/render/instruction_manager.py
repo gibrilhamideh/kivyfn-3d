@@ -10,7 +10,6 @@ from kivyfn.three.types import RenderStage
 from kivyfn.three.render.context import (
     RenderContext,
     RenderPass,
-    RenderPassOutput,
 )
 from kivyfn.three.render.instructions import (
     BaseInstructions,
@@ -23,6 +22,7 @@ from kivyfn.three.render.instructions import (
 )
 
 if TYPE_CHECKING:
+    from kivyfn.three.types import RenderPassOutput
     from kivyfn.three.render.stage_manager import RenderStageManager
     from kivyfn.three.graph.node import Node3D
     from kivyfn.three.assets.object3d import Object3D

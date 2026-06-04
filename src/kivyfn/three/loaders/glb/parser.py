@@ -15,7 +15,7 @@ from kivy.core.image import Image
 from kivy.graphics.texture import Texture
 from pygltflib import GLTF2
 
-from kivyfn.three.loaders.glb.asset import GlbAsset, GlbSceneAsset
+from kivyfn.three.loaders.glb.blueprint import GlbBlueprint, GlbSceneBlueprint
 from kivyfn.three.math.matrix import Matrix3
 from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.quaternion import Quaternion
@@ -186,7 +186,7 @@ class GlbParser:
         self.flip_v = flip_v
         self.flip_winding = flip_winding
 
-        self.scene: GlbSceneAsset = GlbSceneAsset()
+        self.scene: GlbSceneBlueprint = GlbSceneBlueprint()
         self._gltf: Any = None
         self._buffer_bytes: bytes | None = None
         self._base_path: Path | None = None
@@ -201,10 +201,9 @@ class GlbParser:
     def load(
         self,
         filename: str | Path,
-    ) -> GlbSceneAsset:
+    ) -> GlbSceneBlueprint:
         path = Path(filename)
 
-        self.scene = GlbSceneAsset()
         self._gltf = GLTF2().load_binary(str(path))
         self._buffer_bytes = self._load_buffer_bytes(path)
         self._base_path = path.parent
@@ -214,8 +213,8 @@ class GlbParser:
         self._image_texture_cache.clear()
 
         for root_index in self._get_scene_root_indices():
-            root_asset = self._load_node(root_index)
-            self.scene.tree.append(root_asset)
+            root_blueprint = self._load_node(root_index)
+            self.scene.tree.append(root_blueprint)
 
         return self.scene
 
@@ -244,7 +243,7 @@ class GlbParser:
     def _load_node(
         self,
         node_index: int,
-    ) -> GlbAsset:
+    ) -> GlbBlueprint:
         node = GlbNode(self._gltf.nodes[node_index])
 
         node_name = self._get_node_name(
@@ -255,7 +254,7 @@ class GlbParser:
         primitives = self._get_node_primitives(node)
         local_transform = self._get_node_local_transform(node)
 
-        asset = GlbAsset(
+        asset = GlbBlueprint(
             name=node_name,
             geometry=None,
             transform=local_transform,
@@ -287,7 +286,7 @@ class GlbParser:
                 asset.material = material
                 continue
 
-            primitive_asset = GlbAsset(
+            primitive_asset = GlbBlueprint(
                 name=name,
                 geometry=geometry,
                 transform=Transform(),
@@ -342,9 +341,9 @@ class GlbParser:
 
     def _register_asset(
         self,
-        asset: GlbAsset,
+        blueprint: GlbBlueprint,
     ) -> None:
-        self.scene.objects[asset.name] = asset
+        self.scene.objects[blueprint.name] = blueprint
 
     def _get_node_primitives(
         self,

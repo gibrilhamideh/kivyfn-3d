@@ -1,6 +1,6 @@
 # kivyfn/three/behaviors/behavior.py
 from __future__ import annotations
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING
 
 from kivy.event import EventDispatcher
 from kivy.properties import StringProperty
@@ -8,10 +8,8 @@ from kivy.properties import StringProperty
 from kivyfn.three.timeline.manager import TimelineManager
 
 if TYPE_CHECKING:
-    from kivyfn.three.graph.node import Node3D
-    from kivyfn.three.assets.object3d import Object3D
+    from kivyfn.three.types import SceneObject
 
-SceneObject: TypeAlias = "Node3D | Object3D"
 
 class Behavior(EventDispatcher):
     name: str = StringProperty("")

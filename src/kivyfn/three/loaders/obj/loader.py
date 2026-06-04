@@ -9,50 +9,50 @@ from kivyfn.three.assets.object3d import Object3D
 if TYPE_CHECKING:
     from kivyfn.three import Scene
     from kivyfn.three.types import SceneObject
-    from kivyfn.three.loaders.obj.asset import ObjAsset, ObjSceneAsset
+    from kivyfn.three.loaders.obj.blueprint import ObjBlueprint, ObjSceneBlueprint
 
 
 class ObjLoader:
-    def render_asset(
+    def render_blueprint(
         self,
         scene: Scene,
-        asset: ObjAsset,
-        context: str,
+        blueprint: ObjBlueprint,
+        stage_name: str,
         *,
         parent: SceneObject | None = None,
     ) -> Object3D:
 
         node = Object3D(
-            name=asset.name,
-            geometry=asset.geometry,
-            material=asset.material.copy(),
-            transform=asset.transform.copy(),
+            name=blueprint.name,
+            geometry=blueprint.geometry,
+            material=blueprint.material.copy(),
+            transform=blueprint.transform.copy(),
         )
 
-        node.origin = asset.geometry.bounds.center
+        node.origin = blueprint.geometry.bounds.center
 
         scene.render(
             node,
             parent=parent,
-            context=context,
+            stage_name=stage_name,
         )
 
         return node
 
-    def render_scene(
+    def render_scene_blueprint(
         self,
         scene: Scene,
-        scene_asset: ObjSceneAsset,
-        context: str,
+        scene_asset: ObjSceneBlueprint,
+        stage_name: str,
     ) -> list[SceneObject]:
 
         nodes: list[SceneObject] = []
 
         for asset in scene_asset.walk_objects():
-            node = self.render_asset(
+            node = self.render_blueprint(
                 scene,
                 asset,
-                context=context,
+                stage_name=stage_name,
             )
 
             nodes.append(node)

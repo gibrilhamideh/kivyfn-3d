@@ -115,11 +115,7 @@ class Collider(EventDispatcher):
         if distance is None or point is None:
             return None
 
-        world_point_raw = self.world_matrix.transform_point(
-            point.x,
-            point.y,
-            point.z,
-        )
+        world_point_raw = self.world_matrix.transform_point(point)
 
         world_point = Vector3(*world_point_raw)
         world_distance = (world_point - ray_origin).length
@@ -133,19 +129,11 @@ class Collider(EventDispatcher):
     ):
         inverse = self.world_matrix.inverse()
 
-        local_origin_raw = inverse.transform_point(
-            ray_origin.x,
-            ray_origin.y,
-            ray_origin.z,
-        )
+        local_origin_raw = inverse.transform_point(ray_origin)
 
         world_target = ray_origin + ray_direction
 
-        local_target_raw = inverse.transform_point(
-            world_target.x,
-            world_target.y,
-            world_target.z,
-        )
+        local_target_raw = inverse.transform_point(world_target)
 
         local_origin = Vector3(*local_origin_raw)
         local_target = Vector3(*local_target_raw)

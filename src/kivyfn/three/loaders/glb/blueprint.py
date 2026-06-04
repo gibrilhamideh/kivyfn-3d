@@ -10,7 +10,7 @@ from kivyfn.three.assets.material import Material
 
 
 @dataclass(slots=True)
-class GlbAsset:
+class GlbBlueprint:
     name: str
 
     geometry: Geometry | None = None
@@ -18,7 +18,7 @@ class GlbAsset:
 
     extras: dict[str, Any] = field(default_factory=dict)
     transform: Transform = field(default_factory=Transform)
-    children: list[GlbAsset] = field(default_factory=list)
+    children: list[GlbBlueprint] = field(default_factory=list)
 
     @property
     def uid(self) -> str | None:
@@ -56,7 +56,7 @@ class GlbAsset:
         )
 
         return (
-            "AssetObject(\n"
+            "GlbBlueprint(\n"
             f"  name={self.name!r},\n"
             f"  geometry={geometry_name!r},\n"
             f"  material={material_name!r},\n"
@@ -79,12 +79,12 @@ class GlbAsset:
 
 
 @dataclass(slots=True)
-class GlbSceneAsset:
-    objects: dict[str, GlbAsset] = field(
+class GlbSceneBlueprint:
+    objects: dict[str, GlbBlueprint] = field(
         default_factory=dict,
     )
 
-    tree: list[GlbAsset] = field(
+    tree: list[GlbBlueprint] = field(
         default_factory=list,
     )
 
@@ -93,17 +93,17 @@ class GlbSceneAsset:
             yield from self._walk_node(root)
 
     def walk_renderable(self):
-        for asset in self.walk_tree():
-            if asset.is_renderable:
-                yield asset
+        for blueprint in self.walk_tree():
+            if blueprint.is_renderable:
+                yield blueprint
 
     def _walk_node(
         self,
-        asset: GlbAsset,
+        blueprint: GlbBlueprint,
     ):
-        yield asset
+        yield blueprint
 
-        for child in asset.children:
+        for child in blueprint.children:
             yield from self._walk_node(child)
 
     def print_tree(self) -> None:
@@ -112,7 +112,7 @@ class GlbSceneAsset:
 
     def __repr__(self) -> str:
         return (
-            "SceneAsset(\n"
+            "SceneBlueprint(\n"
             f"  objects={len(self.objects)},\n"
             f"  roots={[obj.name for obj in self.tree]}\n"
             ")"

@@ -9,7 +9,6 @@ from typing import (
     Iterator,
     TypeGuard,
     TypeVar,
-    TypeAlias,
     overload
 )
 
@@ -26,6 +25,7 @@ from kivyfn.three.math.vector import Vector3
 from kivyfn.three.math.transform import Transform
 
 if TYPE_CHECKING:
+    from kivyfn.three.types import SceneObject
     from kivyfn.three.math.quaternion import Quaternion
     from kivyfn.three.math.matrix import Matrix4
     from kivyfn.three.assets.object3d import Object3D
@@ -38,7 +38,6 @@ NodeFilter = Literal[
     "objects",
 ]
 
-SceneObject: TypeAlias = "Node3D | Object3D"
 
 B = TypeVar("B", bound="Behavior")
 
@@ -100,6 +99,18 @@ class Node3D(EventDispatcher):
             return self.local_matrix
 
         return self.parent.world_matrix @ self.local_matrix
+
+    @property
+    def world_position(self) -> Vector3:
+        return self.world_matrix.transform_point(Vector3(0.0, 0.0, 0.0))
+
+
+    @property
+    def world_forward(self) -> Vector3:
+        return self.world_matrix.transform_direction(
+            Vector3(0.0, 0.0, -1.0)
+        ).normalize()
+
 
     # =================================== #
     # Transform State

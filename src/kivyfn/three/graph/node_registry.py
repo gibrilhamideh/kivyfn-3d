@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from kivyfn.three.graph.node import Node3D
+    from kivyfn.three.types import SceneObject
     from kivyfn.three.assets.object3d import Object3D
 
 
@@ -19,7 +19,7 @@ class SceneNodeRegistry:
     def __init__(self) -> None:
         self._next_render_id: int = 1
 
-        self.by_uid: dict[str, Node3D] = {}
+        self.by_uid: dict[str, SceneObject] = {}
         self.by_render_id: dict[int, Object3D] = {}
 
     def __len__(self) -> int:
@@ -31,7 +31,7 @@ class SceneNodeRegistry:
 
     def register(
         self,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         if node.uid is not None:
             self.register_uid(node)
@@ -41,7 +41,7 @@ class SceneNodeRegistry:
 
     def unregister(
         self,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         if node.uid is not None:
             self.unregister_uid(node)
@@ -55,7 +55,7 @@ class SceneNodeRegistry:
 
     def register_uid(
         self,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         if node.uid is None:
             return
@@ -67,7 +67,7 @@ class SceneNodeRegistry:
 
     def unregister_uid(
         self,
-        node: Node3D,
+        node: SceneObject,
     ) -> None:
         if node.uid is None:
             return
@@ -77,7 +77,7 @@ class SceneNodeRegistry:
     def get_by_uid(
         self,
         uid: str,
-    ) -> Node3D | Object3D | None:
+    ) -> SceneObject | None:
         return self.by_uid.get(uid)
 
     # =================================== #

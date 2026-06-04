@@ -8,65 +8,65 @@ from kivyfn.three.graph.node import Node3D
 if TYPE_CHECKING:
     from kivyfn.three import Scene
     from kivyfn.three.types import SceneObject
-    from kivyfn.three.loaders.glb.asset import GlbAsset, GlbSceneAsset
+    from kivyfn.three.loaders.glb.blueprint import GlbBlueprint, GlbSceneBlueprint
 
 class GlbLoader:
-    def render_asset(
+    def render_blueprint(
         self,
         scene: Scene,
-        asset: GlbAsset,
-        context: str,
+        blueprint: GlbBlueprint,
+        stage_name: str,
         *,
         parent: SceneObject | None = None,
     ) -> SceneObject:
 
-        if asset.is_renderable:
+        if blueprint.is_renderable:
             node = Object3D(
-                name=asset.name,
-                uid=asset.uid,
-                geometry=asset.require_geometry(),
-                material=asset.require_material(copy=True),
-                transform=asset.transform.copy(),
+                name=blueprint.name,
+                uid=blueprint.uid,
+                geometry=blueprint.require_geometry(),
+                material=blueprint.require_material(copy=True),
+                transform=blueprint.transform.copy(),
             )
 
         else:
             node = Node3D(
-                name=asset.name,
-                uid=asset.uid,
-                transform=asset.transform.copy(),
+                name=blueprint.name,
+                uid=blueprint.uid,
+                transform=blueprint.transform.copy(),
             )
 
         scene.render(
             node,
             parent=parent,
-            context=context,
+            stage_name=stage_name,
         )
 
-        for child_asset in asset.children:
-            self.render_asset(
+        for child_blueprint in blueprint.children:
+            self.render_blueprint(
                 scene,
-                child_asset,
+                child_blueprint,
                 parent=node,
-                context=context,
+                stage_name=stage_name,
             )
 
         return node
 
 
-    def render_scene(
+    def render_scene_blueprint(
         self,
         scene: Scene,
-        scene_asset: GlbSceneAsset,
-        context: str,
+        scene_blueprint: GlbSceneBlueprint,
+        stage_name: str,
     ) -> list[SceneObject]:
 
         nodes: list[Node3D] = []
 
-        for asset in scene_asset.tree:
-            node = self.render_asset(
+        for asset in scene_blueprint.tree:
+            node = self.render_blueprint(
                 scene,
                 asset,
-                context=context,
+                stage_name=stage_name,
             )
 
             nodes.append(node)

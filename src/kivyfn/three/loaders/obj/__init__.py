@@ -1,3 +1,3 @@
-from .asset import ObjSceneAsset, ObjAsset
+from .blueprint import ObjSceneBlueprint, ObjBlueprint
 from .loader import ObjLoader
 from .parser import ObjParser
