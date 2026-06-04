@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.assets.geometry import Geometry
 from kivyfn.three.assets.material import Material
 
+from kivyfn.three.graph.node import Node3D
+from kivyfn.three.assets.object3d import Object3D
+
+if TYPE_CHECKING:
+    from kivyfn.three.types import SceneObject
 
 @dataclass(slots=True)
 class GlbBlueprint:
@@ -64,6 +69,37 @@ class GlbBlueprint:
             f"  is_renderable={self.is_renderable},\n"
             ")"
         )
+
+    def instantiate(
+        self,
+        *,
+        material_copy: bool = False,
+    ) -> SceneObject:
+
+
+        if self.is_renderable:
+            node = Object3D(
+                name=self.name,
+                uid=self.uid,
+                geometry=self.require_geometry(),
+                material=self.require_material(copy=material_copy),
+            )
+        else:
+            node = Node3D(
+                name=self.name,
+                uid=self.uid,
+            )
+
+        node.transform = self.transform.copy()
+
+        for child in self.children:
+            node.add_child(
+                child.instantiate(
+                    material_copy=material_copy,
+                )
+            )
+
+        return node
 
     def print_tree(
         self,

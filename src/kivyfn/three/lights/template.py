@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Generic, Literal, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Generic, Literal, TypeVar
 
 if TYPE_CHECKING:
+    from kivyfn.three.types import LightNode
     from kivyfn.three.render.shader import Shader
-    from kivyfn.three.lights.sources.ambient import AmbientLight
-    from kivyfn.three.lights.sources.directional import DirectionalLight
-    from kivyfn.three.lights.sources.point import PointLight
-    from kivyfn.three.lights.sources.spot import SpotLight
 
 
-LightNode: TypeAlias = "AmbientLight | DirectionalLight | PointLight | SpotLight"
+
 T = TypeVar("T", bound="LightNode")
-
 
 # =================================== #
 # Runtime Config
@@ -142,12 +138,9 @@ class LightTemplate(Generic[T]):
         name: str,
         **kwargs,
     ) -> T:
-        node = self.source(
-            name=name,
-            **kwargs,
-        )
 
-        node.config = LightConfig(
+
+        config = LightConfig(
             affected_tags=frozenset(self.affected_tags),
             shadow=(
                 self.shadow_template.create(name)
@@ -156,7 +149,12 @@ class LightTemplate(Generic[T]):
             ),
         )
 
-        return node
+        return self.source(
+            name=name,
+            config=config,
+            **kwargs,
+        )
+
 
 
 

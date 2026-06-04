@@ -12,7 +12,13 @@ if TYPE_CHECKING:
     from kivyfn.three.loaders.obj.blueprint import ObjBlueprint, ObjSceneBlueprint
     from kivyfn.three.render.context import RenderContext, RenderPass
 
+    from kivyfn.three.lights.sources.ambient import AmbientLight
+    from kivyfn.three.lights.sources.directional import DirectionalLight
+    from kivyfn.three.lights.sources.point import PointLight
+    from kivyfn.three.lights.sources.spot import SpotLight
 
+
+LightNode: TypeAlias = "AmbientLight | DirectionalLight | PointLight | SpotLight"
 
 SceneBlueprint: TypeAlias = "GlbSceneBlueprint | ObjSceneBlueprint"
 AssetBlueprint: TypeAlias = " GlbBlueprint | ObjBlueprint"

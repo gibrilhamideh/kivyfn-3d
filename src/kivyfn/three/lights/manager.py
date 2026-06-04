@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 from kivy.event import EventDispatcher
 
+from kivyfn.three.render import context
+
 if TYPE_CHECKING:
     from kivyfn.three.types import SceneObject
     from kivyfn.three.render.renderer import Renderer
@@ -71,11 +73,11 @@ class LightManager(EventDispatcher):
 
         light.bind(on_light_dirty=self.queue_light_dirty)
 
-        shadow = light.config.shadow
-        if shadow is not None and shadow.enabled:
+        config = light.config.shadow
+        if config is not None and config.enabled:
             self._create_shadow_resources(
                 light=light,
-                shadow=shadow,
+                config=config,
                 record=record,
             )
 
@@ -130,8 +132,10 @@ class LightManager(EventDispatcher):
             position = light.world_position
             target = position + light.world_forward
 
-            view.set_position(position)
-            view.set_target(target)
+            view.set_look_at(
+                position=position,
+                target=target
+            )
 
     def sync_visibility(
         self,
@@ -168,13 +172,13 @@ class LightManager(EventDispatcher):
         self,
         *,
         light: Light3D,
-        shadow: ShadowConfig,
+        config: ShadowConfig,
         record: LightRecord,
     ) -> None:
-        view_config = shadow.view
+        view_config = config.view
 
         view = self.renderer.views.create(
-            shadow.view_name,
+            config.view_name,
             position=light.world_position,
             target=light.world_position + light.world_forward,
             projection_type=view_config.projection_type,
@@ -185,15 +189,15 @@ class LightManager(EventDispatcher):
         )
 
         shadow_pass = self.renderer.create_pass(
-            name=shadow.pass_name,
+            name=config.pass_name,
             view_name=view.name,
-            shader=shadow.shader,
+            shader=config.shader,
             output="depth",
-            output_uniform=shadow.texture_uniform,
-            tags=set(shadow.caster_tags),
+            output_uniform=config.texture_uniform,
+            tags=set(config.caster_tags),
             use_viewport_size=False,
-            fbo_width=shadow.resolution,
-            fbo_height=shadow.resolution,
+            fbo_width=config.resolution,
+            fbo_height=config.resolution,
             with_depthbuffer=True,
             with_stencilbuffer=False,
             clear_color=True,
@@ -204,13 +208,13 @@ class LightManager(EventDispatcher):
         self.renderer.attach_pass(
             pass_name=shadow_pass.name,
             output="depth",
-            output_uniform=shadow.texture_uniform,
-            target_tags=set(shadow.receiver_tags),
+            output_uniform=config.texture_uniform,
+            target_tags=set(config.receiver_tags),
         )
 
         self.renderer.link_stage(
             source=shadow_pass.name,
-            target_tags=set(shadow.receiver_tags),
+            target_tags=set(config.receiver_tags),
         )
 
         record.shadow_view_name = view.name
