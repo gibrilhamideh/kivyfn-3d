@@ -41,7 +41,7 @@ from kivyfn.three.render.shader import Shader
 from kivyfn.three.render.link_filter import RenderLinkFilter
 
 if TYPE_CHECKING:
-    from kivyfn.three.render.view import View
+    from kivyfn.three.views.view import View
 
 TContext = TypeVar(
     "TContext",

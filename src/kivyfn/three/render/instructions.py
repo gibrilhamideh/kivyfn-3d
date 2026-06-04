@@ -19,8 +19,8 @@ from kivyfn.three.render.callbacks import (
 )
 
 if TYPE_CHECKING:
-    from kivyfn.three.objects.geometry import Geometry
-    from kivyfn.three.objects.material import Material
+    from kivyfn.three.assets.geometry import Geometry
+    from kivyfn.three.assets.material import Material
     from kivyfn.three.render.context import RenderContext, RenderPass
 
 

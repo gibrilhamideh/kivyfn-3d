@@ -7,9 +7,9 @@ import numpy as np
 
 from kivyfn.three.backends.trimesh import require_boolean_backend
 from kivyfn.three.math.matrix import Matrix4
-from kivyfn.three.objects.material import Material
-from kivyfn.three.objects.object3d import Object3D
-from kivyfn.three.objects.geometry import Geometry
+from kivyfn.three.assets.material import Material
+from kivyfn.three.assets.object3d import Object3D
+from kivyfn.three.assets.geometry import Geometry
 
 
 BooleanOperation = Literal[
@@ -273,9 +273,6 @@ def _geometry_to_trimesh(
         process=False,
     )
 
-    # Critical for your engine:
-    # render geometry has duplicated vertices per face,
-    # boolean geometry needs shared topology.
     mesh.merge_vertices()
     mesh.remove_unreferenced_vertices()
     mesh.fix_normals()
@@ -330,7 +327,7 @@ def _build_flat_geometry_data(
     mesh,
     *,
     template: Geometry,
-) -> tuple[list[float], list[int]]:
+) -> tuple[np.ndarray, np.ndarray]:
     faces = np.asarray(
         mesh.faces,
         dtype=np.int64,
@@ -371,14 +368,23 @@ def _build_flat_geometry_data(
             indices.append(vertex_index)
             vertex_index += 1
 
-    return vertices, indices
+    return (
+        np.asarray(
+            vertices,
+            dtype=np.float32,
+        ),
+        np.asarray(
+            indices,
+            dtype=np.uint16,
+        ),
+    )
 
 
 def _build_smooth_geometry_data(
     mesh,
     *,
     template: Geometry,
-) -> tuple[list[float], list[int]]:
+) -> tuple[np.ndarray, np.ndarray]:
     positions = np.asarray(
         mesh.vertices,
         dtype=np.float64,
@@ -407,14 +413,19 @@ def _build_smooth_geometry_data(
     indices = (
         np.asarray(
             mesh.faces,
-            dtype=np.int64,
+            dtype=np.uint16,
         )
         .reshape(-1)
-        .astype(int)
-        .tolist()
+        .copy()
     )
 
-    return vertices, indices
+    return (
+        np.asarray(
+            vertices,
+            dtype=np.float32,
+        ),
+        indices,
+    )
 
 
 def _pack_vertex(
@@ -585,8 +596,11 @@ def _transform_geometry(
     return Geometry(
         name=geometry.name,
         fmt=list(geometry.fmt),
-        vertices=data.reshape(-1).astype(float).tolist(),
-        indices=list(geometry.indices),
+        vertices=data.reshape(-1).astype(np.float32),
+        indices=np.asarray(
+            geometry.indices,
+            dtype=geometry.indices.dtype,
+        ).copy(),
         mode=geometry.mode,
         texture=geometry.texture,
         has_source_tangents=geometry.has_source_tangents,
@@ -629,8 +643,8 @@ def _validate_geometry(
 
     vertex_count = len(geometry.vertices) // geometry.stride
 
-    min_index = min(geometry.indices)
-    max_index = max(geometry.indices)
+    min_index = int(np.min(geometry.indices))
+    max_index = int(np.max(geometry.indices))
 
     if min_index < 0:
         raise ValueError(
@@ -650,12 +664,12 @@ def _validate_geometry(
 
 
 def _validate_index_limit(
-    indices: list[int],
+    indices: np.ndarray,
 ) -> None:
-    if not indices:
+    if indices.size == 0:
         return
 
-    max_index = max(indices)
+    max_index = int(np.max(indices))
 
     if max_index > MAX_MESH_INDEX:
         raise OverflowError(
@@ -712,8 +726,8 @@ def _copy_geometry(
     return Geometry(
         name=geometry.name,
         fmt=list(geometry.fmt),
-        vertices=list(geometry.vertices),
-        indices=list(geometry.indices),
+        vertices=geometry.vertices.copy(),
+        indices=geometry.indices.copy(),
         mode=geometry.mode,
         texture=geometry.texture,
         has_source_tangents=geometry.has_source_tangents,

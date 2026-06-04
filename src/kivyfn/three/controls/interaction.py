@@ -11,9 +11,9 @@ from kivyfn.three.controls.base import SceneController
 from kivyfn.three.math.vector import Vector3
 
 if TYPE_CHECKING:
-    from kivyfn.three.objects.object3d import Object3D
+    from kivyfn.three.assets.object3d import Object3D
     from kivyfn.three.scene.scene import Scene
-    from kivyfn.three.render.view import View
+    from kivyfn.three.views.view import View
 
 
 @dataclass(slots=True)
@@ -165,7 +165,7 @@ class RenderIdPicker(BasePicker):
         if render_id is None:
             return None
 
-        object3d = self.scene.get_by_render_id(render_id)
+        object3d = self.scene.nodes.get_by_render_id(render_id)
         if object3d is None:
             return None
 

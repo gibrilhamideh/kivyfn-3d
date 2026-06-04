@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from kivyfn.three.objects.material import Material
-from kivyfn.three.objects.object3d import Object3D
-from kivyfn.three.objects.geometry import Geometry
+import numpy as np
+
+from kivyfn.three.assets.material import Material
+from kivyfn.three.assets.object3d import Object3D
+from kivyfn.three.assets.geometry import Geometry
 
 
 class GridHelper(Object3D):
@@ -23,7 +25,6 @@ class GridHelper(Object3D):
             divisions=divisions,
             axis=axis,
         )
-
 
         super().__init__(
             geometry=geometry,
@@ -45,11 +46,13 @@ class GridHelper(Object3D):
 
         def add_vertex(x: float, y: float, z: float) -> int:
             index = len(vertices) // 8
+
             vertices.extend([
                 x, y, z,
                 0.0, 1.0, 0.0,
                 0.0, 0.0,
             ])
+
             return index
 
         def add_line(a, b) -> None:
@@ -73,16 +76,24 @@ class GridHelper(Object3D):
                 add_line((0.0, -half, offset), (0.0, half, offset))
 
             else:
-                raise ValueError("axis must be 'xy', 'xz', or 'yz'")
+                raise ValueError(
+                    "axis must be 'xy', 'xz', or 'yz'"
+                )
 
         return Geometry(
             name="GridHelper",
-            vertices=vertices,
-            indices=indices,
+            vertices=np.array(
+                vertices,
+                dtype=np.float32,
+            ),
+            indices=np.array(
+                indices,
+                dtype=np.uint16,
+            ),
             mode="lines",
             fmt=[
                 (b"v_pos", 3, "float"),
                 (b"v_normal", 3, "float"),
                 (b"v_uv", 2, "float"),
-            ]
+            ],
         )

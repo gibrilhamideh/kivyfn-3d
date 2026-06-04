@@ -98,7 +98,10 @@ class Transform:
     # =================================== #
     # Matrix
     # =================================== #
-    def to_matrix4(self) -> Matrix4:
+    def to_matrix4(
+        self,
+        origin: Vector3 | None = None,
+    ) -> Matrix4:
         rotation_matrix = self.rotation.to_matrix3()
 
         scale_matrix = np.diag(
@@ -109,18 +112,40 @@ class Transform:
             ]
         ).astype(np.float32)
 
+        linear = rotation_matrix.values @ scale_matrix
+
+        translation = np.array(
+            [
+                self.translation.x,
+                self.translation.y,
+                self.translation.z,
+            ],
+            dtype=np.float32,
+        )
+
+        if origin is not None:
+            origin_values = np.array(
+                [
+                    origin.x,
+                    origin.y,
+                    origin.z,
+                ],
+                dtype=np.float32,
+            )
+
+            translation = (
+                translation
+                + origin_values
+                - linear @ origin_values
+            )
+
         matrix = np.identity(
             4,
             dtype=np.float32,
         )
 
-        matrix[:3, :3] = rotation_matrix.values @ scale_matrix
-
-        matrix[:3, 3] = [
-            self.translation.x,
-            self.translation.y,
-            self.translation.z,
-        ]
+        matrix[:3, :3] = linear
+        matrix[:3, 3] = translation
 
         return Matrix4(matrix)
 

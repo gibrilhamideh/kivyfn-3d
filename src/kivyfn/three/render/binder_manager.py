@@ -1,6 +1,7 @@
 # kivyfn/three/render/binder_manager.py
 
 from __future__ import annotations
+from typing import TYPE_CHECKING, TypeAlias, Literal
 
 from dataclasses import dataclass
 from functools import partial
@@ -9,10 +10,26 @@ from typing import Callable
 from kivy.graphics import BindTexture
 from kivy.graphics.texture import Texture
 
-from kivyfn.three.types import RenderStage
-from kivyfn.three.render.context import RenderPass
 from kivyfn.three.render.context_registry import RenderRegistry
-from kivyfn.three.render.binder_registry import RenderBinderRecord, RenderBinderRegistry
+from kivyfn.three.render.binding_registry import RenderBindingRecord, RenderBindingRegistry
+
+if TYPE_CHECKING:
+    from kivyfn.three.render.context import RenderPass, RenderContext
+
+
+RenderStage: TypeAlias = "RenderPass | RenderContext"
+
+
+RenderPassOutput = Literal[
+    "color",
+    "depth",
+    "normal",
+    "position",
+    "emissive",
+    "material",
+    "id",
+]
+
 
 
 RENDER_PASS_TEXTURE_START_SLOT = 10
@@ -20,7 +37,7 @@ RENDER_PASS_TEXTURE_START_SLOT = 10
 
 @dataclass(slots=True)
 class RenderTextureBinding:
-    record: RenderBinderRecord
+    record: RenderBindingRecord
     instruction: BindTexture
     callback: Callable
 
@@ -31,12 +48,12 @@ class RenderBinderManager:
         self,
         *,
         context_registry: RenderRegistry,
-        binder_registry: RenderBinderRegistry,
+        binder_registry: RenderBindingRegistry,
     ) -> None:
         self._context_registry = context_registry
         self._binder_registry = binder_registry
 
-        self._texture_bindings: dict[RenderBinderRecord, RenderTextureBinding] = {}
+        self._texture_bindings: dict[RenderBindingRecord, RenderTextureBinding] = {}
 
     def attach(
         self,
@@ -44,7 +61,7 @@ class RenderBinderManager:
         pass_name: str,
         target_name: str,
         index: int | None = None,
-    ) -> RenderBinderRecord:
+    ) -> RenderBindingRecord:
         render_pass = self._context_registry.require_pass(pass_name)
         target = self._context_registry.require(target_name)
 
@@ -67,7 +84,7 @@ class RenderBinderManager:
 
     def detach(
         self,
-        record: RenderBinderRecord,
+        record: RenderBindingRecord,
     ) -> RenderTextureBinding:
         texture_binding = self._texture_bindings.pop(record)
         return texture_binding
@@ -76,7 +93,7 @@ class RenderBinderManager:
     def _attach_texture_binding(
         self,
         *,
-        record: RenderBinderRecord,
+        record: RenderBindingRecord,
         render_pass: RenderPass,
         target: RenderStage,
     ) -> None:

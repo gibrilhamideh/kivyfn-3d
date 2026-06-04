@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from kivyfn.three.objects.material import Material
-from kivyfn.three.objects.object3d import Object3D
-from kivyfn.three.objects.geometry import Geometry
+from kivyfn.three.assets.material import Material
+from kivyfn.three.assets.object3d import Object3D
+from kivyfn.three.assets.geometry import Geometry
 
 
 class Box(Object3D):

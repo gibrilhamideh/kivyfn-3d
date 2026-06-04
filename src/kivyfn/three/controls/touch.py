@@ -34,7 +34,7 @@ from kivyfn.three.controls.orbit import OrbitCameraController
 from kivyfn.three.math.vector import Vector3
 
 if TYPE_CHECKING:
-    from kivyfn.three.render.view import View
+    from kivyfn.three.views.view import View
 
 
 @dataclass(slots=True)

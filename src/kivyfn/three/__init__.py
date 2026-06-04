@@ -1,6 +1,5 @@
 from .scene.scene import Scene
-from .scene.node import Node3D
+from .graph.node import Node3D
 from .render.shader import Shader
-from .loaders.asset import SceneAsset, AssetObject
-from .objects.material import Material
-from .objects.object3d import Object3D
+from .assets.material import Material
+from .assets.object3d import Object3D

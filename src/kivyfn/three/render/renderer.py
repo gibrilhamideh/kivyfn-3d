@@ -10,17 +10,17 @@ from kivy.clock import Clock
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 
-from kivyfn.three.render.view_manager import ViewManager
+from kivyfn.three.views.view_manager import ViewManager
 from kivyfn.three.render.context_manager import RenderContextManager
-from kivyfn.three.render.instructions_manager import InstructionsManager
+from kivyfn.three.render.instruction_manager import InstructionManager
 from kivyfn.three.render.instructions import MaterialInstructions
 
 
 if TYPE_CHECKING:
+    from kivyfn.three.graph.node import Node3D
+    from kivyfn.three.views.view import View
     from kivyfn.three.render.context import RenderContext, RenderPass
-    from kivyfn.three.scene.node import Node3D
-    from kivyfn.three.render.view import View
-    from kivyfn.three.render.binder_registry import RenderBinderRecord
+    from kivyfn.three.render.binding_registry import RenderBindingRecord
     from kivyfn.three.render.link_registry import RenderLinkRecord
     from kivyfn.three.lights.manager import LightManager
 
@@ -43,7 +43,7 @@ class Renderer(EventDispatcher):
 
         self.canvas = canvas
         self.contexts = RenderContextManager()
-        self.instructions = InstructionsManager(self.contexts)
+        self.instructions = InstructionManager(self.contexts)
         self.views = ViewManager()
 
         self.views.bind(
@@ -107,7 +107,7 @@ class Renderer(EventDispatcher):
         self.canvas.add(context.ctx)
         return context
 
-    def attach_pass(self, **kwargs) -> RenderBinderRecord | list[RenderBinderRecord]:
+    def attach_pass(self, **kwargs) -> RenderBindingRecord | list[RenderBindingRecord]:
 
         return self.contexts.attach_pass(**kwargs)
 
@@ -190,7 +190,7 @@ class Renderer(EventDispatcher):
 
     def queue_transform(
         self,
-        manager: InstructionsManager,
+        manager: InstructionManager,
         node: Node3D,
     ) -> None:
         self._transform_queue.add(id(node))
@@ -198,7 +198,7 @@ class Renderer(EventDispatcher):
 
     def queue_material(
         self,
-        manager: InstructionsManager,
+        manager: InstructionManager,
         node: Node3D,
     ) -> None:
         self._material_queue.add(id(node))
@@ -206,7 +206,7 @@ class Renderer(EventDispatcher):
 
     def queue_visibility(
         self,
-        manager: InstructionsManager,
+        manager: InstructionManager,
         node: Node3D,
     ) -> None:
         self._visibility_queue.add(id(node))
@@ -355,7 +355,7 @@ class Renderer(EventDispatcher):
     ) -> None:
 
         ctx = self.contexts.require(name)
-        view = self.views.view_for_context(name)
+        view = self.views.view_for_stage(name)
         if view is None:
             return
 

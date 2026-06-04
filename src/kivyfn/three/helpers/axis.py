@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from kivyfn.three.scene.node import Node3D
-from kivyfn.three.objects.material import Material
-from kivyfn.three.objects.object3d import Object3D
-from kivyfn.three.objects.geometry import Geometry
+import numpy as np
+
+from kivyfn.three.graph.node import Node3D
+from kivyfn.three.assets.material import Material
+from kivyfn.three.assets.object3d import Object3D
+from kivyfn.three.assets.geometry import Geometry
 
 
 class _AxisLine(Object3D):
@@ -16,19 +18,25 @@ class _AxisLine(Object3D):
         material: Material,
         **kwargs,
     ):
-        vertices = [
-            # start
-            start[0], start[1], start[2],
-            0.0, 1.0, 0.0,
-            0.0, 0.0,
+        vertices = np.array(
+            [
+                # start
+                start[0], start[1], start[2],
+                0.0, 1.0, 0.0,
+                0.0, 0.0,
 
-            # end
-            end[0], end[1], end[2],
-            0.0, 1.0, 0.0,
-            1.0, 0.0,
-        ]
+                # end
+                end[0], end[1], end[2],
+                0.0, 1.0, 0.0,
+                1.0, 0.0,
+            ],
+            dtype=np.float32,
+        )
 
-        indices = [0, 1]
+        indices = np.array(
+            [0, 1],
+            dtype=np.uint16,
+        )
 
         geometry = Geometry(
             vertices=vertices,
@@ -38,7 +46,7 @@ class _AxisLine(Object3D):
                 (b"v_pos", 3, "float"),
                 (b"v_normal", 3, "float"),
                 (b"v_uv", 2, "float"),
-            ]
+            ],
         )
 
         super().__init__(
@@ -58,39 +66,35 @@ class AxisHelper(Node3D):
     ):
         super().__init__(**kwargs)
 
-        # X axis (Red)
         self.add_child(
             _AxisLine(
                 start=(0.0, 0.0, 0.0),
                 end=(size, 0.0, 0.0),
                 material=Material(
                     name="XAxis",
-                    base_color=[1.0, 0.0, 0.0, 1.0]
+                    base_color=[1.0, 0.0, 0.0, 1.0],
                 ),
             )
         )
 
-        # Y axis (Green)
         self.add_child(
             _AxisLine(
                 start=(0.0, 0.0, 0.0),
                 end=(0.0, size, 0.0),
                 material=Material(
                     name="YAxis",
-                    base_color=[0.0, 1.0, 0.0, 1.0]
+                    base_color=[0.0, 1.0, 0.0, 1.0],
                 ),
             )
         )
 
-        # Z axis (Blue)
         self.add_child(
             _AxisLine(
                 start=(0.0, 0.0, 0.0),
                 end=(0.0, 0.0, size),
                 material=Material(
                     name="ZAxis",
-                    base_color=[0.0, 0.0, 1.0, 1.0]
+                    base_color=[0.0, 0.0, 1.0, 1.0],
                 ),
             )
         )
-

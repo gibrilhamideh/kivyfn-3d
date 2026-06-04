@@ -31,26 +31,27 @@ from kivy.properties import (
         AliasProperty
 )
 
-from kivyfn.three.scene.node import Node3D
 from kivyfn.three.render.renderer import Renderer
-from kivyfn.three.scene.viewport import Viewport
-from kivyfn.three.objects.object3d import Object3D
+from kivyfn.three.views.viewport import Viewport
+from kivyfn.three.graph.node import Node3D
+from kivyfn.three.graph.node_registry import SceneNodeRegistry
+from kivyfn.three.loaders.scene_loader import SceneLoader
 from kivyfn.three.lights.manager import LightManager
 
 if TYPE_CHECKING:
-    from kivyfn.three.render.view_manager import ViewManager
-    from kivyfn.three.render.binder_registry import RenderBinderRecord
+    from kivyfn.three.types import SceneObject
+    from kivyfn.three.views.view_manager import ViewManager
+    from kivyfn.three.render.binding_registry import RenderBindingRecord
     from kivyfn.three.render.link_registry import RenderLinkRecord
     from kivyfn.three.render.context import RenderContext, RenderPass, RenderPassOutput
     from kivyfn.three.render.shader import Shader
     from kivyfn.three.controls.base import SceneController
-    from kivyfn.three.loaders.asset import AssetObject, SceneAsset
-
+    from kivyfn.three.loaders.glb.asset import GlbSceneAsset, GlbAsset
 
 
 class Scene(Widget):
 
-    root: Node3D = ObjectProperty(None, allownone=True)
+    root: SceneObject = ObjectProperty()
     bg_color: tuple[float, float, float, float] = ColorProperty()
 
     viewport_origin_x: int = NumericProperty(0)
@@ -117,34 +118,23 @@ class Scene(Widget):
             size=self._update_bg_rect,
         )
 
+        self.loader = SceneLoader()
         self.renderer = Renderer(self.group)
         self.viewport = Viewport(self)
         self.controllers = []
 
 
         self.root = root or Node3D(name="root")
+        self.nodes = SceneNodeRegistry()
         self.lights = LightManager(self.root)
         self.lights.bind(on_dirty=self.renderer.sync_lights)
 
-
-        self._next_render_id = 1
-        self.by_uid: dict[str, Node3D] = {}
-        self.by_render_id: dict[int, Object3D] = {}
-
         self.previews: dict[str, tuple[Color, Rectangle, Callable]] = {}
-
-        # self.bind(size=self._on_viewport_dirty)
-        # self.bind(pos=self._on_viewport_dirty)
-        #
-
 
 
     # =================================== #
     # Context API
     # =================================== #
-    @property
-    def contexts(self):
-        return self.renderer.contexts
 
     def create_context(
         self,
@@ -287,7 +277,7 @@ class Scene(Widget):
         target_name: str | None = None,
         target_tags: set[str] | None = None,
         index: int | None = None,
-    ) -> RenderBinderRecord | list[RenderBinderRecord]:
+    ) -> RenderBindingRecord | list[RenderBindingRecord]:
         return self.renderer.attach_pass(
             pass_name=pass_name,
             target_name=target_name,
@@ -334,76 +324,23 @@ class Scene(Widget):
     def destroy_stage(self, name: str) -> None:
         self.renderer.destroy_stage(name)
 
-    # =================================== #
-    # Load API
-    # =================================== #
-    def load_asset(
-        self,
-        asset: AssetObject,
-        context: str,
-        *,
-        parent: Node3D | None = None,
-        pickable: bool = False,
-    ) -> Node3D | Object3D:
-
-        if asset.is_renderable:
-            node = Object3D(
-                name=asset.name,
-                uid=asset.uid,
-                geometry=asset.require_geometry(),
-                material=asset.require_material(copy=True),
-                transform=asset.transform.copy(),
-                pickable=pickable,
-            )
-
-        else:
-            node = Node3D(
-                name=asset.name,
-                uid=asset.uid,
-                transform=asset.transform.copy(),
-            )
-
-        self.render(
-            node,
-            parent=parent,
-            context=context,
-        )
-
-        for child_asset in asset.children:
-            self.load_asset(
-                child_asset,
-                parent=node,
-                context=context,
-                pickable=pickable,
-            )
-
-        return node
-
-
-    def load_scene(
-        self,
-        scene_asset: SceneAsset,
-        context: str,
-        *,
-        pickable: bool = False,
-    ) -> list[Node3D | Object3D]:
-
-        nodes: list[Node3D] = []
-
-        for asset in scene_asset.tree:
-            node = self.load_asset(
-                asset,
-                context=context,
-                pickable=pickable,
-            )
-
-            nodes.append(node)
-
-        return nodes
 
     # =================================== #
     # Node Lifecycle API
     # =================================== #
+
+    def destroy(self, node: Node3D) -> None:
+
+        assert node.parent is not None
+
+        for current in node.walk(filter="all"):
+            self.nodes.unregister(current)
+
+        node.parent.remove_child(node)
+
+        self.renderer.queue_destroy(node)
+
+
     def render(
         self,
         node: Node3D,
@@ -414,79 +351,38 @@ class Scene(Widget):
         parent.add_child(node)
 
         for current in node.walk(filter="all"):
-            self.register_node(current)
+            self.nodes.register(current)
 
         self.renderer.queue_render(node, context)
 
 
-    def destroy(self, node: Node3D) -> None:
-
-        assert node.parent is not None
-
-        for current in node.walk(filter="all"):
-            self.unregister_node(current)
-
-        node.parent.remove_child(node)
-
-        self.renderer.queue_destroy(node)
-
-    # =================================== #
-    # ID Handling
-    # =================================== #
-    def register_node(
+    def render_asset(
         self,
-        node: Node3D,
-    ) -> None:
-        if node.uid is not None:
-            if node.uid in self.by_uid:
-                raise ValueError(f"Duplicate node uid: {node.uid!r}")
+        asset: GlbAsset,
+        context: str,
+        *,
+        parent: SceneObject | None = None,
+    ) -> SceneObject:
 
-            self.by_uid[node.uid] = node
+        return self.loader.render_asset(
+            self,
+            asset=asset,
+            context=context,
+            parent=parent
+        )
 
-        if node.is_object3d(node):
-            self.register_render_id(node)
 
-    def unregister_node(
+    def render_scene(
         self,
-        node: Node3D,
-    ) -> None:
-        if node.uid is not None:
-            self.by_uid.pop(node.uid)
+        scene_asset: GlbSceneAsset,
+        context: str,
+    ) -> list[SceneObject]:
 
-        if node.is_object3d(node):
-            self.unregister_render_id(node)
-
-    def register_render_id(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        if object3d.render_id is None:
-            object3d.render_id = self.generate_render_id()
-
-        if object3d.render_id in self.by_render_id:
-            raise ValueError(
-                f"Duplicate render_id: {object3d.render_id!r}"
-            )
-
-        self.by_render_id[object3d.render_id] = object3d
-
-    def unregister_render_id(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        assert object3d.render_id is not None
-        self.by_render_id.pop(object3d.render_id)
-
-    def generate_render_id(self) -> int:
-        render_id = self._next_render_id
-        self._next_render_id += 1
-        return render_id
-
-    def get_by_render_id(self, render_id: int) -> Object3D | None:
-        return self.by_render_id.get(render_id)
-
-    def get_by_uid(self, uid: str) -> Node3D | Object3D | None:
-        return self.by_uid.get(uid)
+        return self.loader.render_scene(
+            self,
+            scene_asset=scene_asset,
+            context=context
+        )
 
     # =================================== #
     # ViewPort
@@ -499,9 +395,17 @@ class Scene(Widget):
             Window.height,
         )
 
+    # =================================== #
+    # Exports
+    # =================================== #
     @property
     def views(self) -> ViewManager:
         return self.renderer.views
+
+
+    @property
+    def contexts(self):
+        return self.renderer.contexts
 
     # =================================== #
     # Background

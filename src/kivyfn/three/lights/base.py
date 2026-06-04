@@ -1,8 +1,8 @@
-# kivyfn/three/light/base.py
+# kivyfn/three/lights/base.py
 
 from __future__ import annotations
 
-from kivyfn.three.scene.node import Node3D
+from kivyfn.three.graph.node import Node3D
 
 
 class Light3D(Node3D):

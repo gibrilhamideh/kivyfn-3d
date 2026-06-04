@@ -12,9 +12,9 @@ from kivyfn.three.render.link_registry import (
     RenderLinkRecord,
     RenderLinkRegistry,
 )
-from kivyfn.three.render.binder_registry import (
-    RenderBinderRecord,
-    RenderBinderRegistry,
+from kivyfn.three.render.binding_registry import (
+    RenderBindingRecord,
+    RenderBindingRegistry,
 )
 from kivyfn.three.render.binder_manager import (
     RenderBinderManager,
@@ -30,7 +30,7 @@ class RenderContextManager:
             registry=self.registry,
         )
 
-        self.bindings = RenderBinderRegistry(
+        self.bindings = RenderBindingRegistry(
             registry=self.registry,
         )
 
@@ -254,7 +254,7 @@ class RenderContextManager:
         target_name: str | None = None,
         target_tags: set[str] | None = None,
         index: int | None = None,
-    ) -> RenderBinderRecord | list[RenderBinderRecord]:
+    ) -> RenderBindingRecord | list[RenderBindingRecord]:
         if target_name is None and not target_tags:
             raise ValueError(
                 "attach_pass() requires either 'target_name' or 'target_tags'."

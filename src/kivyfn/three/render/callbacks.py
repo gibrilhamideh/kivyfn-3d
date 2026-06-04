@@ -9,7 +9,7 @@ from kivy.graphics import Callback
 from kivyfn.three.math.matrix import Matrix3, Matrix4
 
 if TYPE_CHECKING:
-    from kivyfn.three.objects.material import Material
+    from kivyfn.three.assets.material import Material
     from kivyfn.three.render.context import RenderContext, RenderPass
 
 

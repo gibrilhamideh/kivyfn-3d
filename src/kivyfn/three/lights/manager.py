@@ -1,10 +1,10 @@
-# kivyfn/three/light/manager.py
+# kivyfn/three/lights/manager.py
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kivy.event import EventDispatcher
-from kivyfn.three.scene.node import Node3D
+from kivyfn.three.graph.node import Node3D
 
 if TYPE_CHECKING:
     from kivyfn.three.lights.base import Light3D
