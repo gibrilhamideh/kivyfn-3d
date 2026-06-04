@@ -7,12 +7,14 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 if TYPE_CHECKING:
+    from kivyfn.three.lights.shadow import LightShadow
     from kivyfn.three.lights.sources.base import Light3D
 
 
 @dataclass(slots=True)
 class LightRecord:
     light: Light3D
+    shadow: LightShadow | None = None
     tags: set[str] = field(default_factory=set)
 
 

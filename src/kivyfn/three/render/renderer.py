@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from kivyfn.three.render.context import RenderContext, RenderPass
     from kivyfn.three.render.binding_registry import RenderBindingRecord
     from kivyfn.three.render.link_registry import RenderLinkRecord
-    from kivyfn.three.lights.sources.base import Light3D
 
 
 @dataclass(slots=True)
@@ -46,18 +45,12 @@ class Renderer(EventDispatcher):
         self.stages = RenderStageManager()
         self.instructions = InstructionManager(self.stages)
         self.views = ViewManager()
-        self.lights = LightManager()
-
-        self.lights.bind(
-            on_light_dirty=lambda _, name: self.queue_light(
-                name,
-            )
-        )
+        self.lights = LightManager(self)
 
         self.views.bind(
-            on_view_dirty=lambda _, view, light: self.queue_view(
+            on_view_dirty=lambda _, view, name: self.queue_view(
                 view,
-                light,
+                name,
             )
         )
 
@@ -75,7 +68,6 @@ class Renderer(EventDispatcher):
         self._visibility_queue: set[int] = set()
         self._viewport_queue: set[str] = set()
         self._view_queue: dict[str, View] = {}
-        self._light_queue: set[str] = set()
 
         self._trigger_dirty = Clock.create_trigger(self.flush_dirty, -1)
 
@@ -230,12 +222,7 @@ class Renderer(EventDispatcher):
         self._viewport_queue.add(stage.name)
         self._trigger_dirty()
 
-    def queue_light(
-        self,
-        light: Light3D,
-    ) -> None:
-        self._light_queue.add(light.name)
-        self._trigger_dirty()
+
 
     # =================================== #
     # Flush Queue
@@ -270,10 +257,6 @@ class Renderer(EventDispatcher):
             name = self._viewport_queue.pop()
             self.sync_viewport_queue(name)
 
-        # ---) Lights
-        while self._light_queue:
-            name = self._light_queue.pop()
-            self.sync_light_queue(name)
 
         # ---) Transform
         while self._transform_queue:
@@ -374,13 +357,6 @@ class Renderer(EventDispatcher):
             return
 
         stage.update_view(view)
-
-    def sync_light_queue(
-        self,
-        name: str,
-    ) -> None:
-        pass
-
 
 
 
