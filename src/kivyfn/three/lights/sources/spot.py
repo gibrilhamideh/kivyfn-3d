@@ -11,7 +11,7 @@ from kivyfn.three.math.vector import Vector3
 
 class SpotLight(Light3D):
 
-    radius: float = NumericProperty(10.0)
+    radius: float = NumericProperty(120.0)
     angle: float = NumericProperty(45.0)
 
     def __init__(

@@ -7,6 +7,7 @@ from pprint import pformat
 from typing import Any, Literal, TypeVar, Generic, TYPE_CHECKING
 
 from kivy.event import EventDispatcher
+from kivy.graphics import ClearColor
 from kivy.graphics.texture import Texture
 from kivy.graphics.opengl import (
     GL_DEPTH_TEST,
@@ -436,8 +437,8 @@ class RenderPass(BaseRenderContext[KivyFbo]):
 
         self.ctx: KivyFbo = KivyFbo(
             size=self.fbo_size,
-            clear_color=self.fbo_color,
             push_viewport=False,
+            # clear_color=self.fbo_color,
             with_depthbuffer=with_depthbuffer,
             with_stencilbuffer=with_stencilbuffer
         )
@@ -452,6 +453,8 @@ class RenderPass(BaseRenderContext[KivyFbo]):
                 clear_depth=self.clear_depth,
                 clear_stencil=self.clear_stencil
             )
+
+            self.clearcolor_instruction = ClearColor(*self.fbo_color)
 
             self.texture_group = InstructionGroup()
             self.object_group = InstructionGroup()
@@ -476,7 +479,8 @@ class RenderPass(BaseRenderContext[KivyFbo]):
         self.dispatch_viewport_dirty()
 
     def sync_color(self, *_):
-        self.ctx.clear_color = self.fbo_color
+        # self.ctx.clear_color = self.fbo_color
+        self.clearcolor_instruction.rgba = self.fbo_color
 
 
     def get_pixel_color(self, wx: int, wy: int):

@@ -152,14 +152,16 @@ class LightManager(EventDispatcher):
         for stage in self.renderer.stages.select_contexts(tags=affected_tags):
             view = self._stage_view(stage)
 
+            tags = self.renderer.stages.registry.tags_of(stage.name)
             culled = self.culler.select(
-                stage=stage,
+                stage_tags=tags,
                 view=view,
             )
 
+            uniforms = self._build_light_uniforms(culled)
             self._apply_uniforms(
                 stage=stage,
-                uniforms=self._build_light_uniforms(culled),
+                uniforms=uniforms,
             )
 
     # =================================== #
@@ -211,7 +213,6 @@ class LightManager(EventDispatcher):
             fov=view_config.fov,
         )
 
-
         shadow_pass = self.renderer.create_pass(
             name=pass_name,
             view_name=view.name,
@@ -232,7 +233,6 @@ class LightManager(EventDispatcher):
             clear_depth=True,
             clear_stencil=False,
         )
-
 
         self.renderer.attach_pass(
             name=shadow_pass.name,
@@ -374,12 +374,9 @@ class LightManager(EventDispatcher):
         self,
         stage: RenderContext,
     ) -> View | None:
-        view_name = getattr(stage, "view_name", None)
-
-        if view_name is None:
-            return None
-
-        return self.renderer.views.get(view_name)
+        return self.renderer.views.view_for_stage(
+            stage.name,
+        )
 
     def _apply_uniforms_to_tags(
         self,
@@ -409,11 +406,11 @@ class LightManager(EventDispatcher):
         self,
         values: list[Any],
         size: int,
-    ) -> list[float]:
-        result: list[float] = []
+    ) -> list[list[float]]:
+        result: list[list[float]] = []
 
         for value in values:
-            result.extend([
+            result.append([
                 float(value.x),
                 float(value.y),
                 float(value.z),
@@ -421,7 +418,7 @@ class LightManager(EventDispatcher):
 
         missing = size - len(values)
         if missing > 0:
-            result.extend([0.0, 0.0, 0.0] * missing)
+            result.extend([[0.0, 0.0, 0.0] for _ in range(missing)])
 
         return result
 
@@ -429,11 +426,11 @@ class LightManager(EventDispatcher):
         self,
         values: list[Any],
         size: int,
-    ) -> list[float]:
-        result: list[float] = []
+    ) -> list[list[float]]:
+        result: list[list[float]] = []
 
         for value in values:
-            result.extend([
+            result.append([
                 float(value[0]),
                 float(value[1]),
                 float(value[2]),
@@ -441,7 +438,7 @@ class LightManager(EventDispatcher):
 
         missing = size - len(values)
         if missing > 0:
-            result.extend([0.0, 0.0, 0.0] * missing)
+            result.extend([[0.0, 0.0, 0.0] for _ in range(missing)])
 
         return result
 

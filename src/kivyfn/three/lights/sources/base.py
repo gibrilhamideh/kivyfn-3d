@@ -50,6 +50,10 @@ class Light3D(Node3D):
         )
 
     @property
+    def light_type(self) -> str:
+        return ""
+
+    @property
     def kind(self) -> LightKind:
         return "light"
 

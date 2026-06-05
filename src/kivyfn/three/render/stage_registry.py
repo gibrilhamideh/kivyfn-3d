@@ -198,3 +198,13 @@ class RenderStageRegistry:
             )
 
         return stages
+
+    def tags_of(
+        self,
+        name: str,
+    ) -> set[str]:
+        return {
+            tag
+            for tag, names in self._tags.items()
+            if name in names
+        }
