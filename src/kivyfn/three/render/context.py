@@ -376,14 +376,14 @@ class RenderPass(BaseRenderContext[KivyFbo]):
     fbo_color = ColorProperty()
     fbo_width: int = NumericProperty(1024)
     fbo_height: int = NumericProperty(1024)
-    use_viewport_size: bool = BooleanProperty(False)
+    size_to_viewport: bool = BooleanProperty(False)
 
     clear_color: bool = BooleanProperty(True)
     clear_depth: bool = BooleanProperty(True)
     clear_stencil: bool = BooleanProperty(False)
 
     def _get_fbo_size(self) -> tuple[int, int]:
-        if self.use_viewport_size:
+        if self.size_to_viewport:
             return self.viewport_width, self.viewport_height
 
         return self.fbo_width, self.fbo_height
@@ -396,7 +396,7 @@ class RenderPass(BaseRenderContext[KivyFbo]):
             "fbo_height",
             "viewport_width",
             "viewport_height",
-            "use_viewport_size"
+            "size_to_viewport"
         ]
 
     )

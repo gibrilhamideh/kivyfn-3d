@@ -1,4 +1,4 @@
-# kivyfn/three/lights/spot.py
+# kivyfn/three/lights/sources/spot.py
 
 from __future__ import annotations
 from typing import Literal

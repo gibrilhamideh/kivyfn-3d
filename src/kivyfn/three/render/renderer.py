@@ -23,6 +23,7 @@ from kivyfn.three.types import (
     RenderContextName,
     RenderPassName,
     RenderStageName,
+    ViewName,
 )
 
 
@@ -95,7 +96,12 @@ class Renderer(EventDispatcher):
     # =================================== #
     # Contexts
     # =================================== #
-    def create_context(self, name:str, view_name: str, **kwargs) -> RenderContext:
+    def create_context(
+            self,
+            name: RenderContextName,
+            view_name: ViewName,
+            **kwargs
+    ) -> RenderContext:
 
         view = self.views.require(view_name)
 
@@ -124,7 +130,12 @@ class Renderer(EventDispatcher):
     # =================================== #
     # Render Pass
     # =================================== #
-    def create_pass(self, name: str, view_name: str, **kwargs) -> RenderPass:
+    def create_pass(
+            self,
+            name: RenderPassName,
+            view_name: ViewName,
+            **kwargs
+    ) -> RenderPass:
 
         view = self.views.require(view_name)
 

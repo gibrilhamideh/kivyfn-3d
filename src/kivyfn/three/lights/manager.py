@@ -211,25 +211,28 @@ class LightManager(EventDispatcher):
             fov=view_config.fov,
         )
 
+
         shadow_pass = self.renderer.create_pass(
             name=pass_name,
             view_name=view.name,
             shader=config.shader,
             output="depth",
             output_uniform=config.texture_uniform,
-            tags=None,
-            local_viewport_width=4096,
-            local_viewport_height=4096,
+
+            local_viewport_width=config.resolution,
+            local_viewport_height=config.resolution,
             use_local_viewport=True,
-            use_viewport_size=True,
-            fbo_width=config.resolution,
-            fbo_height=config.resolution,
+            size_to_viewport=True,
+
+            tags=None,
+
             with_depthbuffer=True,
             with_stencilbuffer=False,
             clear_color=True,
             clear_depth=True,
             clear_stencil=False,
         )
+
 
         self.renderer.attach_pass(
             name=shadow_pass.name,
