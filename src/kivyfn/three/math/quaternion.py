@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from kivyfn.three.math.vector import Vector3
 from kivyfn.three.math.matrix import Matrix3, Matrix4
 
 
@@ -261,6 +262,35 @@ class Quaternion:
             q.y / scale,
             q.z / scale,
             angle,
+        )
+
+    @classmethod
+    def look_rotation(
+        cls,
+        direction: Vector3,
+        up: Vector3 | None = None,
+    ) -> Quaternion:
+        forward = direction.normalize()
+
+        if up is None:
+            up = Vector3(0.0, 1.0, 0.0)
+
+        up = up.normalize()
+
+        if abs(forward.dot(up)) > 0.999:
+            up = Vector3(0.0, 0.0, 1.0)
+
+        right = forward.cross(up).normalize()
+        true_up = right.cross(forward).normalize()
+
+        backward = -forward
+
+        return cls.from_matrix3(
+            Matrix3([
+                [right.x, true_up.x, backward.x],
+                [right.y, true_up.y, backward.y],
+                [right.z, true_up.z, backward.z],
+            ])
         )
 
     def tolist(self) -> list[float]:

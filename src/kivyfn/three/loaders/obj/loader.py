@@ -34,7 +34,7 @@ class ObjLoader:
         scene.render(
             node,
             parent=parent,
-            stage_name=stage_name,
+            stage=stage_name,
         )
 
         return node

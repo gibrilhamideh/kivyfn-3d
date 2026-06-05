@@ -17,9 +17,16 @@ from kivyfn.three.render.stage_manager import RenderStageManager
 from kivyfn.three.render.instruction_manager import InstructionManager
 from kivyfn.three.render.instructions import MaterialInstructions
 
+from kivyfn.three.types import (
+    SceneObject,
+    RenderStage,
+    RenderContextName,
+    RenderPassName,
+    RenderStageName,
+)
+
 
 if TYPE_CHECKING:
-    from kivyfn.three.types import RenderStage, SceneObject
     from kivyfn.three.graph.node import Node3D
     from kivyfn.three.views.view import View
     from kivyfn.three.render.context import RenderContext, RenderPass
@@ -125,7 +132,6 @@ class Renderer(EventDispatcher):
         stage = self.stages.create_pass(name=name, **kwargs)
         stage.bind(on_viewport_dirty=self.queue_viewport)
 
-
         stage.scene_viewport_x = self.scene_viewport_x
         stage.scene_viewport_y = self.scene_viewport_y
         stage.scene_viewport_width = self.scene_viewport_width
@@ -200,16 +206,25 @@ class Renderer(EventDispatcher):
     def queue_render(
         self,
         node: SceneObject,
-        stage_name: str,
+        *,
+        stage: RenderStageName | None = None,
+        stages: list[RenderStageName] | None = None,
     ) -> None:
 
-        self._lifecycle_queue.append(
-            RenderCommand(
-                op="render",
-                node=node,
-                stage_name=stage_name,
+        stage_names = [stage] if stage is not None else stages
+
+        if stage_names is None:
+            raise RuntimeError("Unexpected missing render stages.")
+
+        for stage_name in stage_names:
+            self._lifecycle_queue.append(
+                RenderCommand(
+                    op="render",
+                    node=node,
+                    stage_name=stage_name,
+                )
             )
-        )
+
         self._trigger_dirty()
 
 
@@ -285,6 +300,8 @@ class Renderer(EventDispatcher):
                 self.sync_transform_queue(command.node)
                 self.sync_material_queue(command.node)
                 self.sync_visibility_queue(command.node)
+
+                self.lights.create(command.node)
 
             elif command.op == "destroy":
                 self.sync_destroy_queue(command.node)

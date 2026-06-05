@@ -60,7 +60,7 @@ class SceneLoader:
                 **kwargs,
             )
 
-        if isinstance(scene_blueprint, GlbSceneBlueprint):
+        if isinstance(scene_blueprint, ObjSceneBlueprint):
             return self.obj.render_scene_blueprint(
                 scene,
                 scene_blueprint,

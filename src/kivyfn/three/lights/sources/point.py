@@ -1,9 +1,11 @@
 # kivyfn/three/lights/sources/point.py
 
 from __future__ import annotations
+from typing import Literal
 
 from kivy.properties import NumericProperty
 from kivyfn.three.lights.sources.base import Light3D
+
 
 
 class PointLight(Light3D):
@@ -30,3 +32,7 @@ class PointLight(Light3D):
             f"    enabled={self.enabled},\n"
             ")"
         )
+
+    @property
+    def light_type(self) -> Literal["point"]:
+        return "point"

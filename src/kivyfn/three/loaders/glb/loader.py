@@ -2,12 +2,13 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+
+from kivyfn.three.types import SceneObject
 from kivyfn.three.assets.object3d import Object3D
 from kivyfn.three.graph.node import Node3D
 
 if TYPE_CHECKING:
     from kivyfn.three import Scene
-    from kivyfn.three.types import SceneObject
     from kivyfn.three.loaders.glb.blueprint import GlbBlueprint, GlbSceneBlueprint
 
 class GlbLoader:
@@ -39,7 +40,7 @@ class GlbLoader:
         scene.render(
             node,
             parent=parent,
-            stage_name=stage_name,
+            stage=stage_name,
         )
 
         for child_blueprint in blueprint.children:

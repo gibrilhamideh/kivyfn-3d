@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Literal
 
 from kivy.properties import BooleanProperty, ListProperty, NumericProperty, ObjectProperty
 
+from kivyfn.three.math.vector import Vector3
+from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.graph.node import Node3D
 
 if TYPE_CHECKING:
@@ -31,12 +33,10 @@ class Light3D(Node3D):
 
         self.register_event_type("on_light_dirty")  # pyright: ignore
 
-        self.bind(
-            color=self.mark_light_dirty,
-            intensity=self.mark_light_dirty,
-            enabled=self.mark_light_dirty,
-            config=self.mark_light_dirty,
-        )
+        self.bind(color=self.mark_light_dirty)
+        self.bind(intensity=self.mark_light_dirty)
+        self.bind(enabled=self.mark_light_dirty)
+
 
     def __repr__(self) -> str:
         return (
@@ -65,5 +65,25 @@ class Light3D(Node3D):
 
     def on_light_dirty(self) -> None:
         pass
+
+    def set_look_at(
+        self,
+        *,
+        position: Vector3,
+        target: Vector3,
+        up: Vector3 | None = None,
+    ) -> None:
+        if up is None:
+            up = Vector3(0.0, 1.0, 0.0)
+
+        direction = (target - position).normalize()
+
+        rotation = Quaternion.look_rotation(
+            direction=direction,
+            up=up,
+        )
+
+        self.set_translation(position)
+        self.set_rotation(rotation)
 
 

@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-from kivyfn.three.types import RenderStage
+from kivyfn.three.types import (
+    RenderStage,
+    RenderStageName,
+    RenderPassName,
+    RenderContextName,
+)
+
 from kivyfn.three.render.context import (
     RenderContext,
     RenderPass,
 )
+
 from kivyfn.three.render.stage_registry import RenderStageRegistry
 from kivyfn.three.render.link_registry import (
     RenderLinkRecord,
@@ -57,25 +64,25 @@ class RenderStageManager:
 
     def get(
         self,
-        name: str,
+        name: RenderStageName,
     ) -> RenderStage | None:
         return self.registry.get(name)
 
     def require(
         self,
-        name: str,
+        name: RenderStageName,
     ) -> RenderStage:
         return self.registry.require(name)
 
     def exists(
         self,
-        name: str,
+        name: RenderStageName,
     ) -> bool:
         return self.registry.get(name) is not None
 
     def remove(
         self,
-        name: str,
+        name: RenderStageName,
     ) -> RenderStage:
         self.registry.require(name)
 
@@ -87,7 +94,7 @@ class RenderStageManager:
 
     def destroy(
         self,
-        name: str,
+        name: RenderStageName,
     ) -> list[RenderStage]:
         """
         Recursively destroys a render stage and all stages that
@@ -147,7 +154,7 @@ class RenderStageManager:
 
     def create_context(
         self,
-        name: str,
+        name: RenderContextName,
         tags: set[str] | None,
         **kwargs,
     ) -> RenderContext:
@@ -167,19 +174,19 @@ class RenderStageManager:
 
     def require_context(
         self,
-        name: str,
+        name: RenderContextName,
     ) -> RenderContext:
         return self.registry.require_context(name)
 
     def get_context(
         self,
-        name: str,
+        name: RenderContextName,
     ) -> RenderContext | None:
         return self.registry.get_context(name)
 
     def remove_context(
         self,
-        name: str,
+        name: RenderContextName,
     ) -> RenderContext:
         stage = self.remove(name)
 
@@ -196,7 +203,7 @@ class RenderStageManager:
 
     def create_pass(
         self,
-        name: str,
+        name: RenderPassName,
         tags: set[str] | None,
         **kwargs,
     ) -> RenderPass:
@@ -215,7 +222,7 @@ class RenderStageManager:
 
     def require_pass(
         self,
-        name: str,
+        name: RenderPassName,
     ) -> RenderPass:
         stage = self.registry.require(name)
 
@@ -228,13 +235,13 @@ class RenderStageManager:
 
     def get_pass(
         self,
-        name: str,
+        name: RenderPassName,
     ) -> RenderPass | None:
         return self.registry.get_pass(name)
 
     def remove_pass(
         self,
-        name: str,
+        name: RenderPassName,
     ) -> RenderPass:
         stage = self.remove(
             name,
@@ -250,7 +257,7 @@ class RenderStageManager:
     def attach_pass(
         self,
         *,
-        pass_name: str,
+        name: RenderPassName,
         target_name: str | None = None,
         target_tags: set[str] | None = None,
         index: int | None = None,
@@ -267,7 +274,7 @@ class RenderStageManager:
 
         if target_name is not None:
             return self.binder_manager.attach(
-                pass_name=pass_name,
+                pass_name=name,
                 target_name=target_name,
                 index=index,
             )
@@ -284,7 +291,7 @@ class RenderStageManager:
 
         return [
             self.binder_manager.attach(
-                pass_name=pass_name,
+                pass_name=name,
                 target_name=target.name,
             )
             for target in targets

@@ -1,7 +1,7 @@
 # kivyfn/three/lights/spot.py
 
-
 from __future__ import annotations
+from typing import Literal
 
 from kivy.properties import NumericProperty
 
@@ -28,6 +28,10 @@ class SpotLight(Light3D):
     @property
     def direction(self) -> Vector3:
         return self.world_forward
+
+    @property
+    def light_type(self) -> Literal["spot"]:
+        return "spot"
 
     def __repr__(self) -> str:
         return (

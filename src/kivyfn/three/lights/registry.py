@@ -1,136 +1,161 @@
 # kivyfn/three/lights/registry.py
 
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
-from collections import defaultdict
-from dataclasses import dataclass, field
+from kivyfn.three.types import LightName, RenderPassName, ViewName
 
 if TYPE_CHECKING:
-    from kivyfn.three.lights.shadow import LightShadow
     from kivyfn.three.lights.sources.base import Light3D
-
-
-@dataclass(slots=True)
-class LightRecord:
-    light: Light3D
-    shadow: LightShadow | None = None
-    tags: set[str] = field(default_factory=set)
 
 
 class LightRegistry:
 
     def __init__(self) -> None:
-        self._records: dict[str, LightRecord] = {}
-        self._tags: defaultdict[str, set[str]] = defaultdict(set)
+        self._lights: dict[LightName, Light3D] = {}
+        self._ids: dict[int, LightName] = {}
 
     def __len__(self) -> int:
-        return len(self._records)
+        return len(self._lights)
+
+    # =================================== #
+    # Name Generation
+    # =================================== #
+    def generate_name(
+        self,
+        base_name: str,
+    ) -> LightName:
+        index = 1
+
+        while True:
+            name = f"{base_name}.{index:03d}"
+
+            if name not in self._lights:
+                return name
+
+            index += 1
+
+    def shadow_view_name(
+        self,
+        light_name: LightName,
+    ) -> ViewName:
+        return light_name
+
+    def shadow_pass_name(
+        self,
+        light_name: LightName,
+    ) -> RenderPassName:
+        return light_name
+
+    def point_shadow_view_name(
+        self,
+        light_name: LightName,
+        face: str,
+    ) -> ViewName:
+        return f"{light_name}.{face}"
+
+    def point_shadow_pass_name(
+        self,
+        light_name: LightName,
+        face: str,
+    ) -> RenderPassName:
+        return f"{light_name}.{face}"
 
     # =================================== #
     # Registry API
     # =================================== #
-
     def add(
         self,
         light: Light3D,
-        tags: set[str] | None = None,
-    ) -> LightRecord:
-        name = light.name
+    ) -> LightName:
+        light_id = id(light)
 
-        if name in self._records:
-            raise ValueError(
-                f"Light {name!r} is already registered."
-            )
+        if light_id in self._ids:
+            return self._ids[light_id]
 
-        record = LightRecord(
-            light=light,
-            tags=set(tags or ()),
-        )
+        base_name = light.config.base_name
+        name = self.generate_name(base_name)
 
-        self._records[name] = record
+        light.name = name
 
-        for tag in record.tags:
-            self._tags[tag].add(name)
+        self._lights[name] = light
+        self._ids[light_id] = name
 
-        return record
+        return name
 
     def remove(
         self,
-        name: str,
-    ) -> LightRecord:
-        record = self.require(name)
+        name: LightName,
+    ) -> Light3D:
+        light = self.require(name)
 
-        del self._records[name]
+        del self._lights[name]
+        del self._ids[id(light)]
 
-        for tag in record.tags:
-            self._tags[tag].discard(name)
-
-            if not self._tags[tag]:
-                del self._tags[tag]
-
-        return record
+        return light
 
     def get(
         self,
-        name: str,
-    ) -> LightRecord | None:
-        return self._records.get(name)
+        name: LightName,
+    ) -> Light3D | None:
+        return self._lights.get(name)
+
+    def get_by_id(
+        self,
+        light: Light3D,
+    ) -> Light3D | None:
+        name = self._ids.get(id(light))
+
+        if name is None:
+            return None
+
+        return self._lights.get(name)
 
     def require(
         self,
-        name: str,
-    ) -> LightRecord:
-        record = self.get(name)
+        name: LightName,
+    ) -> Light3D:
+        light = self.get(name)
 
-        if record is None:
+        if light is None:
             raise ValueError(
                 f"Light {name!r} is not registered."
             )
 
-        return record
+        return light
 
-    def values(self) -> list[LightRecord]:
-        return list(self._records.values())
-
-    # =================================== #
-    # Tags
-    # =================================== #
-
-    def add_tag(
+    def name_of(
         self,
-        name: str,
-        tag: str,
-    ) -> None:
-        record = self.require(name)
+        light: Light3D,
+    ) -> LightName | None:
+        return self._ids.get(id(light))
 
-        if tag in record.tags:
-            return
-
-        record.tags.add(tag)
-        self._tags[tag].add(name)
-
-    def remove_tag(
+    def require_name_of(
         self,
-        name: str,
-        tag: str,
-    ) -> None:
-        record = self.require(name)
+        light: Light3D,
+    ) -> LightName:
+        name = self.name_of(light)
 
-        if tag not in record.tags:
-            return
+        if name is None:
+            raise ValueError(
+                f"Light {light!r} is not registered."
+            )
 
-        record.tags.remove(tag)
-        self._tags[tag].discard(name)
+        return name
 
-        if not self._tags[tag]:
-            del self._tags[tag]
-
-    def get_by_tag(
+    def contains(
         self,
-        tag: str,
-    ) -> list[LightRecord]:
-        return [
-            self._records[name]
-            for name in self._tags.get(tag, ())
-        ]
+        name: LightName,
+    ) -> bool:
+        return name in self._lights
+
+    def values(self) -> list[Light3D]:
+        return list(self._lights.values())
+
+    def names(self) -> list[LightName]:
+        return list(self._lights.keys())
+
+    def items(self) -> list[tuple[LightName, Light3D]]:
+        return list(self._lights.items())
+

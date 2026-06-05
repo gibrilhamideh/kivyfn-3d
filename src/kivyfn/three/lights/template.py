@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Generic, Literal, TypeVar
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from kivyfn.three.types import LightNode
     from kivyfn.three.render.shader import Shader
 
 
+from kivyfn.three.lights.sources.directional import DirectionalLight
+from kivyfn.three.lights.sources.spot import SpotLight
+from kivyfn.three.lights.sources.point import PointLight
 
-T = TypeVar("T", bound="LightNode")
 
 # =================================== #
 # Runtime Config
@@ -31,9 +32,6 @@ class ShadowViewConfig:
 class ShadowConfig:
     shader: Shader
 
-    view_name: str
-    pass_name: str
-
     view: ShadowViewConfig
 
     texture_uniform: str
@@ -52,6 +50,8 @@ class ShadowConfig:
 
 @dataclass(slots=True, frozen=True)
 class LightConfig:
+
+    base_name: str
     affected_tags: frozenset[str]
     shadow: ShadowConfig | None = None
 
@@ -94,9 +94,6 @@ class ShadowTemplate:
 
     view_template: ShadowViewTemplate = field(default_factory=ShadowViewTemplate)
 
-    view_suffix: str = "shadow_view"
-    pass_suffix: str = "shadow_pass"
-
     texture_uniform: str = "shadow_texture"
     view_uniform: str = "shadow_view_mat"
     projection_uniform: str = "shadow_projection_mat"
@@ -104,15 +101,13 @@ class ShadowTemplate:
     bias: float = 0.005
     normal_bias: float = 0.05
 
-    def create(self, light_name: str) -> ShadowConfig:
+    def create(self) -> ShadowConfig:
         return ShadowConfig(
             shader=self.shader,
             enabled=self.enabled,
             resolution=self.resolution,
             caster_tags=frozenset(self.caster_tags),
             receiver_tags=frozenset(self.receiver_tags),
-            view_name=f"{light_name}.{self.view_suffix}",
-            pass_name=f"{light_name}.{self.pass_suffix}",
             view=self.view_template.create(),
             texture_uniform=self.texture_uniform,
             view_uniform=self.view_uniform,
@@ -126,34 +121,60 @@ class ShadowTemplate:
 # Light Template
 # =================================== #
 @dataclass(slots=True, frozen=True)
-class LightTemplate(Generic[T]):
-    source: type[T]
-
+class LightTemplate:
     affected_tags: set[str] = field(default_factory=lambda: {"lit"})
     shadow_template: ShadowTemplate | None = None
 
-    def create(
+    def _config(
         self,
-        *,
-        name: str,
-        **kwargs,
-    ) -> T:
-
-
-        config = LightConfig(
+        base_name: str,
+    ) -> LightConfig:
+        return LightConfig(
+            base_name=base_name,
             affected_tags=frozenset(self.affected_tags),
             shadow=(
-                self.shadow_template.create(name)
+                self.shadow_template.create()
                 if self.shadow_template is not None
                 else None
             ),
         )
 
-        return self.source(
-            name=name,
-            config=config,
+    def directional(
+        self,
+        *,
+        base_name: str,
+        **kwargs,
+    ) -> DirectionalLight:
+
+        return DirectionalLight(
+            config=self._config(base_name),
             **kwargs,
         )
+
+    def spot(
+        self,
+        *,
+        base_name: str,
+        **kwargs,
+    ) -> SpotLight:
+
+        return SpotLight(
+            config=self._config(base_name),
+            **kwargs,
+        )
+
+    def point(
+        self,
+        *,
+        base_name: str,
+        **kwargs,
+    ) -> PointLight:
+
+        return PointLight(
+            config=self._config(base_name),
+            **kwargs,
+        )
+
 
 
 

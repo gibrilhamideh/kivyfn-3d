@@ -3,15 +3,23 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.graph.node import Node3D
 from kivyfn.three.graph.node_registry import SceneNodeRegistry
 from kivyfn.three.loaders.scene_loader import SceneLoader
 from kivyfn.three.scene.base import SceneControllerBase
+from kivyfn.three.types import (
+        SceneObject,
+        SceneBlueprint,
+        AssetBlueprint,
+        RenderStageName,
+        RenderContextName,
+        RenderPassName
+)
 
 if TYPE_CHECKING:
-    from kivyfn.three.types import SceneObject, SceneBlueprint, AssetBlueprint
     from kivyfn.three.views.view_manager import ViewManager
     from kivyfn.three.render.binding_registry import RenderBindingRecord
     from kivyfn.three.render.link_registry import RenderLinkRecord
@@ -60,7 +68,7 @@ class Scene(SceneControllerBase):
 
     def create_context(
         self,
-        name: str,
+        name: RenderContextName,
         shader: Shader,
         view_name: str,
         *,
@@ -94,7 +102,7 @@ class Scene(SceneControllerBase):
     # =================================== #
     def create_pass(
         self,
-        name: str,
+        name: RenderPassName,
         shader: Shader,
         view_name: str,
         output: RenderPassOutput,
@@ -146,13 +154,13 @@ class Scene(SceneControllerBase):
     def attach_pass(
         self,
         *,
-        pass_name: str,
+        name: RenderPassName,
         target_name: str | None = None,
         target_tags: set[str] | None = None,
         index: int | None = None,
     ) -> RenderBindingRecord | list[RenderBindingRecord]:
         return self.renderer.attach_pass(
-            pass_name=pass_name,
+            name=name,
             target_name=target_name,
             target_tags=target_tags,
             index=index
@@ -165,7 +173,7 @@ class Scene(SceneControllerBase):
     def link_stage(
         self,
         *,
-        source: str,
+        source: RenderStageName,
         target_name: str | None = None,
         target_tags: set[str] | None = None,
     ) -> RenderLinkRecord | list[RenderLinkRecord]:
@@ -178,7 +186,7 @@ class Scene(SceneControllerBase):
     def unlink_stage(
         self,
         *,
-        source: str,
+        source: RenderStageName,
         target_name: str | None = None,
         target_tags: set[str] | None = None,
     ) -> RenderLinkRecord | list[RenderLinkRecord]:
@@ -188,13 +196,13 @@ class Scene(SceneControllerBase):
             target_tags=target_tags,
         )
 
-    def hide_stage(self, name: str) -> None:
+    def hide_stage(self, name: RenderStageName) -> None:
         self.renderer.hide_stage(name)
 
-    def show_stage(self, name: str) -> None:
+    def show_stage(self, name: RenderStageName) -> None:
         self.renderer.show_stage(name)
 
-    def destroy_stage(self, name: str) -> None:
+    def destroy_stage(self, name: RenderStageName) -> None:
         self.renderer.destroy_stage(name)
 
 
@@ -217,16 +225,33 @@ class Scene(SceneControllerBase):
     def render(
         self,
         node: Node3D,
-        stage_name: str,
+        *,
+        stage: RenderStageName | None = None,
+        stages: list[RenderStageName] | None = None,
         parent: Node3D | None = None,
     ) -> None:
+
+        if stage is not None and stages is not None:
+            raise ValueError(
+                "Provide either 'stage' or 'stages', not both."
+            )
+
+        if stage is None and stages is None:
+            raise ValueError(
+                "Either 'stage' or 'stages' must be provided."
+            )
+
         parent = parent or self.root
         parent.add_child(node)
 
         for current in node.walk(filter="all"):
             self.nodes.register(current)
 
-        self.renderer.queue_render(node, stage_name)
+        self.renderer.queue_render(
+            node,
+            stage=stage,
+            stages=stages,
+        )
 
 
     def render_blueprint(
@@ -267,21 +292,5 @@ class Scene(SceneControllerBase):
     @property
     def stages(self):
         return self.renderer.stages
-
-    @property
-    def lights(self):
-        return self.renderer.lights
-
-
-
-
-
-
-
-
-
-
-
-
 
 
