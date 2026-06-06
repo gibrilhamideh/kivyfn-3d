@@ -214,6 +214,9 @@ class LightRegistry:
             if name in self._lights
         ]
 
+    def affected_tags(self) -> set[str]:
+        return set(self._tags.keys())
+
     # =================================== #
     # Internal
     # =================================== #

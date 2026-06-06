@@ -1,11 +1,12 @@
 # kivyfn/three/lights/culling.py
 
 from __future__ import annotations
-from typing import TypeGuard
+from typing import TYPE_CHECKING, TypeGuard
 
 import math
+
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from heapq import nsmallest
 
 from kivyfn.three.types import LightSource
 
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
     from kivyfn.three.math.vector import Vector3
     from kivyfn.three.views.view import View
 
+    from kivyfn.three.lights.limits import LightLimits
     from kivyfn.three.lights.sources.base import Light3D
     from kivyfn.three.lights.sources.directional import DirectionalLight
     from kivyfn.three.lights.sources.point import PointLight
@@ -48,8 +50,10 @@ class LightCuller:
     def __init__(
         self,
         *,
+        limits: LightLimits,
         config: LightCullConfig | None = None,
     ) -> None:
+        self.limits = limits
         self.config = config or LightCullConfig()
 
     # =================================== #
@@ -97,18 +101,22 @@ class LightCuller:
                 spot_candidates.append(light)
                 continue
 
-        point_candidates.sort(
+        point_candidates = nsmallest(
+            self.limits.point,
+            point_candidates,
             key=lambda light: self._distance_to_point_sq(
                 light=light,
                 point=culling_point,
-            )
+            ),
         )
 
-        spot_candidates.sort(
+        spot_candidates = nsmallest(
+            self.limits.spot,
+            spot_candidates,
             key=lambda light: self._distance_to_point_sq(
                 light=light,
                 point=culling_point,
-            )
+            ),
         )
 
         return CulledLights(

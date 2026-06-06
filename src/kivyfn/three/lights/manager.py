@@ -78,11 +78,10 @@ class LightManager(EventDispatcher):
         super().__init__(**kwargs)
 
         self.renderer = renderer
-        self.limits = limits
-        self.uniforms = LightUniformBuffer(limits)
 
         self.registry = LightRegistry()
-        self.culler = LightCuller()
+        self.uniforms = LightUniformBuffer(limits)
+        self.culler = LightCuller(limits=limits)
 
         self._shadow_views: dict[LightName, ViewName] = {}
         self._shadow_passes: dict[LightName, RenderPassName] = {}
@@ -220,7 +219,7 @@ class LightManager(EventDispatcher):
     # Sync Uniforms
     # =================================== #
     def sync_uniforms(self, *_) -> None:
-        affected_tags = self._affected_tags()
+        affected_tags = self.registry.affected_tags()
         if not affected_tags:
             return
 
@@ -348,9 +347,9 @@ class LightManager(EventDispatcher):
         self,
         lights: CulledLights,
     ) -> dict[str, Any]:
-        directional = lights.directional[:self.limits.directional]
-        point = lights.point[:self.limits.point]
-        spot = lights.spot[:self.limits.spot]
+        directional = lights.directional
+        point = lights.point
+        spot = lights.spot
 
         self._write_directional_lights(directional)
         self._write_point_lights(point)
@@ -465,14 +464,6 @@ class LightManager(EventDispatcher):
     # =================================== #
     # Stage Helpers
     # =================================== #
-    def _affected_tags(self) -> set[str]:
-        tags: set[str] = set()
-
-        for light in self.registry.values():
-            tags.update(light.config.affected_tags)
-
-        return tags
-
     def _apply_uniforms_to_tags(
         self,
         *,
