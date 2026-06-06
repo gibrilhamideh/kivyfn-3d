@@ -37,6 +37,7 @@ from kivy.properties import (
     StringProperty,
 )
 
+from kivyfn.three.render import shader
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.render.link_filter import RenderLinkFilter
 
@@ -162,8 +163,6 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # Initialization
     # =================================== #
     def initialize(self):
-        self.ctx.shader.source = str(self.shader.path)
-
         self.bind(hot_reload=self.shader.setter("hot_reload"))
         self.shader.bind(on_reload=self.on_shader_reload)
 
@@ -240,18 +239,20 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     def on_uniforms(self, *_):
         self.sync_uniforms()
 
+    def sync_shader(self) -> None:
+        self.ctx.shader.vs = self.shader.vertex_source
+        self.ctx.shader.fs = self.shader.fragment_source
+
+        self.ctx.ask_update()
+        self.sync_uniforms()
+
     def on_shader_reload(
         self,
         shader: Shader,
         event_type: ShaderReloadEvent,
         path: Path | None,
     ) -> None:
-        if path is None:
-            return
-
-        self.ctx.shader.source = str(path)
-        self.ctx.ask_update()
-        self.sync_uniforms()
+        self.sync_shader()
 
 
     # =================================== #
@@ -356,7 +357,10 @@ class RenderContext(BaseRenderContext[KivyRenderContext]):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.ctx = KivyRenderContext()
+        self.ctx = KivyRenderContext(
+            vs=self.shader.vertex_source,
+            fs=self.shader.fragment_source
+        )
         with self.ctx:
             self.viewport_cb = Callback(self._set_viewport)
             Callback(self.enable_depthtest)
@@ -440,7 +444,9 @@ class RenderPass(BaseRenderContext[KivyFbo]):
             push_viewport=False,
             # clear_color=self.fbo_color,
             with_depthbuffer=with_depthbuffer,
-            with_stencilbuffer=with_stencilbuffer
+            with_stencilbuffer=with_stencilbuffer,
+            vs=self.shader.vertex_source,
+            fs=self.shader.fragment_source
         )
 
         with self.ctx:

@@ -1,7 +1,5 @@
-
----VERTEX SHADER-------------------------------------------------------
 #ifdef GL_ES
-    precision highp float;
+precision highp float;
 #endif
 
 attribute vec3 v_pos;
@@ -15,7 +13,7 @@ varying vec3 debug_color;
 float random_float(float x) {
     return fract(
         sin(x) *
-        43758.5453123
+            43758.5453123
     );
 }
 
@@ -44,7 +42,7 @@ vec3 random_color(vec3 seed) {
 void main(void) {
     vec4 world_pos =
         model_mat *
-        vec4(v_pos, 1.0);
+            vec4(v_pos, 1.0);
 
     vec3 object_seed =
         vec3(
@@ -58,21 +56,6 @@ void main(void) {
 
     gl_Position =
         projection_mat *
-        view_mat *
-        world_pos;
-}
-
----FRAGMENT SHADER-----------------------------------------------------
-#ifdef GL_ES
-    precision highp float;
-#endif
-
-varying vec3 debug_color;
-
-void main(void) {
-    gl_FragColor =
-        vec4(
-            debug_color,
-            1.0
-        );
+            view_mat *
+            world_pos;
 }

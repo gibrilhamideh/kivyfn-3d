@@ -21,7 +21,7 @@ ShaderReloadEvent = Literal[
 
 class Shader(EventDispatcher):
     name = StringProperty("")
-    path = ObjectProperty(None, allownone=True)
+    directory = ObjectProperty(None, allownone=True)
     hot_reload = BooleanProperty(False)
 
     __events__ = (
@@ -30,8 +30,8 @@ class Shader(EventDispatcher):
 
     def __init__(
         self,
-        path: str | Path | None = None,
-        name: str = "",
+        name: str,
+        directory: str | Path | None = None,
         **kwargs: Any,
     ):
         super().__init__(**kwargs)
@@ -39,23 +39,61 @@ class Shader(EventDispatcher):
         self._observer = None
         self._handler = None
         self._reload_event = None
+
         self._pending_reload_type: ShaderReloadEvent = "manual"
         self._pending_reload_path: Path | None = None
 
         self.name = name
 
-        if path is not None:
-            self.path = Path(path)
-
+        if directory is not None:
+            self.directory = Path(directory)
 
     def __repr__(self) -> str:
         return (
             "Shader(\n"
             f"  name={self.name!r},\n"
-            f"  path={self.path!r},\n"
+            f"  directory={self.directory!r},\n"
+            f"  vertex_path={self.vertex_path!r},\n"
+            f"  fragment_path={self.fragment_path!r},\n"
             f"  hot_reload={self.hot_reload}\n"
             ")"
         )
+
+    @property
+    def vertex_path(self) -> Path | None:
+        if self.directory is None:
+            return None
+
+        return Path(self.directory) / f"{self.name}.vert"
+
+    @property
+    def fragment_path(self) -> Path | None:
+        if self.directory is None:
+            return None
+
+        return Path(self.directory) / f"{self.name}.frag"
+
+    @property
+    def paths(self) -> tuple[Path, Path]:
+        vertex_path = self.vertex_path
+        fragment_path = self.fragment_path
+
+        if vertex_path is None or fragment_path is None:
+            raise ValueError(
+                f"Shader {self.name!r} requires a directory."
+            )
+
+        return vertex_path, fragment_path
+
+    @property
+    def vertex_source(self) -> str:
+        vertex_path, _ = self.paths
+        return vertex_path.read_text(encoding="utf-8")
+
+    @property
+    def fragment_source(self) -> str:
+        _, fragment_path = self.paths
+        return fragment_path.read_text(encoding="utf-8")
 
     def on_hot_reload(
         self,
@@ -67,10 +105,23 @@ class Shader(EventDispatcher):
         else:
             self._stop_hot_reload()
 
-    def on_path(
+    def on_directory(
         self,
         instance,
         value: Path | None,
+    ) -> None:
+        if value is not None and not isinstance(value, Path):
+            self.directory = Path(value)
+            return
+
+        if self.hot_reload:
+            self._stop_hot_reload()
+            self._start_hot_reload()
+
+    def on_name(
+        self,
+        instance,
+        value: str,
     ) -> None:
         if self.hot_reload:
             self._stop_hot_reload()
@@ -84,16 +135,10 @@ class Shader(EventDispatcher):
         event_type: ShaderReloadEvent = "manual",
         path: str | Path | None = None,
     ) -> None:
-        if path is not None:
-            new_path = Path(path)
-
-            if self.path != new_path:
-                self.path = new_path
-
         self.dispatch(
             "on_reload",
             event_type,
-            self.path,
+            Path(path) if path is not None else None,
         )
 
     def on_reload(
@@ -112,7 +157,7 @@ class Shader(EventDispatcher):
         self._pending_reload_path = (
             Path(path)
             if path is not None
-            else self.path
+            else None
         )
 
         if self._reload_event is not None:
@@ -138,7 +183,7 @@ class Shader(EventDispatcher):
         self._pending_reload_path = None
 
     def _start_hot_reload(self) -> None:
-        if self.path is None:
+        if self.directory is None:
             return
 
         if self._observer is not None:
@@ -154,8 +199,14 @@ class Shader(EventDispatcher):
             ) from exc
 
         shader = self
-        watched_path = self.path.resolve()
-        watched_dir = watched_path.parent
+        vertex_path, fragment_path = self.paths
+
+        watched_paths = {
+            vertex_path.resolve(),
+            fragment_path.resolve(),
+        }
+
+        watched_dir = Path(self.directory).resolve()
 
         class ShaderFileHandler(FileSystemEventHandler):
             def _path(
@@ -168,7 +219,7 @@ class Shader(EventDispatcher):
                 self,
                 value: str | bytes,
             ) -> bool:
-                return self._path(value).resolve() == watched_path
+                return self._path(value).resolve() in watched_paths
 
             def _reload(
                 self,
