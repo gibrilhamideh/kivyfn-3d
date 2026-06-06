@@ -3,21 +3,67 @@
 from __future__ import annotations
 
 from math import cos, radians
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from kivy.event import EventDispatcher
+from kivy.clock import Clock
 
 from kivyfn.three.lights.registry import LightRegistry
 from kivyfn.three.lights.culling import LightCuller
+from kivyfn.three.types import LightSource
 
 if TYPE_CHECKING:
+    from kivyfn.three.lights.limits import LightLimits
     from kivyfn.three.types import SceneObject, LightName, RenderPassName, ViewName
     from kivyfn.three.render.context import RenderContext
     from kivyfn.three.render.renderer import Renderer
-    from kivyfn.three.views.view import View
     from kivyfn.three.lights.culling import CulledLights
-    from kivyfn.three.lights.sources.base import Light3D
     from kivyfn.three.lights.template import ShadowConfig
+    from kivyfn.three.lights.sources.directional import DirectionalLight
+    from kivyfn.three.lights.sources.point import PointLight
+    from kivyfn.three.lights.sources.spot import SpotLight
+
+
+class LightUniformBuffer:
+
+    def __init__(
+        self,
+        limits: LightLimits,
+    ) -> None:
+        self.directional_directions = self._vec3(limits.directional)
+        self.directional_colors = self._vec3(limits.directional)
+        self.directional_intensities = self._floats(limits.directional)
+
+        self.point_positions = self._vec3(limits.point)
+        self.point_colors = self._vec3(limits.point)
+        self.point_intensities = self._floats(limits.point)
+        self.point_radii = self._floats(limits.point)
+
+        self.spot_positions = self._vec3(limits.spot)
+        self.spot_directions = self._vec3(limits.spot)
+        self.spot_colors = self._vec3(limits.spot)
+        self.spot_intensities = self._floats(limits.spot)
+        self.spot_radii = self._floats(limits.spot)
+        self.spot_angles = self._floats(limits.spot)
+        self.spot_angle_cos = self._floats(limits.spot)
+
+    def _vec3(
+        self,
+        size: int,
+    ) -> list[list[float]]:
+        return [
+            [0.0, 0.0, 0.0]
+            for _ in range(size)
+        ]
+
+    def _floats(
+        self,
+        size: int,
+    ) -> list[float]:
+        return [
+            0.0
+            for _ in range(size)
+        ]
 
 
 class LightManager(EventDispatcher):
@@ -25,18 +71,25 @@ class LightManager(EventDispatcher):
     def __init__(
         self,
         renderer: Renderer,
+        *,
+        limits: LightLimits,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
 
         self.renderer = renderer
+        self.limits = limits
+        self.uniforms = LightUniformBuffer(limits)
+
         self.registry = LightRegistry()
-        self.culler = LightCuller(self.registry)
+        self.culler = LightCuller()
 
         self._shadow_views: dict[LightName, ViewName] = {}
         self._shadow_passes: dict[LightName, RenderPassName] = {}
 
         self._bound_ids: set[int] = set()
+
+        self._sync_uniforms_trigger = Clock.create_trigger(self.sync_uniforms, -1)
 
     def __repr__(self) -> str:
         return (
@@ -55,6 +108,8 @@ class LightManager(EventDispatcher):
         changed = False
 
         for light in node.walk(filter="lights"):
+            light = cast("LightSource", light)
+
             light_id = id(light)
 
             if light_id in self._bound_ids:
@@ -80,83 +135,113 @@ class LightManager(EventDispatcher):
             changed = True
 
         if changed:
-            self.sync_uniforms()
+            self._sync_uniforms_trigger()
 
     # =================================== #
     # Dirty
     # =================================== #
     def on_light_dirty(
         self,
-        light: Light3D,
+        light: LightSource,
     ) -> None:
         self.sync_visibility(light)
-        self.sync_uniforms()
+        self._sync_uniforms_trigger()
 
     def on_transform_dirty(
         self,
-        light: Light3D,
+        light: LightSource,
     ) -> None:
         self.sync_transform(light)
-        self.sync_uniforms()
+        self._sync_uniforms_trigger()
 
     def on_visibility_dirty(
         self,
-        light: Light3D,
+        light: LightSource,
     ) -> None:
         self.sync_visibility(light)
-        self.sync_uniforms()
+        self._sync_uniforms_trigger()
 
     # =================================== #
-    # Sync
+    # Sync Transform
     # =================================== #
     def sync_transform(
         self,
         node: SceneObject,
     ) -> None:
         for light in node.walk(filter="lights"):
-            light_name = self.registry.name_of(light)
 
+            light = cast("LightSource", light)
+
+            light_name = self.registry.name_of(light)
             if light_name is None:
                 continue
 
             view_name = self._shadow_views.get(light_name)
-
             if view_name is None:
                 continue
 
-            view = self.renderer.views.require(view_name)
 
             position = light.world_position
             target = position + light.world_forward
 
+            view = self.renderer.views.require(view_name)
             view.set_look_at(
                 position=position,
                 target=target,
             )
 
-            self._sync_shadow_uniforms(light)
+            self.sync_shadow_uniforms(light)
 
+    # =================================== #
+    # Sync Visibility
+    # =================================== #
     def sync_visibility(
         self,
         node: SceneObject,
     ) -> None:
         for light in node.walk(filter="lights"):
-            self._sync_light_visibility(light)
 
-    def sync_uniforms(self) -> None:
+            light = cast("LightSource", light)
+
+            light_name = self.registry.name_of(light)
+            if light_name is None:
+                return
+
+            pass_name = self._shadow_passes.get(light_name)
+            if pass_name is None:
+                return
+
+            if light.enabled and light.visible_in_tree:
+                self.renderer.show_stage(pass_name)
+            else:
+                self.renderer.hide_stage(pass_name)
+
+    # =================================== #
+    # Sync Uniforms
+    # =================================== #
+    def sync_uniforms(self, *_) -> None:
         affected_tags = self._affected_tags()
-
         if not affected_tags:
             return
 
-        for stage in self.renderer.stages.select_contexts(tags=affected_tags):
-            view = self._stage_view(stage)
+        seen: dict[tuple[str, frozenset[str]], CulledLights] = {}
 
+        for stage in self.renderer.stages.select_contexts(tags=affected_tags):
+            view = self.renderer.views.view_for_stage(stage.name)
             tags = self.renderer.stages.registry.tags_of(stage.name)
-            culled = self.culler.select(
-                stage_tags=tags,
-                view=view,
-            )
+
+            key = (view.name,frozenset(tags))
+            culled = seen.get(key)
+
+            if culled is None:
+                candidates = self.registry.values_for_tags(tags)
+
+                culled = self.culler.select(
+                    lights=candidates,
+                    view=view,
+                )
+
+                seen[key] = culled
 
             uniforms = self._build_light_uniforms(culled)
             self._apply_uniforms(
@@ -164,27 +249,34 @@ class LightManager(EventDispatcher):
                 uniforms=uniforms,
             )
 
-    # =================================== #
-    # Visibility
-    # =================================== #
-    def _sync_light_visibility(
-        self,
-        light: Light3D,
-    ) -> None:
-        light_name = self.registry.name_of(light)
 
+    def sync_shadow_uniforms(
+        self,
+        light: LightSource,
+    ) -> None:
+
+        config = light.config.shadow
+        if config is None:
+            return
+
+        light_name = self.registry.name_of(light)
         if light_name is None:
             return
 
-        pass_name = self._shadow_passes.get(light_name)
-
-        if pass_name is None:
+        view_name = self._shadow_views.get(light_name)
+        if view_name is None:
             return
 
-        if light.enabled and light.visible_in_tree:
-            self.renderer.show_stage(pass_name)
-        else:
-            self.renderer.hide_stage(pass_name)
+        view = self.renderer.views.require(view_name)
+        self._apply_uniforms_to_tags(
+            tags=set(config.receiver_tags),
+            uniforms={
+                config.view_uniform: view.get_view_matrix(),
+                config.projection_uniform: view.get_projection_matrix(1.0),
+                "shadow_bias": config.bias,
+                "shadow_normal_bias": config.normal_bias,
+            },
+        )
 
     # =================================== #
     # Shadow Resources
@@ -192,7 +284,7 @@ class LightManager(EventDispatcher):
     def _create_shadow_resources(
         self,
         *,
-        light: Light3D,
+        light: LightSource,
         config: ShadowConfig,
     ) -> None:
         light_name = self.registry.require_name_of(light)
@@ -247,38 +339,7 @@ class LightManager(EventDispatcher):
         self._shadow_views[light_name] = view.name
         self._shadow_passes[light_name] = shadow_pass.name
 
-        self._sync_shadow_uniforms(light)
-
-    def _sync_shadow_uniforms(
-        self,
-        light: Light3D,
-    ) -> None:
-        config = light.config.shadow
-
-        if config is None:
-            return
-
-        light_name = self.registry.name_of(light)
-
-        if light_name is None:
-            return
-
-        view_name = self._shadow_views.get(light_name)
-
-        if view_name is None:
-            return
-
-        view = self.renderer.views.require(view_name)
-
-        self._apply_uniforms_to_tags(
-            tags=set(config.receiver_tags),
-            uniforms={
-                config.view_uniform: view.get_view_matrix(),
-                config.projection_uniform: view.get_projection_matrix(1.0),
-                "shadow_bias": config.bias,
-                "shadow_normal_bias": config.normal_bias,
-            },
-        )
+        self.sync_shadow_uniforms(light)
 
     # =================================== #
     # Uniforms
@@ -287,77 +348,119 @@ class LightManager(EventDispatcher):
         self,
         lights: CulledLights,
     ) -> dict[str, Any]:
-        max_directional = self.culler.limits.directional
-        max_point = self.culler.limits.point
-        max_spot = self.culler.limits.spot
+        directional = lights.directional[:self.limits.directional]
+        point = lights.point[:self.limits.point]
+        spot = lights.spot[:self.limits.spot]
 
-        directional = lights.directional[:max_directional]
-        point = lights.point[:max_point]
-        spot = lights.spot[:max_spot]
+        self._write_directional_lights(directional)
+        self._write_point_lights(point)
+        self._write_spot_lights(spot)
 
         return {
             "directional_light_count": len(directional),
-            "directional_light_directions": self._pad_vec3(
-                [light.direction for light in directional],
-                max_directional,
-            ),
-            "directional_light_colors": self._pad_color3(
-                [light.color for light in directional],
-                max_directional,
-            ),
-            "directional_light_intensities": self._pad_float(
-                [light.intensity for light in directional],
-                max_directional,
-            ),
+            "directional_light_directions": self.uniforms.directional_directions,
+            "directional_light_colors": self.uniforms.directional_colors,
+            "directional_light_intensities": self.uniforms.directional_intensities,
 
             "point_light_count": len(point),
-            "point_light_positions": self._pad_vec3(
-                [light.world_position for light in point],
-                max_point,
-            ),
-            "point_light_colors": self._pad_color3(
-                [light.color for light in point],
-                max_point,
-            ),
-            "point_light_intensities": self._pad_float(
-                [light.intensity for light in point],
-                max_point,
-            ),
-            "point_light_radii": self._pad_float(
-                [light.radius for light in point],
-                max_point,
-            ),
+            "point_light_positions": self.uniforms.point_positions,
+            "point_light_colors": self.uniforms.point_colors,
+            "point_light_intensities": self.uniforms.point_intensities,
+            "point_light_radii": self.uniforms.point_radii,
 
             "spot_light_count": len(spot),
-            "spot_light_positions": self._pad_vec3(
-                [light.world_position for light in spot],
-                max_spot,
-            ),
-            "spot_light_directions": self._pad_vec3(
-                [light.direction for light in spot],
-                max_spot,
-            ),
-            "spot_light_colors": self._pad_color3(
-                [light.color for light in spot],
-                max_spot,
-            ),
-            "spot_light_intensities": self._pad_float(
-                [light.intensity for light in spot],
-                max_spot,
-            ),
-            "spot_light_radii": self._pad_float(
-                [light.radius for light in spot],
-                max_spot,
-            ),
-            "spot_light_angles": self._pad_float(
-                [light.angle for light in spot],
-                max_spot,
-            ),
-            "spot_light_angle_cos": self._pad_float(
-                [cos(radians(light.angle)) for light in spot],
-                max_spot,
-            ),
+            "spot_light_positions": self.uniforms.spot_positions,
+            "spot_light_directions": self.uniforms.spot_directions,
+            "spot_light_colors": self.uniforms.spot_colors,
+            "spot_light_intensities": self.uniforms.spot_intensities,
+            "spot_light_radii": self.uniforms.spot_radii,
+            "spot_light_angles": self.uniforms.spot_angles,
+            "spot_light_angle_cos": self.uniforms.spot_angle_cos,
         }
+
+    def _write_directional_lights(
+        self,
+        lights: list[DirectionalLight],
+    ) -> None:
+        for index, light in enumerate(lights):
+            direction = light.world_forward
+            color = light.color
+
+            target = self.uniforms.directional_directions[index]
+            target[0] = float(direction.x)
+            target[1] = float(direction.y)
+            target[2] = float(direction.z)
+
+            target = self.uniforms.directional_colors[index]
+            target[0] = float(color[0])
+            target[1] = float(color[1])
+            target[2] = float(color[2])
+
+            self.uniforms.directional_intensities[index] = float(
+                light.intensity
+            )
+
+    def _write_point_lights(
+        self,
+        lights: list[PointLight],
+    ) -> None:
+        for index, light in enumerate(lights):
+            position = light.world_position
+            color = light.color
+
+            target = self.uniforms.point_positions[index]
+            target[0] = float(position.x)
+            target[1] = float(position.y)
+            target[2] = float(position.z)
+
+            target = self.uniforms.point_colors[index]
+            target[0] = float(color[0])
+            target[1] = float(color[1])
+            target[2] = float(color[2])
+
+            self.uniforms.point_intensities[index] = float(
+                light.intensity
+            )
+            self.uniforms.point_radii[index] = float(
+                light.radius
+            )
+
+    def _write_spot_lights(
+        self,
+        lights: list[SpotLight],
+    ) -> None:
+        for index, light in enumerate(lights):
+            position = light.world_position
+            direction = light.direction
+            color = light.color
+
+            target = self.uniforms.spot_positions[index]
+            target[0] = float(position.x)
+            target[1] = float(position.y)
+            target[2] = float(position.z)
+
+            target = self.uniforms.spot_directions[index]
+            target[0] = float(direction.x)
+            target[1] = float(direction.y)
+            target[2] = float(direction.z)
+
+            target = self.uniforms.spot_colors[index]
+            target[0] = float(color[0])
+            target[1] = float(color[1])
+            target[2] = float(color[2])
+
+            angle = float(light.angle)
+
+            self.uniforms.spot_intensities[index] = float(
+                light.intensity
+            )
+            self.uniforms.spot_radii[index] = float(
+                light.radius
+            )
+            self.uniforms.spot_angles[index] = angle
+            self.uniforms.spot_angle_cos[index] = cos(
+                radians(angle)
+            )
 
     # =================================== #
     # Stage Helpers
@@ -369,14 +472,6 @@ class LightManager(EventDispatcher):
             tags.update(light.config.affected_tags)
 
         return tags
-
-    def _stage_view(
-        self,
-        stage: RenderContext,
-    ) -> View | None:
-        return self.renderer.views.view_for_stage(
-            stage.name,
-        )
 
     def _apply_uniforms_to_tags(
         self,
@@ -398,59 +493,3 @@ class LightManager(EventDispatcher):
     ) -> None:
         for name, value in uniforms.items():
             stage.apply_uniform(name, value)
-
-    # =================================== #
-    # Packing Helpers
-    # =================================== #
-    def _pad_vec3(
-        self,
-        values: list[Any],
-        size: int,
-    ) -> list[list[float]]:
-        result: list[list[float]] = []
-
-        for value in values:
-            result.append([
-                float(value.x),
-                float(value.y),
-                float(value.z),
-            ])
-
-        missing = size - len(values)
-        if missing > 0:
-            result.extend([[0.0, 0.0, 0.0] for _ in range(missing)])
-
-        return result
-
-    def _pad_color3(
-        self,
-        values: list[Any],
-        size: int,
-    ) -> list[list[float]]:
-        result: list[list[float]] = []
-
-        for value in values:
-            result.append([
-                float(value[0]),
-                float(value[1]),
-                float(value[2]),
-            ])
-
-        missing = size - len(values)
-        if missing > 0:
-            result.extend([[0.0, 0.0, 0.0] for _ in range(missing)])
-
-        return result
-
-    def _pad_float(
-        self,
-        values: list[float],
-        size: int,
-    ) -> list[float]:
-        result = [float(value) for value in values]
-
-        missing = size - len(values)
-        if missing > 0:
-            result.extend([0.0] * missing)
-
-        return result

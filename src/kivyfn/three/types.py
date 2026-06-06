@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from kivyfn.three.lights.sources.spot import SpotLight
 
 
-LightNode: TypeAlias = "DirectionalLight | PointLight | SpotLight"
+LightSource: TypeAlias = "DirectionalLight | PointLight | SpotLight"
 
 SceneBlueprint: TypeAlias = "GlbSceneBlueprint | ObjSceneBlueprint"
 AssetBlueprint: TypeAlias = "GlbBlueprint | ObjBlueprint"

@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections import defaultdict
 
-from kivyfn.three.types import LightName, RenderPassName, ViewName
-
-if TYPE_CHECKING:
-    from kivyfn.three.lights.sources.base import Light3D
+from kivyfn.three.types import (
+        LightName, 
+        LightSource,
+        RenderPassName,
+        ViewName,
+)
 
 
 class LightRegistry:
 
     def __init__(self) -> None:
-        self._lights: dict[LightName, Light3D] = {}
+        self._lights: dict[LightName, LightSource] = {}
         self._ids: dict[int, LightName] = {}
+        self._tags: dict[str, set[LightName]] = defaultdict(set)
 
     def __len__(self) -> int:
         return len(self._lights)
@@ -67,7 +70,7 @@ class LightRegistry:
     # =================================== #
     def add(
         self,
-        light: Light3D,
+        light: LightSource,
     ) -> LightName:
         light_id = id(light)
 
@@ -82,40 +85,49 @@ class LightRegistry:
         self._lights[name] = light
         self._ids[light_id] = name
 
+        self._index_light(
+            name=name,
+            light=light,
+        )
+
         return name
 
     def remove(
         self,
         name: LightName,
-    ) -> Light3D:
+    ) -> LightSource:
         light = self.require(name)
+
+        self._unindex_light(name)
 
         del self._lights[name]
         del self._ids[id(light)]
 
         return light
 
+    def reindex(
+        self,
+        light: LightSource,
+    ) -> None:
+        name = self.require_name_of(light)
+
+        self._unindex_light(name)
+        self._index_light(
+            name=name,
+            light=light,
+        )
+
     def get(
         self,
         name: LightName,
-    ) -> Light3D | None:
+    ) -> LightSource | None:
         return self._lights.get(name)
 
-    def get_by_id(
-        self,
-        light: Light3D,
-    ) -> Light3D | None:
-        name = self._ids.get(id(light))
-
-        if name is None:
-            return None
-
-        return self._lights.get(name)
 
     def require(
         self,
         name: LightName,
-    ) -> Light3D:
+    ) -> LightSource:
         light = self.get(name)
 
         if light is None:
@@ -127,13 +139,13 @@ class LightRegistry:
 
     def name_of(
         self,
-        light: Light3D,
+        light: LightSource,
     ) -> LightName | None:
         return self._ids.get(id(light))
 
     def require_name_of(
         self,
-        light: Light3D,
+        light: LightSource,
     ) -> LightName:
         name = self.name_of(light)
 
@@ -150,12 +162,87 @@ class LightRegistry:
     ) -> bool:
         return name in self._lights
 
-    def values(self) -> list[Light3D]:
+    def values(self) -> list[LightSource]:
         return list(self._lights.values())
 
     def names(self) -> list[LightName]:
         return list(self._lights.keys())
 
-    def items(self) -> list[tuple[LightName, Light3D]]:
+    def items(self) -> list[tuple[LightName, LightSource]]:
         return list(self._lights.items())
 
+    # =================================== #
+    # Tag API
+    # =================================== #
+    def names_for_tags(
+        self,
+        tags: set[str],
+    ) -> set[LightName]:
+        names: set[LightName] = set()
+
+        for tag in tags:
+            names.update(
+                self._tags.get(
+                    tag,
+                    set(),
+                )
+            )
+
+        return names
+
+    def values_for_tags(
+        self,
+        tags: set[str],
+    ) -> list[LightSource]:
+        names = self.names_for_tags(tags)
+
+        return [
+            self._lights[name]
+            for name in names
+            if name in self._lights
+        ]
+
+    def items_for_tags(
+        self,
+        tags: set[str],
+    ) -> list[tuple[LightName, LightSource]]:
+        names = self.names_for_tags(tags)
+
+        return [
+            (name, self._lights[name])
+            for name in names
+            if name in self._lights
+        ]
+
+    # =================================== #
+    # Internal
+    # =================================== #
+    def _index_light(
+        self,
+        *,
+        name: LightName,
+        light: LightSource,
+    ) -> None:
+        affected_tags = light.config.affected_tags
+
+        if not affected_tags:
+            self._tags[""].add(name)
+            return
+
+        for tag in affected_tags:
+            self._tags[tag].add(name)
+
+    def _unindex_light(
+        self,
+        name: LightName,
+    ) -> None:
+        empty_tags: list[str] = []
+
+        for tag, names in self._tags.items():
+            names.discard(name)
+
+            if not names:
+                empty_tags.append(tag)
+
+        for tag in empty_tags:
+            del self._tags[tag]

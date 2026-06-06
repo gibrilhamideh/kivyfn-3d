@@ -41,6 +41,20 @@ class Vector2:
             self.y * self.y
         )
 
+
+    @property
+    def length_sq(self) -> float:
+        return (
+            self.x * self.x +
+            self.y * self.y
+        )
+
+    def distance(self, other: Vector2) -> float:
+        return (self - other).length
+
+    def distance_sq(self, other: Vector2) -> float:
+        return (self - other).length_sq
+
     def rotate(
         self,
         angle_radians: float,
@@ -194,6 +208,20 @@ class Vector3:
             self.y * self.y +
             self.z * self.z
         )
+
+    @property
+    def length_sq(self) -> float:
+        return (
+            self.x * self.x +
+            self.y * self.y +
+            self.z * self.z
+        )
+
+    def distance_sq(self, other: Vector3) -> float:
+        return (self - other).length_sq
+
+    def distance(self, other: Vector3) -> float:
+        return (self - other).length
 
     @property
     def magnitude(self) -> float:
@@ -474,6 +502,27 @@ class Vector4:
             self.z * self.z +
             self.w * self.w
         )
+
+    @property
+    def length_sq(self) -> float:
+        return (
+            self.x * self.x +
+            self.y * self.y +
+            self.z * self.z +
+            self.w * self.w
+        )
+
+    def distance(
+        self,
+        other: Vector4,
+    ) -> float:
+        return (self - other).length
+
+    def distance_sq(
+        self,
+        other: Vector4,
+    ) -> float:
+        return (self - other).length_sq
 
     @property
     def magnitude(self) -> float:

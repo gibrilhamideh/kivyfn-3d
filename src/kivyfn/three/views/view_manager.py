@@ -17,6 +17,7 @@ class ViewManager(EventDispatcher):
 
         self._views: dict[str, View] = {}
         self._view_stages: dict[str, set[str]] = {}
+        self._stage_views: dict[str, str] = {}
 
     def __contains__(self, name: str) -> bool:
         return name in self._views
@@ -107,28 +108,35 @@ class ViewManager(EventDispatcher):
         self,
         name: str,
     ) -> View | None:
-
         return self._views.get(name)
 
     def require(
         self,
         name: str,
     ) -> View:
-
         view = self._views.get(name)
+
         if view is None:
             raise ValueError(f"View not found: {name!r}")
 
         return view
 
-    def remove(self, name: str) -> View | None:
+    def remove(
+        self,
+        name: str,
+    ) -> View | None:
         view = self._views.pop(name, None)
 
         if view is None:
             return None
 
         self._unbind_view(view)
-        self._view_stages.pop(name, None)
+
+        context_names = self._view_stages.pop(name, set())
+
+        for context_name in context_names:
+            if self._stage_views.get(context_name) == name:
+                del self._stage_views[context_name]
 
         return view
 
@@ -138,6 +146,7 @@ class ViewManager(EventDispatcher):
 
         self._views.clear()
         self._view_stages.clear()
+        self._stage_views.clear()
 
     # =================================== #
     # Context Links
@@ -152,12 +161,55 @@ class ViewManager(EventDispatcher):
     ) -> None:
         view = self.require(view_name)
 
+        existing = self._stage_views.get(context_name)
+
+        if existing is not None:
+            raise ValueError(
+                f"Stage {context_name!r} is already linked "
+                f"to view {existing!r}."
+            )
+
         contexts = self._view_stages.setdefault(
             view.name,
             set(),
         )
 
         contexts.add(context_name)
+        self._stage_views[context_name] = view.name
+
+        if sync:
+            self._dispatch_dirty(view)
+
+    def replace(
+        self,
+        view_name: str,
+        context_name: str,
+        *,
+        sync: bool = True,
+    ) -> None:
+        view = self.require(view_name)
+
+        old_view_name = self._stage_views.get(context_name)
+
+        if old_view_name == view.name:
+            if sync:
+                self._dispatch_dirty(view)
+
+            return
+
+        if old_view_name is not None:
+            old_contexts = self._view_stages.get(old_view_name)
+
+            if old_contexts is not None:
+                old_contexts.discard(context_name)
+
+        contexts = self._view_stages.setdefault(
+            view.name,
+            set(),
+        )
+
+        contexts.add(context_name)
+        self._stage_views[context_name] = view.name
 
         if sync:
             self._dispatch_dirty(view)
@@ -173,10 +225,11 @@ class ViewManager(EventDispatcher):
 
         contexts = self._view_stages.get(view.name)
 
-        if contexts is None:
-            return
+        if contexts is not None:
+            contexts.discard(context_name)
 
-        contexts.discard(context_name)
+        if self._stage_views.get(context_name) == view.name:
+            del self._stage_views[context_name]
 
         if sync:
             self._dispatch_dirty(view)
@@ -187,19 +240,18 @@ class ViewManager(EventDispatcher):
         *,
         sync: bool = True,
     ) -> None:
-        changed_views: list[View] = []
+        view_name = self._stage_views.pop(context_name, None)
 
-        for view_name, contexts in self._view_stages.items():
-            if context_name not in contexts:
-                continue
+        if view_name is None:
+            return
 
+        contexts = self._view_stages.get(view_name)
+
+        if contexts is not None:
             contexts.discard(context_name)
 
-            if sync and view_name in self._views:
-                changed_views.append(self._views[view_name])
-
-        for view in changed_views:
-            self._dispatch_dirty(view)
+        if sync and view_name in self._views:
+            self._dispatch_dirty(self._views[view_name])
 
     def get_links(
         self,
@@ -230,12 +282,15 @@ class ViewManager(EventDispatcher):
     def view_for_stage(
         self,
         context_name: str,
-    ) -> View | None:
-        for view_name, contexts in self._view_stages.items():
-            if context_name in contexts:
-                return self._views.get(view_name)
+    ) -> View:
+        view_name = self._stage_views.get(context_name)
 
-        return None
+        if view_name is None:
+            raise ValueError(
+                f"Stage {context_name!r} is not linked to any view."
+            )
+
+        return self.require(view_name)
 
     # =================================== #
     # Events

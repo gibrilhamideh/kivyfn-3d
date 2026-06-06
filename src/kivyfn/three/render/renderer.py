@@ -12,6 +12,7 @@ from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 
 from kivyfn.three.lights.manager import LightManager
+from kivyfn.three.lights.limits import LightLimits
 from kivyfn.three.views.view_manager import ViewManager
 from kivyfn.three.render.stage_manager import RenderStageManager
 from kivyfn.three.render.instruction_manager import InstructionManager
@@ -51,6 +52,10 @@ class Renderer(EventDispatcher):
     def __init__(
         self,
         canvas: InstructionGroup,
+        *,
+        max_directional_lights,
+        max_point_lights,
+        max_spot_lights,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -59,7 +64,14 @@ class Renderer(EventDispatcher):
         self.stages = RenderStageManager()
         self.instructions = InstructionManager(self.stages)
         self.views = ViewManager()
-        self.lights = LightManager(self)
+        self.lights = LightManager(
+            renderer=self,
+            limits=LightLimits(
+                directional=max_directional_lights,
+                point=max_point_lights,
+                spot=max_spot_lights,
+            ),
+        )
 
         self.views.bind(
             on_view_dirty=lambda _, view, name: self.queue_view(

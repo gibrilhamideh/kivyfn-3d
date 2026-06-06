@@ -10,6 +10,7 @@ from kivyfn.three.graph.node import Node3D
 from kivyfn.three.graph.node_registry import SceneNodeRegistry
 from kivyfn.three.loaders.scene_loader import SceneLoader
 from kivyfn.three.scene.base import SceneControllerBase
+from kivyfn.three.scene.tools import SceneTools
 from kivyfn.three.types import (
         SceneObject,
         SceneBlueprint,
@@ -46,11 +47,24 @@ class Scene(SceneControllerBase):
             ")"
         )
 
-    def __init__(self, root: Node3D | None = None, **kwargs):
+    def __init__(
+            self,
+            root: Node3D | None = None,
+            *,
+            max_directional_lights: int = 2,
+            max_point_lights: int = 5,
+            max_spot_lights: int = 5,
+            **kwargs):
         super().__init__(**kwargs)
 
+        self.tools = SceneTools(self)
         self.loader = SceneLoader()
-        self.renderer = Renderer(self.render_group)
+        self.renderer = Renderer(
+            self.render_group,
+            max_directional_lights=max_directional_lights,
+            max_point_lights=max_point_lights,
+            max_spot_lights=max_spot_lights,
+        )
         self.viewport = Viewport(self)
 
         self.root = root or Node3D(name="root")
