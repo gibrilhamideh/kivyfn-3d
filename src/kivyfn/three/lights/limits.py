@@ -6,18 +6,29 @@ class LightLimits:
     Maximum number of lights uploaded to shader uniforms.
 
     Note:
-        Do not use a limit of 4 for point or spot lights when
-        uploading vec3 arrays through Kivy.
+        Values 2, 3, and 4 are not supported.
 
-        Kivy appears to interpret a list containing exactly four
-        vec3 elements differently internally (likely treating it as
-        a matrix or another special uniform type), which causes the
-        shader arrays to be uploaded incorrectly.
+        Kivy appears to interpret lists of these lengths as special
+        uniform types (e.g. vec2, vec3, vec4) rather than uniform
+        arrays, which causes shader array uploads to fail.
 
-        Use 5 or greater instead and rely on the corresponding
-        `*_light_count` uniform in the shader to determine how many
-        lights are actually active.
+        Use 1 or 5+ instead.
     """
-    directional: int = 2
+
+    directional: int = 1
     point: int = 5
     spot: int = 5
+
+    def __post_init__(self) -> None:
+        invalid = {2, 3, 4}
+
+        for name in ("directional", "point", "spot"):
+            value = getattr(self, name)
+
+            if value in invalid:
+                raise ValueError(
+                    f"LightLimits.{name}={value} is not allowed. "
+                    "Values 2, 3, and 4 are interpreted by Kivy as "
+                    "special uniform types (vec2/vec3/vec4) rather "
+                    "than uniform arrays. Use 1 or 5+ instead."
+                )

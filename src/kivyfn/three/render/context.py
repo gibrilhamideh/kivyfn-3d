@@ -215,7 +215,10 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
         name: str,
         value: Any,
     ) -> None:
-        self.ctx[name] = value
+        if isinstance(value, list):
+            self.ctx[name] = value.copy()
+        else:
+            self.ctx[name] = value
 
     def sync_uniforms(self) -> None:
         for key, value in self.uniforms.items():
@@ -297,6 +300,10 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
         instruction,
     ) -> None:
         self.object_group.remove(instruction)
+
+    def ask_update(self) -> None:
+        self.ctx.ask_update()
+
 
     # =================================== #
     # View & Projections

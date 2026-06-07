@@ -51,7 +51,7 @@ class Scene(SceneControllerBase):
             self,
             root: Node3D | None = None,
             *,
-            max_directional_lights: int = 2,
+            max_directional_lights: int = 1,
             max_point_lights: int = 5,
             max_spot_lights: int = 5,
             **kwargs):
