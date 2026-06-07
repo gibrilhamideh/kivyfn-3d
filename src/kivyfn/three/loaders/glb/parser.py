@@ -25,6 +25,30 @@ from kivyfn.three.assets.geometry import Geometry, GeometryBounds
 from kivyfn.three.assets.material import Material
 
 
+
+# TODO:
+# Normal mapping currently assumes every mesh has valid tangent-space data.
+# Generated primitives (Plane, Cube, etc.) may provide placeholder tangents
+# only to satisfy the vertex format and are not guaranteed to produce a
+# correct TBN basis.
+# Add:
+#     uniform int has_tangents;
+#     uniform int use_normal_mapping;
+# Then only use compute_normal() when both are enabled:
+#     vec3 normal = normalize(normal_out);
+#     if (
+#         has_tangents == 1 &&
+#         use_normal_mapping == 1
+#     ) {
+#         normal = compute_normal();
+#     }
+# Geometry:
+#     has_tangents -> true only when tangent data is valid.
+# Material:
+#     use_normal_mapping -> true only when a normal texture is present.
+# This prevents incorrect lighting on primitives using placeholder tangents
+# and avoids constructing an invalid TBN matrix.
+
 @dataclass(slots=True)
 class GlbNode:
     raw: Any

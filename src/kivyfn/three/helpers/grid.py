@@ -7,12 +7,12 @@ import numpy as np
 from kivyfn.three.assets.material import Material
 from kivyfn.three.assets.object3d import Object3D
 from kivyfn.three.assets.geometry import Geometry
+from kivyfn.three.math.vector import Vector3
 
 
 class GridHelper(Object3D):
     def __init__(
         self,
-        material: Material,
         size: float = 10.0,
         divisions: int = 10,
         axis: str = "xz",
@@ -28,9 +28,11 @@ class GridHelper(Object3D):
 
         super().__init__(
             geometry=geometry,
-            material=material,
+            material=Material(),
             **kwargs,
         )
+
+        self.set_translation(Vector3(0.0, -0.01, 0.0))
 
     def _create_geometry(
         self,
