@@ -5,8 +5,6 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from kivy.graphics.transformation import Matrix
-
 from kivyfn.three.math.vector import Vector3
 
 if TYPE_CHECKING:
@@ -29,6 +27,25 @@ class Viewport:
     @property
     def aspect(self) -> float:
         return self.width / self.height
+
+    def world_to_screen(
+        self,
+        point: Vector3,
+        *,
+        view: View,
+    ) -> tuple[float, float, float] | None:
+        projection = view.get_projection_matrix(self.aspect)
+        view_matrix = view.get_view_matrix()
+
+        ndc = (projection @ view_matrix).transform_point(point)
+
+        if ndc.z < -1.0 or ndc.z > 1.0:
+            return None
+
+        x = self.scene.x + ((ndc.x + 1.0) * 0.5 * self.width)
+        y = self.scene.y + ((ndc.y + 1.0) * 0.5 * self.height)
+
+        return x, y, ndc.z
 
     def screen_to_ndc(
         self,
@@ -74,28 +91,18 @@ class Viewport:
         top = view.near * math.tan(
             math.radians(view.fov) / 2.0
         )
-
         right = top * self.aspect
 
-        camera_x = ndc_x * right
-        camera_y = ndc_y * top
-        camera_z = -view.near
+        camera_point = Vector3(
+            ndc_x * right,
+            ndc_y * top,
+            -view.near,
+        )
 
         inverse_view = view.get_view_matrix().inverse()
 
-        origin = self._transform_point(
-            inverse_view,
-            0.0,
-            0.0,
-            0.0,
-        )
-
-        target = self._transform_point(
-            inverse_view,
-            camera_x,
-            camera_y,
-            camera_z,
-        )
+        origin = inverse_view.transform_point(Vector3.zero())
+        target = inverse_view.transform_point(camera_point)
 
         direction = (target - origin).normalize()
 
@@ -113,40 +120,25 @@ class Viewport:
         right = view.ortho_size / 2.0
         top = right / self.aspect
 
-        camera_x = ndc_x * right
-        camera_y = ndc_y * top
-
-        inverse_view = view.get_view_matrix().inverse()
-
-        origin = self._transform_point(
-            inverse_view,
-            camera_x,
-            camera_y,
+        origin_camera = Vector3(
+            ndc_x * right,
+            ndc_y * top,
             0.0,
         )
 
-        target = self._transform_point(
-            inverse_view,
-            camera_x,
-            camera_y,
+        target_camera = Vector3(
+            ndc_x * right,
+            ndc_y * top,
             -1.0,
         )
+
+        inverse_view = view.get_view_matrix().inverse()
+
+        origin = inverse_view.transform_point(origin_camera)
+        target = inverse_view.transform_point(target_camera)
 
         direction = (target - origin).normalize()
 
         return origin, direction
 
-    def _transform_point(
-        self,
-        matrix: Matrix,
-        x: float,
-        y: float,
-        z: float,
-    ) -> Vector3:
-        result = matrix.transform_point(x, y, z)
 
-        return Vector3(
-            result[0],
-            result[1],
-            result[2],
-        )

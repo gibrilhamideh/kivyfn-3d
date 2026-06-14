@@ -3,6 +3,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from kivy.uix.widget import Widget
 
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.views.viewport import Viewport
@@ -10,6 +11,9 @@ from kivyfn.three.graph.node import Node3D
 from kivyfn.three.graph.node_registry import SceneNodeRegistry
 from kivyfn.three.loaders.scene_loader import SceneLoader
 from kivyfn.three.scene.base import SceneControllerBase
+from kivyfn.three.overlays.attachment import Attachment
+from kivyfn.three.overlays.manager import AttachmentManager
+from kivyfn.three.math.vector import Vector3, Vector2
 from kivyfn.three.scene.tools import SceneTools
 from kivyfn.three.types import (
         SceneObject,
@@ -57,16 +61,17 @@ class Scene(SceneControllerBase):
             **kwargs):
         super().__init__(**kwargs)
 
-        self.tools = SceneTools(self)
         self.loader = SceneLoader()
+        self.tools = SceneTools(self)
+        self.viewport = Viewport(self)
         self.renderer = Renderer(
             self.render_group,
             max_directional_lights=max_directional_lights,
             max_point_lights=max_point_lights,
             max_spot_lights=max_spot_lights,
         )
-        self.viewport = Viewport(self)
 
+        self.attachments = AttachmentManager(self)
         self.root = root or Node3D(name="root")
         self.nodes = SceneNodeRegistry()
 
@@ -295,6 +300,35 @@ class Scene(SceneControllerBase):
             scene_blueprint=scene_blueprint,
             stage_name=stage_name
         )
+
+    # =================================== #
+    # Overlays
+    # =================================== #
+    def attach_widget(
+        self,
+        anchor: Node3D,
+        widget: Widget,
+        *,
+        view_name: str = "main",
+        offset: Vector2 | None = None,
+        world_offset: Vector3 | None = None,
+        hide_when_offscreen: bool = True,
+    ) -> Attachment:
+        return self.attachments.attach(
+            anchor,
+            widget,
+            view_name=view_name,
+            offset=offset,
+            world_offset=world_offset,
+            hide_when_offscreen=hide_when_offscreen,
+        )
+
+
+    def detach_widget(
+        self,
+        widget: Widget,
+    ) -> None:
+        self.attachments.detach_widget(widget)
 
     # =================================== #
     # Exports

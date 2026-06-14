@@ -3,7 +3,7 @@
 from __future__ import annotations
 from typing import Literal
 import math
-from kivy.graphics.transformation import Matrix
+
 from kivy.properties import (
         NumericProperty,
         ObjectProperty,
@@ -11,6 +11,7 @@ from kivy.properties import (
 )
 
 from kivyfn.three.math.vector import Vector3
+from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.graph.node import Node3D
 
 
@@ -67,39 +68,29 @@ class View(Node3D):
         elif value == "orthographic":
             self.perspective = 0
 
-    def get_view_matrix(self) -> Matrix:
-        matrix = Matrix()
-        return matrix.look_at(
-            self.position.x,
-            self.position.y,
-            self.position.z,
-            self.target.x,
-            self.target.y,
-            self.target.z,
-            self.up.x,
-            self.up.y,
-            self.up.z,
+    def get_view_matrix(self) -> Matrix4:
+        return Matrix4.look_at(
+            self.position,
+            self.target,
+            self.up,
         )
 
     def get_projection_matrix(
         self,
         aspect: float,
-    ) -> Matrix:
-        # Evaluate layout dimensions contextually depending on active matrix styling
+    ) -> Matrix4:
         if self.perspective == 0.0:
-            # Orthographic view frustum calculations based on world units
             right = self.ortho_size / 2.0
             left = -right
             top = right / aspect
             bottom = -top
         else:
-            # Traditional Perspective field-of-view calculation
             top = self.near * self._tan_half_fov()
             bottom = -top
             right = top * aspect
             left = -right
 
-        return Matrix().view_clip(
+        return Matrix4.view_clip(
             left,
             right,
             bottom,

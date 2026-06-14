@@ -60,6 +60,51 @@ class Matrix4:
     def identity(cls) -> Matrix4:
         return cls()
 
+
+    @classmethod
+    def look_at(
+        cls,
+        eye: Vector3,
+        target: Vector3,
+        up: Vector3,
+    ) -> Matrix4:
+        forward = (target - eye).normalize()
+        right = forward.cross(up).normalize()
+        true_up = right.cross(forward).normalize()
+
+        return cls([
+            [right.x, right.y, right.z, -right.dot(eye)],
+            [true_up.x, true_up.y, true_up.z, -true_up.dot(eye)],
+            [-forward.x, -forward.y, -forward.z, forward.dot(eye)],
+            [0.0, 0.0, 0.0, 1.0],
+        ])
+
+    @classmethod
+    def view_clip(
+        cls,
+        left: float,
+        right: float,
+        bottom: float,
+        top: float,
+        near: float,
+        far: float,
+        perspective: float,
+    ) -> Matrix4:
+        if perspective == 0.0:
+            return cls([
+                [2.0 / (right - left), 0.0, 0.0, -(right + left) / (right - left)],
+                [0.0, 2.0 / (top - bottom), 0.0, -(top + bottom) / (top - bottom)],
+                [0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near)],
+                [0.0, 0.0, 0.0, 1.0],
+            ])
+
+        return cls([
+            [(2.0 * near) / (right - left), 0.0, (right + left) / (right - left), 0.0],
+            [0.0, (2.0 * near) / (top - bottom), (top + bottom) / (top - bottom), 0.0],
+            [0.0, 0.0, -(far + near) / (far - near), -(2.0 * far * near) / (far - near)],
+            [0.0, 0.0, -1.0, 0.0],
+        ])
+
     def transpose(self) -> Matrix4:
         return Matrix4(self.values.T)
 
@@ -71,27 +116,41 @@ class Matrix4:
         normal = np.linalg.inv(rotation).T
         return Matrix3(normal.astype(np.float32))
 
-    def transform_point(self, point: Vector3) -> Vector3:
+    def transform_point(
+        self,
+        point: Vector3,
+    ) -> Vector3:
         result = self.values @ np.array(
             [point.x, point.y, point.z, 1.0],
             dtype=np.float32,
         )
 
-        w = result[3]
+        w = float(result[3])
 
         if w != 0.0 and w != 1.0:
             result = result / w
 
-        return Vector3(result[0], result[1], result[2])
+        return Vector3(
+            float(result[0]),
+            float(result[1]),
+            float(result[2]),
+        )
 
 
-    def transform_direction(self, direction: Vector3) -> Vector3:
+    def transform_direction(
+        self,
+        direction: Vector3,
+    ) -> Vector3:
         result = self.values @ np.array(
             [direction.x, direction.y, direction.z, 0.0],
             dtype=np.float32,
         )
 
-        return Vector3(result[0], result[1], result[2])
+        return Vector3(
+            float(result[0]),
+            float(result[1]),
+            float(result[2]),
+        )
 
     def tolist(self):
         return self.values.tolist()

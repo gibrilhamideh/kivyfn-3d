@@ -270,8 +270,8 @@ class LightManager(EventDispatcher):
         self._apply_uniforms_to_tags(
             tags=set(config.receiver_tags),
             uniforms={
-                config.view_uniform: view.get_view_matrix(),
-                config.projection_uniform: view.get_projection_matrix(1.0),
+                config.view_uniform: view.get_view_matrix().to_uniform(),
+                config.projection_uniform: view.get_projection_matrix(1.0).to_uniform(),
                 "shadow_bias": config.bias,
                 "shadow_normal_bias": config.normal_bias,
             },

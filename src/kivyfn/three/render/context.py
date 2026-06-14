@@ -310,8 +310,8 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # =================================== #
 
     def update_view(self, view: View) -> None:
-        self.ctx["projection_mat"] = view.get_projection_matrix(self.aspect)
-        self.ctx["view_mat"] = view.get_view_matrix()
+        self.ctx["projection_mat"] = view.get_projection_matrix(self.aspect).to_uniform()
+        self.ctx["view_mat"] = view.get_view_matrix().to_uniform()
 
     @property
     def projection_mat(self):
