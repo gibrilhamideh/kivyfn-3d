@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class Attachment:
+class Overlay:
     scene: Scene
     anchor: Node3D
     widget: Widget

@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from kivy.clock import Clock
 from kivy.uix.widget import Widget
 
-from kivyfn.three.overlays.attachment import Attachment
 from kivyfn.three.math.vector import Vector2, Vector3
+from kivyfn.three.overlays.overlay import Overlay
 
 if TYPE_CHECKING:
     from kivyfn.three.graph.node import Node3D
     from kivyfn.three.scene.scene import Scene
 
 
-class AttachmentManager:
+class OverlayManager:
     def __init__(
         self,
         scene: Scene,
@@ -22,12 +23,14 @@ class AttachmentManager:
         self.scene = scene
         self.layer = layer or scene
 
-        self._attachments: list[Attachment] = []
-        self._attachments_by_widget: dict[Widget, Attachment] = {}
-        self._attachments_by_anchor: dict[Node3D, list[Attachment]] = {}
-        self._attachments_by_view: dict[str, list[Attachment]] = {}
+        self._overlays: list[Overlay] = []
+        self._overlays_by_widget: dict[Widget, Overlay] = {}
+        self._overlays_by_anchor: dict[Node3D, list[Overlay]] = {}
+        self._overlays_by_view: dict[str, list[Overlay]] = {}
 
-        self._dirty = True
+        self._queue: set[int] = set()
+        self._queued_overlays: dict[int, Overlay] = {}
+        self._trigger_flush = Clock.create_trigger(self.flush, -1)
 
         self.scene.bind(
             pos=self._on_viewport_dirty,
@@ -47,11 +50,11 @@ class AttachmentManager:
         offset: Vector2 | None = None,
         world_offset: Vector3 | None = None,
         hide_when_offscreen: bool = True,
-    ) -> Attachment:
-        if widget in self._attachments_by_widget:
-            raise ValueError("Widget is already attached.")
+    ) -> Overlay:
+        if widget in self._overlays_by_widget:
+            raise ValueError("Widget is already attached to an overlay.")
 
-        attachment = Attachment(
+        overlay = Overlay(
             scene=self.scene,
             anchor=anchor,
             widget=widget,
@@ -61,10 +64,10 @@ class AttachmentManager:
             hide_when_offscreen=hide_when_offscreen,
         )
 
-        self._attachments.append(attachment)
-        self._attachments_by_widget[widget] = attachment
-        self._attachments_by_anchor.setdefault(anchor, []).append(attachment)
-        self._attachments_by_view.setdefault(view_name, []).append(attachment)
+        self._overlays.append(overlay)
+        self._overlays_by_widget[widget] = overlay
+        self._overlays_by_anchor.setdefault(anchor, []).append(overlay)
+        self._overlays_by_view.setdefault(view_name, []).append(overlay)
 
         anchor.bind(
             on_transform_dirty=self._on_anchor_dirty,
@@ -72,77 +75,96 @@ class AttachmentManager:
         )
 
         self.layer.add_widget(widget)
+        self.queue(overlay)
 
-        attachment.update()
-        self.mark_dirty()
+        return overlay
 
-        return attachment
-
-    def detach(self, attachment: Attachment) -> None:
-        if attachment not in self._attachments:
+    def detach(self, overlay: Overlay) -> None:
+        if overlay not in self._overlays:
             return
 
-        self._attachments.remove(attachment)
-        self._attachments_by_widget.pop(attachment.widget, None)
+        self._dequeue(overlay)
 
-        anchor_items = self._attachments_by_anchor.get(attachment.anchor)
+        self._overlays.remove(overlay)
+        self._overlays_by_widget.pop(overlay.widget, None)
+
+        anchor_items = self._overlays_by_anchor.get(overlay.anchor)
 
         if anchor_items is not None:
-            if attachment in anchor_items:
-                anchor_items.remove(attachment)
+            if overlay in anchor_items:
+                anchor_items.remove(overlay)
 
             if not anchor_items:
-                self._attachments_by_anchor.pop(attachment.anchor, None)
+                self._overlays_by_anchor.pop(overlay.anchor, None)
 
-                attachment.anchor.unbind(
+                overlay.anchor.unbind(
                     on_transform_dirty=self._on_anchor_dirty,
                     on_visibility_dirty=self._on_anchor_dirty,
                 )
 
-        view_items = self._attachments_by_view.get(attachment.view_name)
+        view_items = self._overlays_by_view.get(overlay.view_name)
 
         if view_items is not None:
-            if attachment in view_items:
-                view_items.remove(attachment)
+            if overlay in view_items:
+                view_items.remove(overlay)
 
             if not view_items:
-                self._attachments_by_view.pop(attachment.view_name, None)
+                self._overlays_by_view.pop(overlay.view_name, None)
 
-        attachment.destroy()
-        self.mark_dirty()
+        overlay.destroy()
 
-    def detach_widget(self, widget: Widget) -> None:
-        attachment = self._attachments_by_widget.get(widget)
+    def detach_by_widget(self, widget: Widget) -> None:
+        overlay = self._overlays_by_widget.get(widget)
 
-        if attachment is not None:
-            self.detach(attachment)
+        if overlay is not None:
+            self.detach(overlay)
 
-    def detach_anchor(self, anchor: Node3D) -> None:
-        for attachment in list(self._attachments_by_anchor.get(anchor, [])):
-            self.detach(attachment)
+    def detach_by_anchor(self, anchor: Node3D) -> None:
+        for overlay in list(self._overlays_by_anchor.get(anchor, [])):
+            self.detach(overlay)
+
+    def detach_by_subtree(self, root: Node3D) -> None:
+        for node in list(root.walk(filter="all")):
+            self.detach_by_anchor(node)
 
     def clear(self) -> None:
-        for attachment in list(self._attachments):
-            self.detach(attachment)
+        for overlay in list(self._overlays):
+            self.detach(overlay)
 
-    def mark_dirty(self) -> None:
-        self._dirty = True
-
-    def update(self, *, force: bool = False) -> None:
-        if not force and not self._dirty:
+    def queue(self, overlay: Overlay) -> None:
+        if overlay not in self._overlays:
             return
 
-        for attachment in self._attachments:
-            attachment.update()
+        key = id(overlay)
+        self._queue.add(key)
+        self._queued_overlays[key] = overlay
+        self._trigger_flush()
 
-        self._dirty = False
+    def update(self, *, force: bool = False) -> None:
+        if force:
+            for overlay in self._overlays:
+                overlay.update()
+            return
+
+        self.flush()
+
+    def flush(self, *_) -> None:
+        while self._queue:
+            key = self._queue.pop()
+            overlay = self._queued_overlays.pop(key, None)
+
+            if overlay is not None and overlay in self._overlays:
+                overlay.update()
 
     def update_view(self, view_name: str) -> None:
-        for attachment in self._attachments_by_view.get(view_name, []):
-            attachment.update()
+        for overlay in self._overlays_by_view.get(view_name, []):
+            self.queue(overlay)
 
     def destroy(self) -> None:
         self.clear()
+        self._queue.clear()
+        self._queued_overlays.clear()
+        self._trigger_flush.cancel()
 
         self.scene.unbind(
             pos=self._on_viewport_dirty,
@@ -153,11 +175,18 @@ class AttachmentManager:
             on_view_dirty=self._on_view_dirty,
         )
 
-    def _on_anchor_dirty(self, *_):
-        self.mark_dirty()
+    def _dequeue(self, overlay: Overlay) -> None:
+        key = id(overlay)
+        self._queue.discard(key)
+        self._queued_overlays.pop(key, None)
+
+    def _on_anchor_dirty(self, anchor: Node3D, *_):
+        for overlay in self._overlays_by_anchor.get(anchor, []):
+            self.queue(overlay)
 
     def _on_view_dirty(self, _view_manager, view, _stage_name):
         self.update_view(view.name)
 
     def _on_viewport_dirty(self, *_):
-        self.mark_dirty()
+        for overlay in self._overlays:
+            self.queue(overlay)

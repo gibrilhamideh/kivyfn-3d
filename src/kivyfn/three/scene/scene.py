@@ -3,17 +3,13 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from kivy.uix.widget import Widget
-
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.graph.node import Node3D
 from kivyfn.three.graph.node_registry import SceneNodeRegistry
 from kivyfn.three.loaders.scene_loader import SceneLoader
 from kivyfn.three.scene.base import SceneControllerBase
-from kivyfn.three.overlays.attachment import Attachment
-from kivyfn.three.overlays.manager import AttachmentManager
-from kivyfn.three.math.vector import Vector3, Vector2
+from kivyfn.three.overlays.manager import OverlayManager
 from kivyfn.three.scene.tools import SceneTools
 from kivyfn.three.types import (
         SceneObject,
@@ -71,7 +67,7 @@ class Scene(SceneControllerBase):
             max_spot_lights=max_spot_lights,
         )
 
-        self.attachments = AttachmentManager(self)
+        self.overlays = OverlayManager(self)
         self.root = root or Node3D(name="root")
         self.nodes = SceneNodeRegistry()
 
@@ -238,6 +234,7 @@ class Scene(SceneControllerBase):
 
         node.parent.remove_child(node)
 
+        self.overlays.detach_by_subtree(node)
         self.renderer.queue_destroy(node)
 
 
@@ -300,35 +297,6 @@ class Scene(SceneControllerBase):
             scene_blueprint=scene_blueprint,
             stage_name=stage_name
         )
-
-    # =================================== #
-    # Overlays
-    # =================================== #
-    def attach_widget(
-        self,
-        anchor: Node3D,
-        widget: Widget,
-        *,
-        view_name: str = "main",
-        offset: Vector2 | None = None,
-        world_offset: Vector3 | None = None,
-        hide_when_offscreen: bool = True,
-    ) -> Attachment:
-        return self.attachments.attach(
-            anchor,
-            widget,
-            view_name=view_name,
-            offset=offset,
-            world_offset=world_offset,
-            hide_when_offscreen=hide_when_offscreen,
-        )
-
-
-    def detach_widget(
-        self,
-        widget: Widget,
-    ) -> None:
-        self.attachments.detach_widget(widget)
 
     # =================================== #
     # Exports
