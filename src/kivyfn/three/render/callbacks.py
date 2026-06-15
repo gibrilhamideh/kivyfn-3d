@@ -5,7 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kivy.graphics import Callback
+from kivy.graphics.opengl import (
+    GL_TEXTURE0,
+    GL_TEXTURE_CUBE_MAP,
+    glActiveTexture,
+    glBindTexture,
+)
 
+from kivyfn.three.utils.texture import CubeTexture
 from kivyfn.three.math.matrix import Matrix3, Matrix4
 
 if TYPE_CHECKING:
@@ -74,6 +81,17 @@ class MaterialCallback(Callback):
         self,
         *_,
     ) -> None:
+
+        self.stage.apply_uniform(
+            "has_base_texture",
+            1.0 if self.material.base_texture is not None else 0.0,
+        )
+
+        self.stage.apply_uniform(
+            "has_metallic_roughness_texture",
+            1.0 if self.material.metallic_roughness_texture is not None else 0.0,
+        )
+
         for key, value in self.material.uniforms.items():
             if value is None:
                 continue
@@ -131,3 +149,32 @@ class ObjectIdCallback(Callback):
         ]
 
         self.stage.apply_uniform(self.output_uniform, id)
+
+class BindCubeTextureCallback(Callback):
+    def __init__(
+        self,
+        *,
+        stage,
+        uniform: str,
+        texture: CubeTexture,
+        slot: int,
+        **kwargs,
+    ) -> None:
+        self.stage = stage
+        self.uniform = uniform
+        self.texture = texture
+        self.slot = slot
+
+        super().__init__(
+            self.apply,
+            **kwargs,
+        )
+
+    def apply(self, *_):
+        glActiveTexture(GL_TEXTURE0 + self.slot)
+        glBindTexture(GL_TEXTURE_CUBE_MAP, self.texture.texture_id)
+
+        self.stage.apply_uniform(
+            self.uniform,
+            self.slot,
+        )

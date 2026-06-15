@@ -313,6 +313,12 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
         self.ctx["projection_mat"] = view.get_projection_matrix(self.aspect).to_uniform()
         self.ctx["view_mat"] = view.get_view_matrix().to_uniform()
 
+        self.ctx["camera_position"] = [
+            view.position.x,
+            view.position.y,
+            view.position.z,
+        ]
+
     @property
     def projection_mat(self):
         return self.ctx["projection_mat"]
