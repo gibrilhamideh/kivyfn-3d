@@ -3,6 +3,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from kivy.properties import NumericProperty
+
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.graph.node import Node3D
@@ -30,51 +32,72 @@ if TYPE_CHECKING:
 
 class Scene(SceneControllerBase):
 
+    max_directional_lights: int = NumericProperty(1)
+    max_spot_lights: int = NumericProperty(5)
+    max_point_lights: int = NumericProperty(5)
+
     def __repr__(self) -> str:
         root = getattr(self, "root", None)
+        nodes = getattr(self, "nodes", None)
+        stages = getattr(self, "stages", None)
+        controllers = getattr(self, "controllers", None)
 
-        if root is None:
+        if root is None or nodes is None or stages is None or controllers is None:
             return super().__repr__()
 
         return (
             "Scene(\n"
             f"  root={root.name!r},\n"
-            f"  contexts={len(self.stages.registry.contexts)},\n"
-            f"  passes={len(self.stages.registry.passes)},\n"
-            f"  nodes={len(self.nodes)},\n"
-            f"  controllers={len(self.controllers)},\n"
+            f"  contexts={len(stages.registry.contexts)},\n"
+            f"  passes={len(stages.registry.passes)},\n"
+            f"  nodes={len(nodes)},\n"
+            f"  controllers={len(controllers)},\n"
             f"  size=({self.width}, {self.height})\n"
             ")"
         )
 
     def __init__(
             self,
-            root: Node3D | None = None,
             *,
             max_directional_lights: int = 1,
             max_point_lights: int = 5,
             max_spot_lights: int = 5,
             **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(
+            max_directional_lights=max_directional_lights,
+            max_point_lights=max_point_lights,
+            max_spot_lights=max_spot_lights,
+            **kwargs)
+
+        self.loader: SceneLoader
+        self.tools: SceneTools
+        self.viewport: Viewport
+        self.renderer: Renderer
+        self.overlays: OverlayManager
+        self.root: Node3D
+        self.nodes: SceneNodeRegistry
+
+    def on_kv_post(self, base_widget) -> None:
 
         self.loader = SceneLoader()
         self.tools = SceneTools(self)
         self.viewport = Viewport(self)
         self.renderer = Renderer(
             self.render_group,
-            max_directional_lights=max_directional_lights,
-            max_point_lights=max_point_lights,
-            max_spot_lights=max_spot_lights,
+            max_directional_lights=self.max_directional_lights,
+            max_point_lights=self.max_point_lights,
+            max_spot_lights=self.max_spot_lights,
         )
 
         self.overlays = OverlayManager(self)
-        self.root = root or Node3D(name="root")
+        self.root = Node3D(name="root")
         self.nodes = SceneNodeRegistry()
 
         self.bind(scene_viewport_x=self.renderer.setter("scene_viewport_x"))
         self.bind(scene_viewport_y=self.renderer.setter("scene_viewport_y"))
         self.bind(scene_viewport_width=self.renderer.setter("scene_viewport_width"))
         self.bind(scene_viewport_height=self.renderer.setter("scene_viewport_height"))
+        super().on_kv_post(base_widget)
 
 
     # =================================== #

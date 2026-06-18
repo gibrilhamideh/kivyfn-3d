@@ -20,6 +20,18 @@ if TYPE_CHECKING:
     from kivyfn.three.assets.material import Material
     from kivyfn.three.render.context import RenderContext
 
+TEXTURE_NAMES = (
+    "base_texture",
+    "normal_texture",
+    "emissive_texture",
+    "metallic_roughness_texture",
+    "occlusion_texture",
+    "roughness_texture",
+    "metallic_texture",
+    "specular_texture",
+    "displacement_texture",
+)
+
 
 class TransformCallback(Callback):
     def __init__(
@@ -82,15 +94,13 @@ class MaterialCallback(Callback):
         *_,
     ) -> None:
 
-        self.stage.apply_uniform(
-            "has_base_texture",
-            1.0 if self.material.base_texture is not None else 0.0,
-        )
-
-        self.stage.apply_uniform(
-            "has_metallic_roughness_texture",
-            1.0 if self.material.metallic_roughness_texture is not None else 0.0,
-        )
+        for texture_name in TEXTURE_NAMES:
+            self.stage.apply_uniform(
+                f"has_{texture_name}",
+                1.0
+                if getattr(self.material, texture_name) is not None
+                else 0.0,
+            )
 
         for key, value in self.material.uniforms.items():
             if value is None:
