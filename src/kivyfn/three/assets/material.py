@@ -47,7 +47,7 @@ class Material(EventDispatcher):
     emissive_factor: list[float] = ListProperty([0.0, 0.0, 0.0])
 
     base_color: list[float] = ListProperty(
-        [1.0, 1.0, 1.0, 1.0],
+        [0.65, 0.65, 0.65, 1.0],
     )
 
     # =================================== #
