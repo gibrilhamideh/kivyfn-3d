@@ -327,6 +327,7 @@ class Renderer(EventDispatcher):
                 self.lights.create(command.node)
 
             elif command.op == "destroy":
+                self.lights.destroy(command.node)
                 self.sync_destroy_queue(command.node)
 
         # ---) View

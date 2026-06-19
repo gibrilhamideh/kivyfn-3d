@@ -79,6 +79,25 @@ class ViewManager(EventDispatcher):
             replace=replace,
         )
 
+    def destroy(
+        self,
+        name: str,
+    ) -> View | None:
+        view = self._views.pop(name, None)
+
+        if view is None:
+            return None
+
+        self._unbind_view(view)
+
+        context_names = self._view_stages.pop(name, set())
+
+        for context_name in context_names:
+            if self._stage_views.get(context_name) == name:
+                del self._stage_views[context_name]
+
+        return view
+
     def add(
         self,
         view: View,
@@ -118,25 +137,6 @@ class ViewManager(EventDispatcher):
 
         if view is None:
             raise ValueError(f"View not found: {name!r}")
-
-        return view
-
-    def remove(
-        self,
-        name: str,
-    ) -> View | None:
-        view = self._views.pop(name, None)
-
-        if view is None:
-            return None
-
-        self._unbind_view(view)
-
-        context_names = self._view_stages.pop(name, set())
-
-        for context_name in context_names:
-            if self._stage_views.get(context_name) == name:
-                del self._stage_views[context_name]
 
         return view
 

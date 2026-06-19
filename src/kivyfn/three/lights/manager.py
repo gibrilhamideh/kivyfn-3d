@@ -136,6 +136,64 @@ class LightManager(EventDispatcher):
         if changed:
             self._sync_uniforms_trigger()
 
+    def destroy(
+        self,
+        node: SceneObject,
+    ) -> None:
+        changed = False
+
+        for light in list(node.walk(filter="lights")):
+            light = cast("LightSource", light)
+
+            light_name = self.registry.name_of(light)
+            if light_name is None:
+                continue
+
+            light.unbind(
+                on_light_dirty=self.on_light_dirty,
+            )
+            light.unbind(
+                on_transform_dirty=self.on_transform_dirty,
+            )
+            light.unbind(
+                on_visibility_dirty=self.on_visibility_dirty,
+            )
+
+            self._bound_ids.discard(id(light))
+
+            shadow_pass = self._shadow_passes.pop(
+                light_name,
+                None,
+            )
+
+            shadow_view = self._shadow_views.pop(
+                light_name,
+                None,
+            )
+
+            if (
+                shadow_pass is not None
+                and self.renderer.stages.get(shadow_pass) is not None
+            ):
+                self.renderer.destroy_stage(
+                    shadow_pass,
+                )
+
+            if (
+                shadow_view is not None
+                and self.renderer.views.get(shadow_view) is not None
+            ):
+                self.renderer.views.destroy(
+                    shadow_view,
+                )
+
+            self.registry.remove(light_name)
+
+            changed = True
+
+        if changed:
+            self._sync_uniforms_trigger()
+
     # =================================== #
     # Dirty
     # =================================== #
@@ -204,11 +262,11 @@ class LightManager(EventDispatcher):
 
             light_name = self.registry.name_of(light)
             if light_name is None:
-                return
+                continue
 
             pass_name = self._shadow_passes.get(light_name)
             if pass_name is None:
-                return
+                continue
 
             if light.enabled and light.visible_in_tree:
                 self.renderer.show_stage(pass_name)
