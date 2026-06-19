@@ -14,6 +14,10 @@ class BaseController:
     def __init__(self):
         self.scene: Scene | None = None
 
+    def require_scene(self) -> Scene:
+        assert self.scene is not None
+        return self.scene
+
     def attach(self, scene: Scene) -> None:
         self.scene = scene
 

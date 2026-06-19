@@ -40,6 +40,7 @@ from kivy.core.window import Window
 from kivyfn.three.controls.base import BaseController
 from kivyfn.three.controls.orbit import OrbitCameraController
 from kivyfn.three.math.vector import Vector3
+from kivyfn.three.scene.scene import Scene
 
 if TYPE_CHECKING:
     from kivyfn.three.views.view import View
@@ -48,9 +49,12 @@ class BlenderCameraControls(BaseController):
     def __init__(
         self,
         view_name: str = "main",
-        orbit_sensitivity: float = 0.25,
-        pan_sensitivity: float = 0.01,
         zoom_sensitivity: float = 3.0,
+        orbit_sensitivity: float = 0.5,
+        pan_sensitivity: float = 0.5,
+        invert_pan_x: bool = False,
+        invert_pan_y: bool = False,
+        adaptive_pan: bool = True,
         min_pitch: float | None = None,
         max_pitch: float | None = None,
         min_zoom: float | None = None,
@@ -62,9 +66,12 @@ class BlenderCameraControls(BaseController):
 
         self.view_name = view_name
 
+        self.zoom_sensitivity = zoom_sensitivity
         self.orbit_sensitivity = orbit_sensitivity
         self.pan_sensitivity = pan_sensitivity
-        self.zoom_sensitivity = zoom_sensitivity
+        self.invert_pan_x = invert_pan_x
+        self.invert_pan_y = invert_pan_y
+        self.adaptive_pan = adaptive_pan
 
         self.min_pitch = min_pitch
         self.max_pitch = max_pitch
@@ -77,10 +84,11 @@ class BlenderCameraControls(BaseController):
         self._mode: str | None = None
         self._last_pos: tuple[float, float] | None = None
 
+
     @property
     def view(self) -> View:
-        assert self.scene is not None
-        return self.scene.views[self.view_name]
+        scene = self.require_scene()
+        return scene.views[self.view_name]
 
     # =================================== #
     # Events
@@ -183,6 +191,22 @@ class BlenderCameraControls(BaseController):
 
     def _pan(self, dx: float, dy: float) -> None:
         view = self.view
+        scene = self.require_scene()
+        units_per_pixel = self.pan_sensitivity
+
+        if self.invert_pan_x:
+            dx = -dx
+
+        if self.invert_pan_y:
+            dy = -dy
+
+        if self.adaptive_pan:
+            units_per_pixel *= OrbitCameraController.adaptive_pan_units_per_pixel(
+                eye=view.position,
+                target=view.target,
+                fov_y_degrees=view.fov,
+                screen_height=scene.height or 1.0,
+            )
 
         position, target, up = OrbitCameraController.pan(
             view.position,
@@ -190,16 +214,12 @@ class BlenderCameraControls(BaseController):
             view.up,
             dx=dx,
             dy=dy,
-            units_per_pixel=self.pan_sensitivity,
+            units_per_pixel=units_per_pixel,
             min_bounds=self.min_bounds,
             max_bounds=self.max_bounds,
         )
 
-        view.set_look_at(
-            position,
-            target,
-            up,
-        )
+        view.set_look_at(position, target, up)
 
     def _zoom(self, amount: float) -> None:
         view = self.view

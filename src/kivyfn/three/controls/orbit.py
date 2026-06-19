@@ -115,16 +115,16 @@ class OrbitCameraController:
         _, right, corrected_up, target = cls.basis(eye, target, up)
         delta = (
             (right * (-dx * units_per_pixel))
-            + (corrected_up * (dy * units_per_pixel))
+            + (corrected_up * (-dy * units_per_pixel))
         )
-        
+
         proposed_target = target + delta
-        
+
         if min_bounds is not None and max_bounds is not None:
             proposed_target.x = max(min_bounds.x, min(proposed_target.x, max_bounds.x))
             proposed_target.y = max(min_bounds.y, min(proposed_target.y, max_bounds.y))
             proposed_target.z = max(min_bounds.z, min(proposed_target.z, max_bounds.z))
-            
+
         allowed_delta = proposed_target - target
         return eye + allowed_delta, proposed_target, up
 
