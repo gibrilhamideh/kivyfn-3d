@@ -1,6 +1,8 @@
 # kivyfn/three/graph/node.py
 
 from __future__ import annotations
+from collections.abc import Callable
+
 
 from typing import (
     TYPE_CHECKING,
@@ -33,6 +35,8 @@ if TYPE_CHECKING:
     from kivyfn.three.controls.interaction import InteractionEvent
     from kivyfn.three.behaviors.behavior import Behavior
 
+
+WalkFilter = Callable[["SceneObject"], bool]
 
 NodeFilter = Literal[
     "all",
@@ -297,237 +301,6 @@ class Node3D(EventDispatcher):
     def __iter__(self) -> Iterator[Node3D | Object3D | Light3D]:
         return iter(self.children)
 
-    @overload
-    def walk(
-        self,
-        *,
-        filter: Literal["nodes"],
-        include_self: bool = True,
-    ) -> Iterator[Node3D]:
-        ...
-
-    @overload
-    def walk(
-        self,
-        *,
-        filter: Literal["objects"],
-        include_self: bool = True,
-    ) -> Iterator[Object3D]:
-        ...
-
-    @overload
-    def walk(
-        self,
-        *,
-        filter: Literal["lights"],
-        include_self: bool = True,
-    ) -> Iterator[Light3D]:
-        ...
-
-    @overload
-    def walk(
-        self,
-        *,
-        filter: Literal["all"] = "all",
-        include_self: bool = True,
-    ) -> Iterator[SceneObject]:
-        ...
-
-    def walk(
-        self,
-        *,
-        filter: NodeFilter = "all",
-        include_self: bool = True,
-    ) -> Iterator[Any]:
-        if include_self and self._matches_filter(self, filter):
-            yield self
-
-        for child in self.children:
-            yield from child.walk(
-                filter=filter,
-                include_self=True,
-            )
-
-    @overload
-    def walk_ancestors(
-        self,
-        *,
-        filter: Literal["nodes"],
-        include_self: bool = False,
-    ) -> Iterator[Node3D]:
-        ...
-
-    @overload
-    def walk_ancestors(
-        self,
-        *,
-        filter: Literal["objects"],
-        include_self: bool = False,
-    ) -> Iterator[Object3D]:
-        ...
-
-    @overload
-    def walk_ancestors(
-        self,
-        *,
-        filter: Literal["lights"],
-        include_self: bool = False,
-    ) -> Iterator[Light3D]:
-        ...
-
-    @overload
-    def walk_ancestors(
-        self,
-        *,
-        filter: Literal["all"] = "all",
-        include_self: bool = False,
-    ) -> Iterator[SceneObject]:
-        ...
-
-    def walk_ancestors(
-        self,
-        *,
-        filter: NodeFilter = "all",
-        include_self: bool = False,
-    ) -> Iterator[Any]:
-        current: SceneObject | None = (
-            self if include_self else self.parent
-        )
-
-        while current is not None:
-            if self._matches_filter(
-                current,
-                filter,
-            ):
-                yield current
-
-            current = current.parent
-
-    def nodes(
-        self,
-        *,
-        include_self: bool = True,
-    ) -> list[Node3D]:
-        return list(
-            self.walk(
-                filter="nodes",
-                include_self=include_self,
-            )
-        )
-
-    def objects(
-        self,
-        *,
-        include_self: bool = True,
-    ) -> list[Object3D]:
-        return list(
-            self.walk(
-                filter="objects",
-                include_self=include_self,
-            )
-        )
-
-    def lights(
-        self,
-        *,
-        include_self: bool = True,
-    ) -> list[Light3D]:
-        return list(
-            self.walk(
-                filter="lights",
-                include_self=include_self,
-            )
-        )
-
-    @overload
-    def descendants(
-        self,
-        *,
-        filter: Literal["nodes"],
-    ) -> list[Node3D]:
-        ...
-
-    @overload
-    def descendants(
-        self,
-        *,
-        filter: Literal["objects"],
-    ) -> list[Object3D]:
-        ...
-
-    @overload
-    def descendants(
-        self,
-        *,
-        filter: Literal["lights"],
-    ) -> list[Light3D]:
-        ...
-
-    @overload
-    def descendants(
-        self,
-        *,
-        filter: Literal["all"] = "all",
-    ) -> list[SceneObject]:
-        ...
-
-    def descendants(
-        self,
-        *,
-        filter: NodeFilter = "all",
-    ) -> list[Any]:
-        return list(
-            self.walk(
-                filter=filter,
-                include_self=False,
-            )
-        )
-
-    @overload
-    def ancestors(
-        self,
-        *,
-        filter: Literal["nodes"],
-    ) -> list[Node3D]:
-        ...
-
-    @overload
-    def ancestors(
-        self,
-        *,
-        filter: Literal["objects"],
-    ) -> list[Object3D]:
-        ...
-
-    @overload
-    def ancestors(
-        self,
-        *,
-        filter: Literal["lights"],
-    ) -> list[Light3D]:
-        ...
-
-    @overload
-    def ancestors(
-        self,
-        *,
-        filter: Literal["all"] = "all",
-    ) -> list[SceneObject]:
-        ...
-
-    def ancestors(
-        self,
-        *,
-        filter: NodeFilter = "all",
-        include_self: bool = False,
-    ) -> list[Any]:
-        return list(
-            self.walk_ancestors(
-                filter=filter,
-                include_self=include_self,
-            )
-        )
-
     def root(self) -> SceneObject:
         current: SceneObject = self
 
@@ -537,12 +310,312 @@ class Node3D(EventDispatcher):
         return current
 
     @overload
+    def walk(
+        self,
+        *,
+        filter: Literal["nodes"],
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[Node3D]:
+        ...
+
+    @overload
+    def walk(
+        self,
+        *,
+        filter: Literal["objects"],
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[Object3D]:
+        ...
+
+    @overload
+    def walk(
+        self,
+        *,
+        filter: Literal["lights"],
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[Light3D]:
+        ...
+
+    @overload
+    def walk(
+        self,
+        *,
+        filter: Literal["all"] = "all",
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[SceneObject]:
+        ...
+
+    def walk(
+        self,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[Any]:
+        if include_self and self._matches_walk(
+            self,
+            filter=filter,
+            include=include,
+            exclude=exclude,
+        ):
+            yield self
+
+        for child in self.children:
+            yield from child.walk(
+                filter=filter,
+                include_self=True,
+                include=include,
+                exclude=exclude,
+            )
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
+        filter: Literal["nodes"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[Node3D]:
+        ...
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
+        filter: Literal["objects"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[Object3D]:
+        ...
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
+        filter: Literal["lights"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[Light3D]:
+        ...
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
+        filter: Literal["all"] = "all",
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[SceneObject]:
+        ...
+
+    def walk_ancestors(
+        self,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[Any]:
+        current: SceneObject | None = self if include_self else self.parent
+
+        while current is not None:
+            if self._matches_walk(
+                current,
+                filter=filter,
+                include=include,
+                exclude=exclude,
+            ):
+                yield current
+
+            current = current.parent
+
+    def nodes(
+        self,
+        *,
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Node3D]:
+        return list(
+            self.walk(
+                filter="nodes",
+                include_self=include_self,
+                include=include,
+                exclude=exclude,
+            )
+        )
+
+    def objects(
+        self,
+        *,
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Object3D]:
+        return list(
+            self.walk(
+                filter="objects",
+                include_self=include_self,
+                include=include,
+                exclude=exclude,
+            )
+        )
+
+    def lights(
+        self,
+        *,
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Light3D]:
+        return list(
+            self.walk(
+                filter="lights",
+                include_self=include_self,
+                include=include,
+                exclude=exclude,
+            )
+        )
+
+    @overload
+    def descendants(
+        self,
+        *,
+        filter: Literal["nodes"],
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Node3D]:
+        ...
+
+    @overload
+    def descendants(
+        self,
+        *,
+        filter: Literal["objects"],
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Object3D]:
+        ...
+
+    @overload
+    def descendants(
+        self,
+        *,
+        filter: Literal["lights"],
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Light3D]:
+        ...
+
+    @overload
+    def descendants(
+        self,
+        *,
+        filter: Literal["all"] = "all",
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SceneObject]:
+        ...
+
+    def descendants(
+        self,
+        *,
+        filter: NodeFilter = "all",
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Any]:
+        return list(
+            self.walk(
+                filter=filter,
+                include_self=False,
+                include=include,
+                exclude=exclude,
+            )
+        )
+
+    @overload
+    def ancestors(
+        self,
+        *,
+        filter: Literal["nodes"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Node3D]:
+        ...
+
+    @overload
+    def ancestors(
+        self,
+        *,
+        filter: Literal["objects"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Object3D]:
+        ...
+
+    @overload
+    def ancestors(
+        self,
+        *,
+        filter: Literal["lights"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Light3D]:
+        ...
+
+    @overload
+    def ancestors(
+        self,
+        *,
+        filter: Literal["all"] = "all",
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SceneObject]:
+        ...
+
+    def ancestors(
+        self,
+        *,
+        filter: NodeFilter = "all",
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[Any]:
+        return list(
+            self.walk_ancestors(
+                filter=filter,
+                include_self=include_self,
+                include=include,
+                exclude=exclude,
+            )
+        )
+
+    @overload
     def find(
         self,
         name: str,
         *,
         filter: Literal["nodes"],
         include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> Node3D | None:
         ...
 
@@ -553,6 +626,8 @@ class Node3D(EventDispatcher):
         *,
         filter: Literal["objects"],
         include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> Object3D | None:
         ...
 
@@ -563,6 +638,8 @@ class Node3D(EventDispatcher):
         *,
         filter: Literal["lights"],
         include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> Light3D | None:
         ...
 
@@ -573,6 +650,8 @@ class Node3D(EventDispatcher):
         *,
         filter: Literal["all"] = "all",
         include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> SceneObject | None:
         ...
 
@@ -582,10 +661,14 @@ class Node3D(EventDispatcher):
         *,
         filter: NodeFilter = "all",
         include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> Any | None:
         for node in self.walk(
             filter=filter,
             include_self=include_self,
+            include=include,
+            exclude=exclude,
         ):
             if node.name == name:
                 return node
@@ -599,6 +682,8 @@ class Node3D(EventDispatcher):
         *,
         filter: Literal["nodes"],
         include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Node3D]:
         ...
 
@@ -609,6 +694,8 @@ class Node3D(EventDispatcher):
         *,
         filter: Literal["objects"],
         include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Object3D]:
         ...
 
@@ -619,6 +706,8 @@ class Node3D(EventDispatcher):
         *,
         filter: Literal["lights"],
         include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Light3D]:
         ...
 
@@ -629,6 +718,8 @@ class Node3D(EventDispatcher):
         *,
         filter: Literal["all"] = "all",
         include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[SceneObject]:
         ...
 
@@ -638,12 +729,16 @@ class Node3D(EventDispatcher):
         *,
         filter: NodeFilter = "all",
         include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Any]:
         return [
             node
             for node in self.walk(
                 filter=filter,
                 include_self=include_self,
+                include=include,
+                exclude=exclude,
             )
             if node.name == name
         ]
@@ -656,6 +751,8 @@ class Node3D(EventDispatcher):
         filter: Literal["nodes"],
         include_self: bool = True,
         case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> Node3D | None:
         ...
 
@@ -667,6 +764,8 @@ class Node3D(EventDispatcher):
         filter: Literal["objects"],
         include_self: bool = True,
         case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> Object3D | None:
         ...
 
@@ -678,6 +777,8 @@ class Node3D(EventDispatcher):
         filter: Literal["lights"],
         include_self: bool = True,
         case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> Light3D | None:
         ...
 
@@ -689,6 +790,8 @@ class Node3D(EventDispatcher):
         filter: Literal["all"] = "all",
         include_self: bool = True,
         case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> SceneObject | None:
         ...
 
@@ -699,12 +802,16 @@ class Node3D(EventDispatcher):
         filter: NodeFilter = "all",
         include_self: bool = True,
         case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> Any | None:
         matches = self.fuzzy_find_all(
             text,
             filter=filter,
             include_self=include_self,
             case_sensitive=case_sensitive,
+            include=include,
+            exclude=exclude,
         )
 
         return matches[0] if matches else None
@@ -717,6 +824,8 @@ class Node3D(EventDispatcher):
         filter: Literal["nodes"],
         include_self: bool = True,
         case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Node3D]:
         ...
 
@@ -728,6 +837,8 @@ class Node3D(EventDispatcher):
         filter: Literal["objects"],
         include_self: bool = True,
         case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Object3D]:
         ...
 
@@ -739,6 +850,8 @@ class Node3D(EventDispatcher):
         filter: Literal["lights"],
         include_self: bool = True,
         case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Light3D]:
         ...
 
@@ -750,6 +863,8 @@ class Node3D(EventDispatcher):
         filter: Literal["all"] = "all",
         include_self: bool = True,
         case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[SceneObject]:
         ...
 
@@ -760,6 +875,8 @@ class Node3D(EventDispatcher):
         filter: NodeFilter = "all",
         include_self: bool = True,
         case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Any]:
         needle = text if case_sensitive else text.lower()
 
@@ -768,6 +885,8 @@ class Node3D(EventDispatcher):
             for node in self.walk(
                 filter=filter,
                 include_self=include_self,
+                include=include,
+                exclude=exclude,
             )
             if needle in (
                 node.name if case_sensitive else node.name.lower()
@@ -783,6 +902,8 @@ class Node3D(EventDispatcher):
         filter: Literal["nodes"],
         include_self: bool = True,
         require_value: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Node3D]:
         ...
 
@@ -795,6 +916,8 @@ class Node3D(EventDispatcher):
         filter: Literal["objects"],
         include_self: bool = True,
         require_value: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Object3D]:
         ...
 
@@ -807,6 +930,8 @@ class Node3D(EventDispatcher):
         filter: Literal["lights"],
         include_self: bool = True,
         require_value: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Light3D]:
         ...
 
@@ -819,6 +944,8 @@ class Node3D(EventDispatcher):
         filter: Literal["all"] = "all",
         include_self: bool = True,
         require_value: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[SceneObject]:
         ...
 
@@ -830,12 +957,16 @@ class Node3D(EventDispatcher):
         filter: NodeFilter = "all",
         include_self: bool = True,
         require_value: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
     ) -> list[Any]:
         result: list[Any] = []
 
         for node in self.walk(
             filter=filter,
             include_self=include_self,
+            include=include,
+            exclude=exclude,
         ):
             extras = getattr(node, "extras", None)
 
@@ -966,3 +1097,22 @@ class Node3D(EventDispatcher):
             return node.kind == "node"
 
         return False
+
+    def _matches_walk(
+        self,
+        node: SceneObject,
+        *,
+        filter: NodeFilter,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> bool:
+        if not self._matches_filter(node, filter):
+            return False
+
+        if include is not None and not include(node):
+            return False
+
+        if exclude is not None and exclude(node):
+            return False
+
+        return True

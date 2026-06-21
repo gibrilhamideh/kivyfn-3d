@@ -70,19 +70,21 @@ class GlbBlueprint:
             ")"
         )
 
+    # TODO: need top change agrument copy becasue it ambiguis
     def instantiate(
         self,
         *,
-        material_copy: bool = False,
+        name: str = "",
+        copy: bool = False,
     ) -> SceneObject:
 
 
         if self.is_renderable:
             node = Object3D(
-                name=self.name,
+                name=name or self.name,
                 uid=self.uid,
                 geometry=self.require_geometry(),
-                material=self.require_material(copy=material_copy),
+                material=self.require_material(copy=copy),
             )
         else:
             node = Node3D(
@@ -95,7 +97,7 @@ class GlbBlueprint:
         for child in self.children:
             node.add_child(
                 child.instantiate(
-                    material_copy=material_copy,
+                    copy=copy,
                 )
             )
 

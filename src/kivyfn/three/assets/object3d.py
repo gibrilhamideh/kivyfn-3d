@@ -47,8 +47,6 @@ class Object3D(Node3D):
             f"geometry={geometry_name!r}, "
             f"material={material_name!r}, "
             f"children={len(self.children)}, "
-            f"pickable={self.pickable}, "
-            f"grabable={self.grabable}"
             ")"
         )
 
