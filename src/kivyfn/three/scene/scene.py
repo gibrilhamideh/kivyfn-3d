@@ -90,8 +90,8 @@ class Scene(SceneControllerBase):
         )
 
         self.overlays = OverlayManager(self)
-        self.root = Node3D(name="root")
         self.nodes = SceneNodeRegistry()
+        self.root = Node3D(name="root")
 
         self.bind(scene_viewport_x=self.renderer.setter("scene_viewport_x"))
         self.bind(scene_viewport_y=self.renderer.setter("scene_viewport_y"))

@@ -1,8 +1,6 @@
 # kivyfn/three/graph/node.py
 
 from __future__ import annotations
-from collections.abc import Callable
-
 
 from typing import (
     TYPE_CHECKING,
@@ -27,6 +25,7 @@ from kivyfn.three.math.vector import Vector3
 from kivyfn.three.math.transform import Transform
 
 if TYPE_CHECKING:
+    from kivyfn.three.scene import Scene
     from kivyfn.three.types import SceneObject, WalkFilter
     from kivyfn.three.math.quaternion import Quaternion
     from kivyfn.three.math.matrix import Matrix4
@@ -55,7 +54,7 @@ B = TypeVar("B", bound="Behavior")
 
 
 class Node3D(EventDispatcher):
-
+    scene: Scene | None = ObjectProperty(None, allownone=True)
     uid: str | None = StringProperty(None, allownone=True)
     name: str = StringProperty("")
     visible: bool = BooleanProperty(True)
