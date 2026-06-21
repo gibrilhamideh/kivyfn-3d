@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from typing import TYPE_CHECKING, TypeAlias, Literal
+from collections.abc import Callable
 
 
 
@@ -41,3 +42,6 @@ RenderContextName: TypeAlias = str
 RenderStageName: TypeAlias = str
 ViewName: TypeAlias = str
 LightName: TypeAlias = str
+
+
+WalkFilter = Callable[["SceneObject"], bool]

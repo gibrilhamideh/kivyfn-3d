@@ -27,7 +27,7 @@ from kivyfn.three.math.vector import Vector3
 from kivyfn.three.math.transform import Transform
 
 if TYPE_CHECKING:
-    from kivyfn.three.types import SceneObject
+    from kivyfn.three.types import SceneObject, WalkFilter
     from kivyfn.three.math.quaternion import Quaternion
     from kivyfn.three.math.matrix import Matrix4
     from kivyfn.three.assets.object3d import Object3D
@@ -36,7 +36,6 @@ if TYPE_CHECKING:
     from kivyfn.three.behaviors.behavior import Behavior
 
 
-WalkFilter = Callable[["SceneObject"], bool]
 
 NodeFilter = Literal[
     "all",
