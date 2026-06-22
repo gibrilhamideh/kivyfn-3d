@@ -11,9 +11,9 @@ from kivyfn.three.controls.base import BaseController
 from kivyfn.three.math.vector import Vector3
 
 if TYPE_CHECKING:
+    from kivyfn.three.views.viewport import Viewport
     from kivyfn.three.assets.object3d import Object3D
     from kivyfn.three.scene.scene import Scene
-    from kivyfn.three.views.view import View
 
 
 @dataclass(slots=True)
@@ -46,10 +46,10 @@ class InteractionEvent:
 class BasePicker:
     def __init__(
         self,
-        view_name: str = "main",
+        stage_name: str,
     ) -> None:
         self.scene: Scene | None = None
-        self.view_name = view_name
+        self.stage_name = stage_name
 
     def attach(
         self,
@@ -60,27 +60,22 @@ class BasePicker:
     def detach(self) -> None:
         self.scene = None
 
-    def get_view(self) -> View | None:
+    def get_viewport(self) -> Viewport:
 
-        assert self.scene is not None
-        return self.scene.views.get(self.view_name)
+        name = self.stage_name
+        scene = self.require_scene()
+        stage = scene.stages.registry.require(name)
+        return stage.viewport
 
     def make_ray(
         self,
         touch: Any,
     ) -> tuple[Vector3, Vector3] | None:
+        viewport = self.get_viewport()
 
-
-        assert self.scene is not None
-
-        view = self.get_view()
-        if view is None:
-            return None
-
-        return self.scene.viewport.screen_to_ray(
+        return viewport.screen_to_ray(
             touch.x,
             touch.y,
-            view=view,
         )
 
     def pick(
@@ -88,6 +83,10 @@ class BasePicker:
         touch: MouseMotionEvent,
     ) -> InteractionEvent | None:
         raise NotImplementedError
+
+    def require_scene(self) -> Scene:
+        assert self.scene is not None
+        return self.scene
 
 
 class RaycastPicker(BasePicker):
@@ -142,10 +141,9 @@ class RenderIdPicker(BasePicker):
     def __init__(
         self,
         pass_name: str,
-        view_name: str = "main",
     ) -> None:
         super().__init__(
-            view_name=view_name,
+            stage_name=pass_name,
         )
 
         self.pass_name = pass_name
@@ -155,7 +153,7 @@ class RenderIdPicker(BasePicker):
         touch: MouseMotionEvent,
     ) -> InteractionEvent | None:
 
-        assert self.scene is not None
+        scene = self.require_scene()
 
         ray = self.make_ray(touch)
         if ray is None:
@@ -165,7 +163,7 @@ class RenderIdPicker(BasePicker):
         if render_id is None:
             return None
 
-        object3d = self.scene.registry.get_by_render_id(render_id)
+        object3d = scene.registry.get_by_render_id(render_id)
         if object3d is None:
             return None
 

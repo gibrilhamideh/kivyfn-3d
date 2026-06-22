@@ -19,16 +19,13 @@ class OverlayManager:
         scene: Scene,
         *,
         layer: Widget | None = None,
-    ):
+    ) -> None:
         self.scene = scene
         self.layer = layer or scene
 
-        self._overlays: list[Overlay] = []
-        self._overlays_by_widget: dict[Widget, Overlay] = {}
-        self._overlays_by_anchor: dict[Node3D, list[Overlay]] = {}
-        self._overlays_by_view: dict[str, list[Overlay]] = {}
+        self._overlays_by_anchor: dict[Node3D, dict[str, Overlay]] = {}
+        self._overlays_by_view: dict[str, set[Overlay]] = {}
 
-        self._queue: set[int] = set()
         self._queued_overlays: dict[int, Overlay] = {}
         self._trigger_flush = Clock.create_trigger(self.flush, -1)
 
@@ -37,22 +34,60 @@ class OverlayManager:
             size=self._on_viewport_dirty,
         )
 
-        self.scene.views.bind(
-            on_view_dirty=self._on_view_dirty,
-        )
+        # self.scene.views.bind(
+        #     on_view_dirty=self._on_view_dirty,
+        # )
 
+    # =================================== #
+    # Helpers
+    # =================================== #
+    def get(
+        self,
+        anchor: Node3D,
+        name: str,
+    ) -> Overlay | None:
+        return self._overlays_by_anchor.get(anchor, {}).get(name)
+
+    def require(
+        self,
+        anchor: Node3D,
+        name: str,
+    ) -> Overlay:
+        overlay = self.get(anchor, name)
+
+        if overlay is None:
+            raise ValueError(
+                f"Overlay {name!r} not found on node {anchor.name!r}."
+            )
+
+        return overlay
+
+    def overlays_of(
+        self,
+        anchor: Node3D,
+    ) -> list[Overlay]:
+        return list(self._overlays_by_anchor.get(anchor, {}).values())
+
+    # =================================== #
+    # Attachments
+    # =================================== #
     def attach(
         self,
         anchor: Node3D,
         widget: Widget,
         *,
-        view_name: str = "main",
+        name: str,
+        view_name: str,
         offset: Vector2 | None = None,
         world_offset: Vector3 | None = None,
         hide_when_offscreen: bool = True,
     ) -> Overlay:
-        if widget in self._overlays_by_widget:
-            raise ValueError("Widget is already attached to an overlay.")
+        overlays = self._overlays_by_anchor.setdefault(anchor, {})
+
+        if name in overlays:
+            raise ValueError(
+                f"Overlay {name!r} already exists on node {anchor.name!r}."
+            )
 
         overlay = Overlay(
             scene=self.scene,
@@ -64,129 +99,136 @@ class OverlayManager:
             hide_when_offscreen=hide_when_offscreen,
         )
 
-        self._overlays.append(overlay)
-        self._overlays_by_widget[widget] = overlay
-        self._overlays_by_anchor.setdefault(anchor, []).append(overlay)
-        self._overlays_by_view.setdefault(view_name, []).append(overlay)
+        overlays[name] = overlay
+        self._overlays_by_view.setdefault(view_name, set()).add(overlay)
 
-        anchor.bind(
-            on_transform_dirty=self._on_anchor_dirty,
-            on_visibility_dirty=self._on_anchor_dirty,
-        )
+        if len(overlays) == 1:
+            anchor.bind(
+                on_transform_dirty=self._on_anchor_dirty,
+                on_visibility_dirty=self._on_anchor_dirty,
+            )
 
         self.layer.add_widget(widget)
         self.queue(overlay)
 
         return overlay
 
-    def detach(self, overlay: Overlay) -> None:
-        if overlay not in self._overlays:
+    def detach(
+        self,
+        anchor: Node3D,
+        name: str = "default",
+    ) -> None:
+        overlays = self._overlays_by_anchor.get(anchor)
+
+        if overlays is None:
+            return
+
+        overlay = overlays.pop(name, None)
+
+        if overlay is None:
             return
 
         self._dequeue(overlay)
+        self._remove_from_view(overlay)
+        
+        widget = overlay.widget
+        parent = widget.parent
+        if parent is not None:
+            parent.remove_widget(widget)
 
-        self._overlays.remove(overlay)
-        self._overlays_by_widget.pop(overlay.widget, None)
+        if not overlays:
+            self._overlays_by_anchor.pop(anchor, None)
 
-        anchor_items = self._overlays_by_anchor.get(overlay.anchor)
+            anchor.unbind(
+                on_transform_dirty=self._on_anchor_dirty,
+                on_visibility_dirty=self._on_anchor_dirty,
+            )
 
-        if anchor_items is not None:
-            if overlay in anchor_items:
-                anchor_items.remove(overlay)
+    def clear(
+        self,
+        anchor: Node3D,
+    ) -> None:
+        overlays = self._overlays_by_anchor.get(anchor)
 
-            if not anchor_items:
-                self._overlays_by_anchor.pop(overlay.anchor, None)
-
-                overlay.anchor.unbind(
-                    on_transform_dirty=self._on_anchor_dirty,
-                    on_visibility_dirty=self._on_anchor_dirty,
-                )
-
-        view_items = self._overlays_by_view.get(overlay.view_name)
-
-        if view_items is not None:
-            if overlay in view_items:
-                view_items.remove(overlay)
-
-            if not view_items:
-                self._overlays_by_view.pop(overlay.view_name, None)
-
-        overlay.destroy()
-
-    def detach_by_widget(self, widget: Widget) -> None:
-        overlay = self._overlays_by_widget.get(widget)
-
-        if overlay is not None:
-            self.detach(overlay)
-
-    def detach_by_anchor(self, anchor: Node3D) -> None:
-        for overlay in list(self._overlays_by_anchor.get(anchor, [])):
-            self.detach(overlay)
-
-    def detach_by_subtree(self, root: Node3D) -> None:
-        for node in list(root.walk(filter="all")):
-            self.detach_by_anchor(node)
-
-    def clear(self) -> None:
-        for overlay in list(self._overlays):
-            self.detach(overlay)
-
-    def queue(self, overlay: Overlay) -> None:
-        if overlay not in self._overlays:
+        if overlays is None:
             return
 
-        key = id(overlay)
-        self._queue.add(key)
-        self._queued_overlays[key] = overlay
+        for name in list(overlays):
+            self.detach(anchor, name)
+
+    def clear_all(self) -> None:
+        for anchor in list(self._overlays_by_anchor):
+            self.clear(anchor)
+
+    # =================================== #
+    # Updates
+    # =================================== #
+    def queue(self, overlay: Overlay) -> None:
+        if not self._contains(overlay):
+            return
+
+        self._queued_overlays[id(overlay)] = overlay
         self._trigger_flush()
 
     def update(self, *, force: bool = False) -> None:
         if force:
-            for overlay in self._overlays:
-                overlay.update()
+            for overlays in self._overlays_by_anchor.values():
+                for overlay in overlays.values():
+                    overlay.update()
             return
 
         self.flush()
 
     def flush(self, *_) -> None:
-        while self._queue:
-            key = self._queue.pop()
-            overlay = self._queued_overlays.pop(key, None)
+        queued = list(self._queued_overlays.values())
+        self._queued_overlays.clear()
 
-            if overlay is not None and overlay in self._overlays:
+        for overlay in queued:
+            if self._contains(overlay):
                 overlay.update()
 
     def update_view(self, view_name: str) -> None:
-        for overlay in self._overlays_by_view.get(view_name, []):
+        for overlay in self._overlays_by_view.get(view_name, set()):
             self.queue(overlay)
 
-    def destroy(self) -> None:
-        self.clear()
-        self._queue.clear()
-        self._queued_overlays.clear()
-        self._trigger_flush.cancel()
 
-        self.scene.unbind(
-            pos=self._on_viewport_dirty,
-            size=self._on_viewport_dirty,
-        )
+    # =================================== #
+    # Internal
+    # =================================== #
+    def _contains(self, overlay: Overlay) -> bool:
+        overlays = self._overlays_by_anchor.get(overlay.anchor)
 
-        self.scene.views.unbind(
-            on_view_dirty=self._on_view_dirty,
-        )
+        if overlays is None:
+            return False
+
+        return overlay in overlays.values()
 
     def _dequeue(self, overlay: Overlay) -> None:
-        key = id(overlay)
-        self._queue.discard(key)
-        self._queued_overlays.pop(key, None)
+        self._queued_overlays.pop(id(overlay), None)
 
-    def _on_anchor_dirty(self, anchor: Node3D, *_):
-        for overlay in self._overlays_by_anchor.get(anchor, []):
+    def _remove_from_view(self, overlay: Overlay) -> None:
+        view_items = self._overlays_by_view.get(overlay.view_name)
+
+        if view_items is None:
+            return
+
+        view_items.discard(overlay)
+
+        if not view_items:
+            self._overlays_by_view.pop(overlay.view_name, None)
+
+
+    # =================================== #
+    # Dirty Flags
+    # =================================== #
+    def _on_anchor_dirty(self, anchor: Node3D, *_) -> None:
+        for overlay in self.overlays_of(anchor):
             self.queue(overlay)
 
-    def _on_view_dirty(self, _view_manager, view, _stage_name):
+    def _on_view_dirty(self, _view_manager, view, _stage_name) -> None:
         self.update_view(view.name)
 
-    def _on_viewport_dirty(self, *_):
-        for overlay in self._overlays:
-            self.queue(overlay)
+    def _on_viewport_dirty(self, *_) -> None:
+        for overlays in self._overlays_by_anchor.values():
+            for overlay in overlays.values():
+                self.queue(overlay)

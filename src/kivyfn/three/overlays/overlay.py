@@ -19,7 +19,7 @@ class Overlay:
     anchor: Node3D
     widget: Widget
 
-    view_name: str = "main"
+    view_name: str
     offset: Vector2 = field(default_factory=Vector2.zero)
     world_offset: Vector3 = field(default_factory=Vector3.zero)
     hide_when_offscreen: bool = True
@@ -60,6 +60,3 @@ class Overlay:
         self.widget.opacity = 0
         self.widget.disabled = True
 
-    def destroy(self) -> None:
-        if self.widget.parent is not None:
-            self.widget.parent.remove_widget(self.widget)

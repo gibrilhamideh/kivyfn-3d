@@ -31,14 +31,14 @@ class SceneBase(Widget):
         (0.0, 0.0, 0.0, 0.0)
     )
 
-    viewport_origin_x: int = NumericProperty(0)
-    viewport_origin_y: int = NumericProperty(0)
+    origin_x: int = NumericProperty(0)
+    origin_y: int = NumericProperty(0)
 
     def _get_scene_viewport_x(self) -> int:
-        return int(self.x + self.viewport_origin_x)
+        return int(self.x + self.origin_x)
 
     def _get_scene_viewport_y(self) -> int:
-        return int(self.y + self.viewport_origin_y)
+        return int(self.y + self.origin_y)
 
     def _get_scene_viewport_width(self) -> int:
         return int(self.width)
@@ -49,13 +49,13 @@ class SceneBase(Widget):
     scene_viewport_x: int = AliasProperty(
         _get_scene_viewport_x,
         None,
-        bind=["x", "viewport_origin_x"],
+        bind=["x", "origin_x"],
     )
 
     scene_viewport_y: int = AliasProperty(
         _get_scene_viewport_y,
         None,
-        bind=["y", "viewport_origin_y"],
+        bind=["y", "origin_y"],
     )
 
     scene_viewport_width: int = AliasProperty(

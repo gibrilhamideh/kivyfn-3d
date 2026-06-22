@@ -14,7 +14,7 @@ from kivyfn.three.types import LightSource
 
 if TYPE_CHECKING:
     from kivyfn.three.lights.limits import LightLimits
-    from kivyfn.three.types import SceneObject, LightName, RenderPassName, ViewName
+    from kivyfn.three.types import SceneObject, LightName, RenderPassName
     from kivyfn.three.render.context import RenderContext
     from kivyfn.three.render.renderer import Renderer
     from kivyfn.three.lights.culling import CulledLights
@@ -83,7 +83,6 @@ class LightManager(EventDispatcher):
         self.uniforms = LightUniformBuffer(limits)
         self.culler = LightCuller(limits=limits)
 
-        self._shadow_views: dict[LightName, ViewName] = {}
         self._shadow_passes: dict[LightName, RenderPassName] = {}
 
         self._bound_ids: set[int] = set()
@@ -166,25 +165,12 @@ class LightManager(EventDispatcher):
                 None,
             )
 
-            shadow_view = self._shadow_views.pop(
-                light_name,
-                None,
-            )
-
             if (
                 shadow_pass is not None
                 and self.renderer.stages.registry.get(shadow_pass) is not None
             ):
                 self.renderer.destroy_stage(
                     shadow_pass,
-                )
-
-            if (
-                shadow_view is not None
-                and self.renderer.views.get(shadow_view) is not None
-            ):
-                self.renderer.views.destroy(
-                    shadow_view,
                 )
 
             self.registry.remove(light_name)
@@ -233,15 +219,16 @@ class LightManager(EventDispatcher):
             if light_name is None:
                 continue
 
-            view_name = self._shadow_views.get(light_name)
-            if view_name is None:
+            pass_name = self._shadow_passes.get(light_name)
+            if pass_name is None:
                 continue
 
+            shadow_pass = self.renderer.stages.registry.require(pass_name)
 
             position = light.world_position
             target = position + light.world_forward
 
-            view = self.renderer.views.require(view_name)
+            view = shadow_pass.viewport.view
             view.set_look_at(
                 position=position,
                 target=target,
@@ -287,16 +274,15 @@ class LightManager(EventDispatcher):
             for stage in self.renderer.stages.registry.contexts_of(tag):
                 contexts[stage.name] = stage
 
-        seen: dict[tuple[str, frozenset[str]], CulledLights] = {}
-        for stage in contexts.values():
-            view = self.renderer.views.view_for_stage(stage.name)
-            if view is None:
-                continue
+        seen: dict[tuple[int, frozenset[str]], CulledLights] = {}
 
+        for stage in contexts.values():
             tags = self.renderer.stages.registry.tags_of(stage.name)
+            viewport = stage.viewport
+            view = viewport.view
 
             key = (
-                view.name,
+                id(viewport),
                 frozenset(tags),
             )
 
@@ -333,16 +319,21 @@ class LightManager(EventDispatcher):
         if light_name is None:
             return
 
-        view_name = self._shadow_views.get(light_name)
-        if view_name is None:
+        pass_name = self._shadow_passes.get(light_name)
+        if pass_name is None:
             return
 
-        view = self.renderer.views.require(view_name)
+        shadow_pass = self.renderer.stages.registry.require(pass_name)
+
+        view = shadow_pass.viewport.view
+
         self._apply_uniforms_to_tags(
             tags=set(config.receiver_tags),
             uniforms={
                 config.view_uniform: view.get_view_matrix().to_uniform(),
-                config.projection_uniform: view.get_projection_matrix(1.0).to_uniform(),
+                config.projection_uniform: view.get_projection_matrix(
+                    shadow_pass.viewport.aspect,
+                ).to_uniform(),
                 "shadow_bias": config.bias,
                 "shadow_normal_bias": config.normal_bias,
             },
@@ -358,36 +349,27 @@ class LightManager(EventDispatcher):
         config: ShadowConfig,
     ) -> None:
         light_name = self.registry.require_name_of(light)
-
-        view_name = self.registry.shadow_view_name(light_name)
         pass_name = self.registry.shadow_pass_name(light_name)
 
         view_config = config.view
 
-        view = self.renderer.views.create(
-            name=view_name,
-            position=light.world_position,
-            target=light.world_position + light.world_forward,
-            projection_type=view_config.projection_type,
-            near=view_config.near,
-            far=view_config.far,
-            ortho_size=view_config.ortho_size,
-            fov=view_config.fov,
-        )
-
         shadow_pass = self.renderer.create_pass(
             name=pass_name,
-            view_name=view.name,
+            camera=None,
             shader=config.shader,
             output="depth",
             output_uniform=config.texture_uniform,
 
-            local_viewport_width=config.resolution,
-            local_viewport_height=config.resolution,
-            use_local_viewport=True,
-            size_to_viewport=True,
+            local_x=0,
+            local_y=0,
+            local_width=config.resolution,
+            local_height=config.resolution,
+            viewport_mode="local",
 
-            tags=None,
+            fbo_size=[config.resolution, config.resolution],
+            fbo_size_mode="viewport",
+
+            tags=set(config.caster_tags),
 
             with_depthbuffer=True,
             with_stencilbuffer=False,
@@ -396,12 +378,23 @@ class LightManager(EventDispatcher):
             clear_stencil=False,
         )
 
+        view = shadow_pass.viewport.view
+        view.set_look_at(
+            position=light.world_position,
+            target=light.world_position + light.world_forward,
+        )
+
+        view.projection = view_config.projection
+        view.near = view_config.near
+        view.far = view_config.far
+        view.ortho_size = view_config.ortho_size
+        view.fov = view_config.fov
+
         self.renderer.attach_pass(
             name=shadow_pass.name,
             target_tags=set(config.receiver_tags),
         )
 
-        self._shadow_views[light_name] = view.name
         self._shadow_passes[light_name] = shadow_pass.name
 
         self.sync_shadow_uniforms(light)

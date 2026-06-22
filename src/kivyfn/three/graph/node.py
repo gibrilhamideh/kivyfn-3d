@@ -13,6 +13,7 @@ from typing import (
 )
 
 from kivy.event import EventDispatcher
+from kivy.uix.widget import Widget
 from kivy.properties import (
     BooleanProperty,
     ListProperty,
@@ -21,7 +22,7 @@ from kivy.properties import (
     DictProperty,
 )
 
-from kivyfn.three.math.vector import Vector3
+from kivyfn.three.math.vector import Vector3, Vector2
 from kivyfn.three.math.transform import Transform
 
 if TYPE_CHECKING:
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
     from kivyfn.three.lights.sources.base import Light3D
     from kivyfn.three.controls.interaction import InteractionEvent
     from kivyfn.three.behaviors.behavior import Behavior
+    from kivyfn.three.overlays.overlay import Overlay
 
 
 
@@ -102,7 +104,6 @@ class Node3D(EventDispatcher):
             f"visible={self.visible}"
             ")"
         )
-
 
 
     # =================================== #
@@ -267,6 +268,84 @@ class Node3D(EventDispatcher):
             self.remove_child(child)
 
     # =================================== #
+    # Overlays
+    # =================================== #
+    def attach_overlay(
+        self,
+        widget: Widget,
+        *,
+        name: str,
+        view_name: str,
+        offset: Vector2 | None = None,
+        world_offset: Vector3 | None = None,
+        hide_when_offscreen: bool = True,
+    ) -> Overlay:
+        if self.scene is None:
+            raise RuntimeError(
+                f"Cannot attach overlay {name!r} to node {self.name!r}: "
+                "node is not in a scene."
+            )
+
+        return self.scene.overlays.attach(
+            anchor=self,
+            widget=widget,
+            name=name,
+            view_name=view_name,
+            offset=offset,
+            world_offset=world_offset,
+            hide_when_offscreen=hide_when_offscreen,
+        )
+
+    def detach_overlay(
+        self,
+        name: str,
+    ) -> None:
+        if self.scene is None:
+            return
+
+        self.scene.overlays.detach(self, name)
+
+    def get_overlay(
+        self,
+        name: str,
+    ) -> Overlay | None:
+        if self.scene is None:
+            return None
+
+        return self.scene.overlays.get(self, name)
+
+    def require_overlay(
+        self,
+        name: str,
+    ) -> Overlay:
+        overlay = self.get_overlay(name)
+
+        if overlay is None:
+            raise ValueError(
+                f"Overlay {name!r} not found on node {self.name!r}."
+            )
+
+        return overlay
+
+    def has_overlay(
+        self,
+        name: str,
+    ) -> bool:
+        return self.get_overlay(name) is not None
+
+    def overlays(self) -> list[Overlay]:
+        if self.scene is None:
+            return []
+
+        return self.scene.overlays.overlays_of(self)
+
+    def clear_overlays(self) -> None:
+        if self.scene is None:
+            return
+
+        self.scene.overlays.clear(self)
+
+    # =================================== #
     # Scene context
     # =================================== #
     def _enter_scene(self, scene: Scene) -> None:
@@ -296,6 +375,8 @@ class Node3D(EventDispatcher):
 
         for child in self.children:
             child._leave_scene()
+
+        scene.overlays.clear(self)
 
         scene.renderer.queue_destroy(self)
         scene.registry.unregister(self)

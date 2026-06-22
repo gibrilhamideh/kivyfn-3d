@@ -33,22 +33,21 @@ scene.attach(
 )
 """
 from __future__ import annotations
-from typing import TYPE_CHECKING
 
 from kivy.core.window import Window
 
+from kivyfn.three.scene.scene import Scene
+from kivyfn.three.views.camera import Camera
 from kivyfn.three.controls.base import BaseController
 from kivyfn.three.controls.orbit import OrbitCameraController
 from kivyfn.three.math.vector import Vector3
-from kivyfn.three.scene.scene import Scene
 
-if TYPE_CHECKING:
-    from kivyfn.three.views.view import View
 
 class BlenderCameraControls(BaseController):
     def __init__(
         self,
-        view_name: str = "main",
+        camera: Camera,
+        *,
         zoom_sensitivity: float = 3.0,
         orbit_sensitivity: float = 0.5,
         pan_sensitivity: float = 0.5,
@@ -64,7 +63,8 @@ class BlenderCameraControls(BaseController):
     ):
         super().__init__()
 
-        self.view_name = view_name
+        self.scene: Scene | None = None
+        self.camera = camera
 
         self.zoom_sensitivity = zoom_sensitivity
         self.orbit_sensitivity = orbit_sensitivity
@@ -84,11 +84,6 @@ class BlenderCameraControls(BaseController):
         self._mode: str | None = None
         self._last_pos: tuple[float, float] | None = None
 
-
-    @property
-    def view(self) -> View:
-        scene = self.require_scene()
-        return scene.views[self.view_name]
 
     # =================================== #
     # Events
@@ -171,27 +166,26 @@ class BlenderCameraControls(BaseController):
     # =================================== #
 
     def _orbit(self, dx: float, dy: float) -> None:
-        view = self.view
 
         position, target, up = OrbitCameraController.orbit(
-            view.position,
-            view.target,
-            view.up,
+            self.camera.position,
+            self.camera.target,
+            self.camera.up,
             dx=dx * self.orbit_sensitivity,
             dy=dy * self.orbit_sensitivity,
             min_pitch_degrees=self.min_pitch,
             max_pitch_degrees=self.max_pitch,
         )
 
-        view.set_look_at(
+        self.camera.set_look_at(
             position,
             target,
             up,
         )
 
     def _pan(self, dx: float, dy: float) -> None:
-        view = self.view
         scene = self.require_scene()
+        camera = self.camera
         units_per_pixel = self.pan_sensitivity
 
         if self.invert_pan_x:
@@ -202,16 +196,16 @@ class BlenderCameraControls(BaseController):
 
         if self.adaptive_pan:
             units_per_pixel *= OrbitCameraController.adaptive_pan_units_per_pixel(
-                eye=view.position,
-                target=view.target,
-                fov_y_degrees=view.fov,
+                eye=camera.position,
+                target=camera.target,
+                fov_y_degrees=camera.fov,
                 screen_height=scene.height or 1.0,
             )
 
         position, target, up = OrbitCameraController.pan(
-            view.position,
-            view.target,
-            view.up,
+            camera.position,
+            camera.target,
+            camera.up,
             dx=dx,
             dy=dy,
             units_per_pixel=units_per_pixel,
@@ -219,14 +213,14 @@ class BlenderCameraControls(BaseController):
             max_bounds=self.max_bounds,
         )
 
-        view.set_look_at(position, target, up)
+        camera.set_look_at(position, target, up)
 
     def _zoom(self, amount: float) -> None:
-        view = self.view
+        camera = self.camera
 
-        if view.perspective == 0.0:
-            view.ortho_size = OrbitCameraController.zoom_orthographic(
-                current_size=view.ortho_size,
+        if camera.projection == "orthographic":
+            camera.ortho_size = OrbitCameraController.zoom_orthographic(
+                current_size=camera.ortho_size,
                 dy=amount,
                 min_zoom=self.min_zoom,
                 max_zoom=self.max_zoom,
@@ -234,16 +228,16 @@ class BlenderCameraControls(BaseController):
             return
 
         position, target, up = OrbitCameraController.dolly(
-            view.position,
-            view.target,
-            view.up,
+            camera.position,
+            camera.target,
+            camera.up,
             dy=amount,
             units_per_pixel=0.01,
             min_zoom=self.min_zoom,
             max_zoom=self.max_zoom,
         )
 
-        view.set_look_at(
+        camera.set_look_at(
             position,
             target,
             up,

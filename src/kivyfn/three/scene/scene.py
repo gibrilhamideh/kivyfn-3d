@@ -6,20 +6,21 @@ from typing import TYPE_CHECKING
 from kivy.properties import NumericProperty
 
 from kivyfn.three.render.renderer import Renderer
-from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.graph.node import Node3D
 from kivyfn.three.overlays.manager import OverlayManager
 from kivyfn.three.scene.base import SceneControllerBase
 from kivyfn.three.scene.registry import SceneRegistry
 from kivyfn.three.scene.tools import SceneTools
 from kivyfn.three.types import (
+        FboSizeMode,
+        ViewportMode,
         RenderStageName,
         RenderContextName,
         RenderPassName
 )
 
 if TYPE_CHECKING:
-    from kivyfn.three.views.view_manager import ViewManager
+    from kivyfn.three.views.camera import Camera
     from kivyfn.three.render.binder import RenderBindingRecord
     from kivyfn.three.render.context import RenderContext, RenderPass, RenderPassOutput
     from kivyfn.three.render.shader import Shader
@@ -65,7 +66,6 @@ class Scene(SceneControllerBase):
             **kwargs)
 
         self.tools: SceneTools
-        self.viewport: Viewport
         self.renderer: Renderer
         self.overlays: OverlayManager
         self.root: Node3D
@@ -74,9 +74,9 @@ class Scene(SceneControllerBase):
     def on_kv_post(self, base_widget) -> None:
 
         self.tools = SceneTools(self)
-        self.viewport = Viewport(self)
         self.renderer = Renderer(
-            self.render_group,
+            scene=self,
+            canvas=self.render_group,
             max_directional_lights=self.max_directional_lights,
             max_point_lights=self.max_point_lights,
             max_spot_lights=self.max_spot_lights,
@@ -87,10 +87,6 @@ class Scene(SceneControllerBase):
         self.root = Node3D(name="root")
         self.root.scene = self # root bootstrap only
 
-        self.bind(scene_viewport_x=self.renderer.setter("scene_viewport_x"))
-        self.bind(scene_viewport_y=self.renderer.setter("scene_viewport_y"))
-        self.bind(scene_viewport_width=self.renderer.setter("scene_viewport_width"))
-        self.bind(scene_viewport_height=self.renderer.setter("scene_viewport_height"))
         super().on_kv_post(base_widget)
 
 
@@ -102,30 +98,30 @@ class Scene(SceneControllerBase):
         self,
         name: RenderContextName,
         shader: Shader,
-        view_name: str,
         *,
+        camera: Camera | None = None,
         tags: set[str] | None = None,
         hot_reload: bool = False,
-        local_viewport_x: int = 0,
-        local_viewport_y: int  = 0,
-        local_viewport_width: int = 1024,
-        local_viewport_height: int = 1024,
-        use_local_viewport: bool = False,
+        local_x: int = 0,
+        local_y: int  = 0,
+        local_width: int = 1024,
+        local_height: int = 1024,
+        viewport_mode: ViewportMode = "scene",
 
 
     ) -> RenderContext:
 
         return self.renderer.create_context(
             name=name,
-            view_name=view_name,
+            camera=camera,
             tags=tags,
             shader=shader,
             hot_reload=hot_reload,
-            local_viewport_x=local_viewport_x,
-            local_viewport_y=local_viewport_y,
-            local_viewport_width=local_viewport_width,
-            local_viewport_height=local_viewport_height,
-            use_local_viewport=use_local_viewport,
+            local_x=local_x,
+            local_y=local_y,
+            local_width=local_width,
+            local_height=local_height,
+            viewport_mode=viewport_mode,
         )
 
 
@@ -136,21 +132,20 @@ class Scene(SceneControllerBase):
         self,
         name: RenderPassName,
         shader: Shader,
-        view_name: str,
         output: RenderPassOutput,
         output_uniform: str,
         *,
+        camera: Camera | None = None,
         tags: set[str] | None = None,
         color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
         hot_reload: bool = False,
-        local_viewport_x: int = 0,
-        local_viewport_y: int  = 0,
-        local_viewport_width: int = 1024,
-        local_viewport_height: int = 1024,
-        use_local_viewport: bool = False,
-        size_to_viewport: bool = False,
-        fbo_width: int = 1024,
-        fbo_height: int = 1024,
+        local_x: int = 0,
+        local_y: int  = 0,
+        local_width: int = 1024,
+        local_height: int = 1024,
+        viewport_mode: ViewportMode = "local",
+        fbo_size_mode: FboSizeMode = "fixed",
+        fbo_size: list[int] | int = 1024,
         with_depthbuffer: bool = True,
         with_stencilbuffer: bool = False,
         clear_color: bool = True,
@@ -160,21 +155,20 @@ class Scene(SceneControllerBase):
 
         return self.renderer.create_pass(
             name=name,
-            view_name=view_name,
+            camera=camera,
             tags=tags,
             shader=shader,
             hot_reload=hot_reload,
             output=output,
             output_uniform=output_uniform,
-            local_viewport_x=local_viewport_x,
-            local_viewport_y=local_viewport_y,
-            local_viewport_width=local_viewport_width,
-            local_viewport_height=local_viewport_height,
-            use_local_viewport=use_local_viewport,
-            size_to_viewport=size_to_viewport,
+            local_x=local_x,
+            local_y=local_y,
+            local_width=local_width,
+            local_height=local_height,
+            viewport_mode=viewport_mode,
+            fbo_size_mode=fbo_size_mode,
+            fbo_size=fbo_size,
             fbo_color=color,
-            fbo_width=fbo_width,
-            fbo_height=fbo_height,
             with_depthbuffer=with_depthbuffer,
             with_stencilbuffer=with_stencilbuffer,
             clear_color=clear_color,
@@ -214,10 +208,6 @@ class Scene(SceneControllerBase):
     # =================================== #
     # Exports
     # =================================== #
-    @property
-    def views(self) -> ViewManager:
-        return self.renderer.views
-
     @property
     def stages(self):
         return self.renderer.stages

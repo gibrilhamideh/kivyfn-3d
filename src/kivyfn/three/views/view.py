@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Literal
 import math
 
+from kivy.event import EventDispatcher
 from kivy.properties import (
         NumericProperty,
         ObjectProperty,
@@ -12,10 +13,9 @@ from kivy.properties import (
 
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.math.matrix import Matrix4
-from kivyfn.three.graph.node import Node3D
 
 
-class View(Node3D):
+class View(EventDispatcher):
 
     position: Vector3 = ObjectProperty(None, allownone=True)
     target: Vector3 = ObjectProperty(None, allownone=True)
@@ -26,17 +26,17 @@ class View(Node3D):
     far: float = NumericProperty(1000.0)
 
     ortho_size: float = NumericProperty(20.0)
-    perspective: int = NumericProperty(1.0)
-    projection_type: Literal[
+    projection: Literal[
         "perspective",
         "orthographic"
         ] = OptionProperty("perspective", options=["perspective", "orthographic"])
 
+    __events__ = ("on_view_dirty", )
+
     def __repr__(self) -> str:
         return (
             "View(\n"
-            f"  name={self.name!r},\n"
-            f"  projection_type={self.projection_type!r},\n"
+            f"  projection_type={self.projection!r},\n"
             f"  fov={self.fov:.1f},\n"
             f"  position={self.position},\n"
             f"  target={self.target},\n"
@@ -46,27 +46,29 @@ class View(Node3D):
 
     def __init__(
         self,
-        name: str = "camera",
         position: Vector3 | None = None,
         target: Vector3 | None = None,
         up: Vector3 | None = None,
         **kwargs,
     ):
-        super().__init__(
-            name=name,
-            **kwargs,
-        )
+        super().__init__(**kwargs)
 
         self.position = position or Vector3(0.0, 0.0, 10.0)
         self.target = target or Vector3.zero()
         self.up = up or Vector3(0.0, 1.0, 0.0)
 
-    def on_projection_type(self, instance, value: str) -> None:
-        """Automatically updates the matrix interpolator factor when projection style changes."""
-        if value == "perspective":
-            self.perspective = 1
-        elif value == "orthographic":
-            self.perspective = 0
+        self.bind(
+            position=self.mark_view_dirty,
+            target=self.mark_view_dirty,
+            up=self.mark_view_dirty,
+            fov=self.mark_view_dirty,
+            near=self.mark_view_dirty,
+            far=self.mark_view_dirty,
+            ortho_size=self.mark_view_dirty,
+            projection=self.mark_view_dirty,
+        )
+
+
 
     def get_view_matrix(self) -> Matrix4:
         return Matrix4.look_at(
@@ -79,13 +81,16 @@ class View(Node3D):
         self,
         aspect: float,
     ) -> Matrix4:
-        if self.perspective == 0.0:
+
+        perspective = 1.0 if self.projection == "perspective" else 0.0
+
+        if self.projection == "orthographic":
             right = self.ortho_size / 2.0
             left = -right
             top = right / aspect
             bottom = -top
         else:
-            top = self.near * self._tan_half_fov()
+            top = self.near * self.tan_half_fov()
             bottom = -top
             right = top * aspect
             left = -right
@@ -97,10 +102,10 @@ class View(Node3D):
             top,
             self.near,
             self.far,
-            self.perspective,
+            perspective
         )
 
-    def _tan_half_fov(self) -> float:
+    def tan_half_fov(self) -> float:
         return math.tan(
             math.radians(self.fov) / 2.0
         )
@@ -116,5 +121,11 @@ class View(Node3D):
 
         if up is not None:
             self.up = up
+
+    def mark_view_dirty(self, *_) -> None:
+        self.dispatch("on_view_dirty")
+
+    def on_view_dirty(self) -> None:
+        pass
 
 

@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from kivyfn.three.lights.sources.point import PointLight
     from kivyfn.three.lights.sources.spot import SpotLight
 
+ViewportMode = Literal["scene", "local"]
+FboSizeMode = Literal["fixed", "viewport"]
+
 
 LightSource: TypeAlias = "DirectionalLight | PointLight | SpotLight"
 

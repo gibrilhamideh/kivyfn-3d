@@ -11,7 +11,6 @@ from kivy.graphics import ClearColor
 from kivy.graphics.texture import Texture
 from kivy.graphics.opengl import (
     GL_DEPTH_TEST,
-    glViewport,
     glDisable,
     glEnable,
 )
@@ -26,21 +25,23 @@ from kivy.graphics import (
 )
 
 from kivy.properties import (
-    AliasProperty,
-    BooleanProperty,
     ColorProperty,
     DictProperty,
-    NumericProperty,
     ObjectProperty,
     OptionProperty,
     StringProperty,
+    BooleanProperty,
+    VariableListProperty,
 )
 
+from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.render.shader import Shader
 
+
+
 if TYPE_CHECKING:
-    from kivyfn.three.views.view import View
-    from kivyfn.three.types import RenderPassOutput
+    from kivyfn.three.scene.scene import Scene
+    from kivyfn.three.views.camera import Camera
 
 TContext = TypeVar(
     "TContext",
@@ -66,107 +67,50 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     object_group: InstructionGroup
 
     name: str = StringProperty()
+    viewport: Viewport = ObjectProperty()
     shader: Shader = ObjectProperty()
     uniforms: dict = DictProperty()
     hot_reload: bool = BooleanProperty(False)
 
-    use_local_viewport: bool = BooleanProperty(False)
 
-    local_viewport_x: int = NumericProperty(0)
-    local_viewport_y: int = NumericProperty(0)
-    local_viewport_width: int = NumericProperty(100)
-    local_viewport_height: int = NumericProperty(100)
-
-    scene_viewport_x: int = NumericProperty(0)
-    scene_viewport_y: int = NumericProperty(0)
-    scene_viewport_width: int = NumericProperty(100)
-    scene_viewport_height: int = NumericProperty(100)
-
-    __events__ = (
-        "on_viewport_dirty",
-    )
-
-    def _get_viewport_x(self):
-        if self.use_local_viewport:
-            return self.local_viewport_x + self.scene_viewport_x
-
-        return self.scene_viewport_x
-
-    def _get_viewport_y(self):
-        if self.use_local_viewport:
-            return self.local_viewport_y + self.scene_viewport_y
-
-        return self.scene_viewport_y
-
-    def _get_viewport_width(self):
-        if self.use_local_viewport:
-            return self.local_viewport_width
-
-        return self.scene_viewport_width
-
-    def _get_viewport_height(self):
-        if self.use_local_viewport:
-            return self.local_viewport_height
-
-        return self.scene_viewport_height
-
-    viewport_x = AliasProperty(
-        _get_viewport_x,
-        None,
-        bind=["scene_viewport_x", "local_viewport_x", "use_local_viewport"]
-    )
-
-    viewport_y = AliasProperty(
-        _get_viewport_y,
-        None,
-        bind=["scene_viewport_y", "local_viewport_y", "use_local_viewport"]
-    )
-
-    viewport_width = AliasProperty(
-        _get_viewport_width,
-        None,
-        bind=["scene_viewport_width", "local_viewport_width", "use_local_viewport"]
-    )
-
-    viewport_height = AliasProperty(
-        _get_viewport_height,
-        None,
-        bind=["scene_viewport_height", "local_viewport_height", "use_local_viewport"]
-    )
-
-    def _get_aspect(self) -> float:
-        if not self.viewport_width:
-            return 1.0
-
-        if not self.viewport_height:
-            return 1.0
-
-        return self.viewport_width / self.viewport_height
-
-
-    aspect: float = AliasProperty(
-        _get_aspect,
-        None,
-        bind=["viewport_width", "viewport_height"]
-    )
-
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *,
+        scene: Scene,
+        camera: Camera | None,
+        local_x: int,
+        local_y: int,
+        local_width: int,
+        local_height: int,
+        viewport_mode: Literal["scene", "local"],
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
+
+        self.viewport = Viewport(
+            scene=scene,
+            local_x=local_x,
+            local_y=local_y,
+            local_width=local_width,
+            local_height=local_height,
+            viewport_mode=viewport_mode,
+        )
+
+        if camera is not None:
+            camera.attach(self.viewport)
 
 
     # =================================== #
     # Initialization
     # =================================== #
     def initialize(self):
-        self.bind(hot_reload=self.shader.setter("hot_reload"))
-        self.shader.bind(on_reload=self.on_shader_reload)
 
-        self.bind(
-            viewport_x=self.dispatch_viewport_dirty,
-            viewport_y=self.dispatch_viewport_dirty,
-            viewport_width=self.dispatch_viewport_dirty,
-            viewport_height=self.dispatch_viewport_dirty,
-        )
+        self.shader.bind(on_reload=self.on_shader_reload)
+        self.bind(hot_reload=self.shader.setter("hot_reload"))
+
+        self.viewport.bind(on_view_dirty=self.sync_view)
+        self.viewport.bind(on_viewport_dirty=self.sync_view)
+        self.viewport.bind(on_viewport_dirty=self.viewport.apply)
 
 
     # =================================== #
@@ -192,8 +136,6 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
         )
 
         return instruction
-
-
 
     # =================================== #
     # External API
@@ -303,16 +245,16 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # =================================== #
     # View & Projections
     # =================================== #
+    def sync_view(self, *_) -> None:
+        self.ctx["projection_mat"] = self.viewport.get_projection_matrix(
+            uniform=True,
+        )
 
-    def update_view(self, view: View) -> None:
-        self.ctx["projection_mat"] = view.get_projection_matrix(self.aspect).to_uniform()
-        self.ctx["view_mat"] = view.get_view_matrix().to_uniform()
+        self.ctx["view_mat"] = self.viewport.get_view_matrix(
+            uniform=True,
+        )
 
-        self.ctx["camera_position"] = [
-            view.position.x,
-            view.position.y,
-            view.position.z,
-        ]
+        self.ctx["camera_position"] = self.viewport.get_camera_position()
 
     @property
     def projection_mat(self):
@@ -321,23 +263,6 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     @property
     def view_mat(self):
         return self.ctx["view_mat"]
-
-    def dispatch_viewport_dirty(self, *_):
-        self.dispatch("on_viewport_dirty")
-
-    def on_viewport_dirty(self):
-        pass
-
-    # =================================== #
-    # Viewport
-    # =================================== #
-    def _set_viewport(self, *_) -> None:
-        glViewport(
-            self.viewport_x,
-            self.viewport_y,
-            self.viewport_width,
-            self.viewport_height,
-        )
 
     # =================================== #
     # GL Context
@@ -370,7 +295,7 @@ class RenderContext(BaseRenderContext[KivyRenderContext]):
             fs=self.shader.fragment_source
         )
         with self.ctx:
-            self.viewport_cb = Callback(self._set_viewport)
+            self.viewport_cb = Callback(self.viewport.apply)
             Callback(self.enable_depthtest)
 
             self.texture_group = InstructionGroup()
@@ -387,34 +312,16 @@ class RenderPass(BaseRenderContext[KivyFbo]):
 
     texture_ref: Texture = ObjectProperty()
     fbo_color = ColorProperty()
-    fbo_width: int = NumericProperty(1024)
-    fbo_height: int = NumericProperty(1024)
-    size_to_viewport: bool = BooleanProperty(False)
+    fbo_size: list[int] = VariableListProperty([1024, 1024], length=2)
+    fbo_size_mode: Literal["fixed", "viewport"] = OptionProperty(
+        "fixed", options=["fixed", "viewport"]
+    )
 
     clear_color: bool = BooleanProperty(True)
     clear_depth: bool = BooleanProperty(True)
     clear_stencil: bool = BooleanProperty(False)
 
-    def _get_fbo_size(self) -> tuple[int, int]:
-        if self.size_to_viewport:
-            return self.viewport_width, self.viewport_height
-
-        return self.fbo_width, self.fbo_height
-
-    fbo_size: tuple[int, int] = AliasProperty(
-        _get_fbo_size,
-        None,
-        bind=[
-            "fbo_width",
-            "fbo_height",
-            "viewport_width",
-            "viewport_height",
-            "size_to_viewport"
-        ]
-
-    )
-
-    output: RenderPassOutput = OptionProperty(
+    output = OptionProperty(
         "depth",
         options=(
             "color",
@@ -448,9 +355,8 @@ class RenderPass(BaseRenderContext[KivyFbo]):
         super().__init__(**kwargs)
 
         self.ctx: KivyFbo = KivyFbo(
-            size=self.fbo_size,
+            size=self.fbo_size, # pyright: ignore
             push_viewport=False,
-            # clear_color=self.fbo_color,
             with_depthbuffer=with_depthbuffer,
             with_stencilbuffer=with_stencilbuffer,
             vs=self.shader.vertex_source,
@@ -459,7 +365,7 @@ class RenderPass(BaseRenderContext[KivyFbo]):
 
         with self.ctx:
 
-            self.viewport_cb = Callback(self._set_viewport)
+            self.viewport_cb = Callback(self.viewport.apply)
 
             Callback(self.enable_depthtest)
             ClearBuffers(
@@ -468,7 +374,7 @@ class RenderPass(BaseRenderContext[KivyFbo]):
                 clear_stencil=self.clear_stencil
             )
 
-            self.clearcolor_instruction = ClearColor(*self.fbo_color)
+            self.clearcolor_inst = ClearColor(*self.fbo_color)
 
             self.texture_group = InstructionGroup()
             self.object_group = InstructionGroup()
@@ -483,19 +389,36 @@ class RenderPass(BaseRenderContext[KivyFbo]):
 
         self.texture_ref = self.texture
 
-        self.bind(fbo_size=self.sync_size)
+        self.viewport.bind(
+            width=self.mark_size_dirty,
+            height=self.mark_size_dirty
+        )
+
+        self.bind(fbo_size=self.mark_size_dirty)
         self.bind(fbo_color=self.sync_color)
 
 
-    def sync_size(self, *_):
-        self.ctx.size = self.fbo_size
+    def mark_size_dirty(self, *_):
+        self.sync_size()
+
+
+    def sync_size(self):
+        self.ctx.size = self.get_size() # pyright: ignore
         self.texture_ref = self.texture
-        self.dispatch_viewport_dirty()
+        self.sync_view()
 
     def sync_color(self, *_):
-        # self.ctx.clear_color = self.fbo_color
-        self.clearcolor_instruction.rgba = self.fbo_color
+        self.clearcolor_inst.rgba = self.fbo_color
 
+    def get_size(self) -> list[int]:
+        if self.fbo_size_mode == "fixed":
+            return self.fbo_size
+
+        else:
+            return [
+                self.viewport.width,
+                self.viewport.height
+            ]
 
     def get_pixel_color(self, wx: int, wy: int):
         return self.ctx.get_pixel_color(wx, wy)

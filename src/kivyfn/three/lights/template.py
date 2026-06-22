@@ -19,7 +19,7 @@ from kivyfn.three.lights.sources.point import PointLight
 # =================================== #
 @dataclass(slots=True, frozen=True)
 class ShadowViewConfig:
-    projection_type: Literal["perspective", "orthographic"]
+    projection: Literal["perspective", "orthographic"]
 
     near: float
     far: float
@@ -61,7 +61,7 @@ class LightConfig:
 # =================================== #
 @dataclass(slots=True, frozen=True)
 class ShadowViewTemplate:
-    projection_type: Literal["perspective", "orthographic"] = "orthographic"
+    projection: Literal["perspective", "orthographic"] = "orthographic"
 
     near: float = 1.0
     far: float = 1000.0
@@ -71,7 +71,7 @@ class ShadowViewTemplate:
 
     def create(self) -> ShadowViewConfig:
         return ShadowViewConfig(
-            projection_type=self.projection_type,
+            projection=self.projection,
             near=self.near,
             far=self.far,
             ortho_size=self.ortho_size,

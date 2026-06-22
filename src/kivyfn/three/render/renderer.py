@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Literal
 from kivy.clock import Clock
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
-from kivy.properties import NumericProperty
 
 from kivyfn.three.lights.limits import LightLimits
 from kivyfn.three.lights.manager import LightManager
@@ -19,19 +18,17 @@ from kivyfn.three.render.registry import (
     RenderObjectRegistry,
 )
 from kivyfn.three.render.stages import RenderStageManager
-from kivyfn.three.views.view_manager import ViewManager
 
 from kivyfn.three.types import (
     RenderStage,
     SceneObject,
-    ViewName,
 )
 
 if TYPE_CHECKING:
+    from kivyfn.three.scene.scene import Scene
     from kivyfn.three.assets.object3d import Object3D
     from kivyfn.three.render.binder import RenderBindingRecord
     from kivyfn.three.render.context import RenderContext, RenderPass
-    from kivyfn.three.views.view import View
 
 
 @dataclass(slots=True)
@@ -43,13 +40,10 @@ class RenderCommand:
 
 
 class Renderer(EventDispatcher):
-    scene_viewport_x = NumericProperty(0)
-    scene_viewport_y = NumericProperty(0)
-    scene_viewport_width = NumericProperty(100)
-    scene_viewport_height = NumericProperty(100)
 
     def __init__(
         self,
+        scene: Scene,
         canvas: InstructionGroup,
         *,
         max_directional_lights: int,
@@ -59,14 +53,13 @@ class Renderer(EventDispatcher):
     ) -> None:
         super().__init__(**kwargs)
 
+        self.scene = scene
         self.canvas = canvas
 
         self.stages = RenderStageManager()
         self.objects = RenderObjectRegistry()
         self.memberships = RenderMembershipRegistry()
         self.instances = RenderInstanceManager()
-
-        self.views = ViewManager()
 
         self.lights = LightManager(
             renderer=self,
@@ -77,12 +70,7 @@ class Renderer(EventDispatcher):
             ),
         )
 
-        self.views.bind(
-            on_view_dirty=lambda _, view, name: self.queue_view(
-                view,
-                name,
-            )
-        )
+
 
         self.instances.bind(
             on_transform_dirty=self.queue_transform,
@@ -96,8 +84,6 @@ class Renderer(EventDispatcher):
         self._transform_queue: set[int] = set()
         self._material_queue: set[int] = set()
         self._visibility_queue: set[int] = set()
-        self._viewport_queue: set[str] = set()
-        self._view_queue: dict[str, View] = {}
 
         self._trigger_dirty = Clock.create_trigger(self.flush_dirty, -1)
 
@@ -115,16 +101,13 @@ class Renderer(EventDispatcher):
 
     def create_context(
         self,
-        view_name: ViewName,
         **kwargs,
     ) -> RenderContext:
 
         stage = self.stages.create_context(
+            scene=self.scene,
             **kwargs,
         )
-
-        view = self.views.require(view_name)
-        self.setup_viewport(stage, view)
 
         self.canvas.add(stage.ctx)
         self.add_stage_memberships(stage)
@@ -136,16 +119,13 @@ class Renderer(EventDispatcher):
 
     def create_pass(
         self,
-        view_name: ViewName,
         **kwargs,
     ) -> RenderPass:
 
         stage = self.stages.create_pass(
+            scene=self.scene,
             **kwargs,
         )
-
-        view = self.views.require(view_name)
-        self.setup_viewport(stage, view)
 
         self.canvas.add(stage.ctx)
         self.add_stage_memberships(stage)
@@ -264,21 +244,6 @@ class Renderer(EventDispatcher):
         self._visibility_queue.add(id(object3d))
         self._trigger_dirty()
 
-    def queue_view(
-        self,
-        view: View,
-        stage_name: str,
-    ) -> None:
-        self._view_queue[stage_name] = view
-        self._trigger_dirty()
-
-    def queue_viewport(
-        self,
-        stage: RenderStage,
-    ) -> None:
-        self._viewport_queue.add(stage.name)
-        self._trigger_dirty()
-
     # =================================== #
     # Flush Queue
     # =================================== #
@@ -309,16 +274,6 @@ class Renderer(EventDispatcher):
                     command.old_tags,
                     command.new_tags,
                 )
-
-        # ---) View
-        while self._view_queue:
-            stage_name, view = self._view_queue.popitem()
-            self.sync_view_queue(view, stage_name)
-
-        # ---) Viewport
-        while self._viewport_queue:
-            stage_name = self._viewport_queue.pop()
-            self.sync_viewport_queue(stage_name)
 
         # ---) Transform
         while self._transform_queue:
@@ -481,29 +436,6 @@ class Renderer(EventDispatcher):
 
             self.remove_membership(object3d, stage_name)
 
-    # =================================== #
-    # View / Viewport Sync
-    # =================================== #
-
-    def sync_view_queue(
-        self,
-        view: View,
-        stage_name: str,
-    ) -> None:
-        stage = self.stages.registry.require(stage_name)
-        stage.update_view(view)
-
-    def sync_viewport_queue(
-        self,
-        stage_name: str,
-    ) -> None:
-        stage = self.stages.registry.require(stage_name)
-        view = self.views.view_for_stage(stage_name)
-
-        if view is None:
-            return
-
-        stage.update_view(view)
 
     # =================================== #
     # Matching
@@ -521,28 +453,4 @@ class Renderer(EventDispatcher):
 
         return stage_names
 
-    # =================================== #
-    # Internals
-    # =================================== #
 
-    def setup_viewport(
-        self,
-        stage: RenderStage,
-        view: View
-    ) -> None:
-        stage.bind(on_viewport_dirty=self.queue_viewport)
-
-        stage.scene_viewport_x = self.scene_viewport_x
-        stage.scene_viewport_y = self.scene_viewport_y
-        stage.scene_viewport_width = self.scene_viewport_width
-        stage.scene_viewport_height = self.scene_viewport_height
-
-        self.bind(scene_viewport_x=stage.setter("scene_viewport_x"))
-        self.bind(scene_viewport_y=stage.setter("scene_viewport_y"))
-        self.bind(scene_viewport_width=stage.setter("scene_viewport_width"))
-        self.bind(scene_viewport_height=stage.setter("scene_viewport_height"))
-
-        self.views.link(
-            view.name,
-            stage.name,
-        )
