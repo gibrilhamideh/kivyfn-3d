@@ -60,14 +60,14 @@ class GlbAsset:
         self,
         *,
         name: str = "",
-        new_matrial: bool = True,
+        new_material: bool = True,
     ) -> SceneObject:
         if self.is_renderable:
             node = Object3D(
                 name=name or self.name,
                 uid=self.uid,
                 geometry=self.require_geometry(),
-                material=self.require_material(copy=new_matrial),
+                material=self.require_material(copy=new_material),
                 tags=self.tags,
             )
         else:
@@ -81,7 +81,7 @@ class GlbAsset:
         for child in self.children:
             node.add_child(
                 child.instantiate(
-                    new_matrial=new_matrial,
+                    new_material=new_material,
                 )
             )
 
@@ -240,6 +240,46 @@ class GlbBlueprint:
         for blueprint in self.walk():
             if blueprint.is_renderable:
                 yield blueprint
+
+    def tag(
+        self,
+        tag: str,
+        *,
+        include: BlueprintFilter | None = None,
+        exclude: BlueprintFilter | None = None,
+    ) -> None:
+        for asset in self.tree:
+            asset.tag(
+                tag,
+                include=include,
+                exclude=exclude,
+            )
+
+    def untag(
+        self,
+        tag: str,
+        *,
+        include: BlueprintFilter | None = None,
+        exclude: BlueprintFilter | None = None,
+    ) -> None:
+        for asset in self.tree:
+            asset.untag(
+                tag,
+                include=include,
+                exclude=exclude,
+            )
+
+    def clear_tags(
+        self,
+        *,
+        include: BlueprintFilter | None = None,
+        exclude: BlueprintFilter | None = None,
+    ) -> None:
+        for asset in self.tree:
+            asset.clear_tags(
+                include=include,
+                exclude=exclude,
+            )
 
     def __repr__(self) -> str:
         return (

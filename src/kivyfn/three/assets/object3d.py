@@ -175,7 +175,7 @@ class Object3D(Node3D):
     # =================================== #
     # Tags
     # =================================== #
-    def add_tag(self, tag: str) -> None:
+    def tag(self, tag: str) -> None:
         if tag in self.tags:
             return
 
@@ -183,7 +183,7 @@ class Object3D(Node3D):
         self._tags.add(tag)
         self.mark_tag_dirty(old)
 
-    def remove_tag(self, tag: str) -> None:
+    def untag(self, tag: str) -> None:
         if tag not in self.tags:
             return
 
