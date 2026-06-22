@@ -26,7 +26,6 @@ from kivy.graphics import (
 
 from kivy.properties import (
     ColorProperty,
-    DictProperty,
     ObjectProperty,
     OptionProperty,
     StringProperty,
@@ -36,6 +35,8 @@ from kivy.properties import (
 
 from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.render.shader import Shader
+from kivyfn.three.render.instructions import BindCubeTexture
+from kivyfn.three.render.resources import CubeTexture
 
 
 
@@ -69,7 +70,6 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     name: str = StringProperty()
     viewport: Viewport = ObjectProperty()
     shader: Shader = ObjectProperty()
-    uniforms: dict = DictProperty()
     hot_reload: bool = BooleanProperty(False)
 
 
@@ -99,6 +99,8 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
         if camera is not None:
             camera.attach(self.viewport)
 
+        self._uniforms: dict[str, Any] = {}
+
 
     # =================================== #
     # Initialization
@@ -116,54 +118,73 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # =================================== #
     # Bindings
     # =================================== #
-    def create_texture_binder(
+    def bind_texture(
         self,
-        output_uniform: str,
+        *,
+        uniform: str,
         texture: Texture,
         slot: int,
     ) -> BindTexture:
-
         instruction = BindTexture(
             texture=texture,
             index=slot,
         )
 
         self.texture_group.add(instruction)
+        self.apply_uniform(uniform, slot)
 
-        self.set_uniform(
-            output_uniform,
-            slot,
+        return instruction
+
+    def bind_cube_texture(
+        self,
+        *,
+        uniform: str,
+        texture: CubeTexture,
+        slot: int,
+    ):
+        instruction = BindCubeTexture(
+            stage=self,
+            uniform=uniform,
+            texture=texture,
+            slot=slot,
         )
+
+        self.texture_group.add(instruction)
+        self.apply_uniform(uniform, slot)
 
         return instruction
 
     # =================================== #
-    # External API
+    # Uniforms
     # =================================== #
-    def set_uniform(
-        self,
-        name: str,
-        value: Any,
-    ) -> None:
-        self.uniforms[name] = value
-
     def apply_uniform(
         self,
         name: str,
         value: Any,
     ) -> None:
+        self._uniforms[name] = value
+
         if isinstance(value, list):
             self.ctx[name] = value.copy()
         else:
             self.ctx[name] = value
 
+        self.ask_update()
+
     def sync_uniforms(self) -> None:
-        for key, value in self.uniforms.items():
+        for key, value in list(self._uniforms.items()):
             self.apply_uniform(
                 key,
                 value,
             )
 
+    @property
+    def uniforms(self) -> dict[str, Any]:
+        return self._uniforms
+
+    # =================================== #
+    # External API
+    # =================================== #
     def clear_textures(self) -> None:
         self.texture_group.clear()
 
@@ -176,9 +197,6 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
     # =================================== #
     # Property Events
     # =================================== #
-    def on_uniforms(self, *_):
-        self.sync_uniforms()
-
     def sync_shader(self) -> None:
         self.ctx.shader.vs = self.shader.vertex_source
         self.ctx.shader.fs = self.shader.fragment_source
@@ -217,7 +235,7 @@ class BaseRenderContext(EventDispatcher, Generic[TContext]):
         name: str,
         value: Any,
     ):
-        self.set_uniform(
+        self.apply_uniform(
             name,
             value,
         )

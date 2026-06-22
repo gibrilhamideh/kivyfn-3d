@@ -187,7 +187,6 @@ class LightManager(EventDispatcher):
         self,
         light: LightSource,
     ) -> None:
-        self.sync_visibility(light)
         self._sync_uniforms_trigger()
 
     def on_transform_dirty(
@@ -264,6 +263,7 @@ class LightManager(EventDispatcher):
     # Sync Uniforms
     # =================================== #
     def sync_uniforms(self, *_) -> None:
+
         affected_tags = self.registry.affected_tags()
         if not affected_tags:
             return
