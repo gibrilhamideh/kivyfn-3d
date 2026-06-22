@@ -173,7 +173,7 @@ class LightManager(EventDispatcher):
 
             if (
                 shadow_pass is not None
-                and self.renderer.stages.get(shadow_pass) is not None
+                and self.renderer.stages.registry.get(shadow_pass) is not None
             ):
                 self.renderer.destroy_stage(
                     shadow_pass,
@@ -281,13 +281,25 @@ class LightManager(EventDispatcher):
         if not affected_tags:
             return
 
-        seen: dict[tuple[str, frozenset[str]], CulledLights] = {}
+        contexts: dict[str, RenderContext] = {}
 
-        for stage in self.renderer.stages.select_contexts(tags=affected_tags):
+        for tag in affected_tags:
+            for stage in self.renderer.stages.registry.contexts_of(tag):
+                contexts[stage.name] = stage
+
+        seen: dict[tuple[str, frozenset[str]], CulledLights] = {}
+        for stage in contexts.values():
             view = self.renderer.views.view_for_stage(stage.name)
+            if view is None:
+                continue
+
             tags = self.renderer.stages.registry.tags_of(stage.name)
 
-            key = (view.name,frozenset(tags))
+            key = (
+                view.name,
+                frozenset(tags),
+            )
+
             culled = seen.get(key)
 
             if culled is None:
@@ -301,6 +313,7 @@ class LightManager(EventDispatcher):
                 seen[key] = culled
 
             uniforms = self._build_light_uniforms(culled)
+
             self._apply_uniforms(
                 stage=stage,
                 uniforms=uniforms,
@@ -386,11 +399,6 @@ class LightManager(EventDispatcher):
         self.renderer.attach_pass(
             name=shadow_pass.name,
             target_tags=set(config.receiver_tags),
-        )
-
-        self.renderer.link_stage(
-            source=shadow_pass.name,
-            target_tags=set(config.caster_tags),
         )
 
         self._shadow_views[light_name] = view.name
@@ -528,7 +536,13 @@ class LightManager(EventDispatcher):
         tags: set[str],
         uniforms: dict[str, Any],
     ) -> None:
-        for stage in self.renderer.stages.select_contexts(tags=tags):
+        contexts: dict[str, RenderContext] = {}
+
+        for tag in tags:
+            for stage in self.renderer.stages.registry.contexts_of(tag):
+                contexts[stage.name] = stage
+
+        for stage in contexts.values():
             self._apply_uniforms(
                 stage=stage,
                 uniforms=uniforms,

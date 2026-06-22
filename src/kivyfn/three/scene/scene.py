@@ -8,15 +8,12 @@ from kivy.properties import NumericProperty
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.graph.node import Node3D
-from kivyfn.three.graph.node_registry import SceneNodeRegistry
 from kivyfn.three.loaders.scene_loader import SceneLoader
-from kivyfn.three.scene.base import SceneControllerBase
 from kivyfn.three.overlays.manager import OverlayManager
+from kivyfn.three.scene.base import SceneControllerBase
+from kivyfn.three.scene.registry import SceneRegistry
 from kivyfn.three.scene.tools import SceneTools
 from kivyfn.three.types import (
-        SceneObject,
-        SceneBlueprint,
-        AssetBlueprint,
         RenderStageName,
         RenderContextName,
         RenderPassName
@@ -24,8 +21,7 @@ from kivyfn.three.types import (
 
 if TYPE_CHECKING:
     from kivyfn.three.views.view_manager import ViewManager
-    from kivyfn.three.render.binding_registry import RenderBindingRecord
-    from kivyfn.three.render.link_registry import RenderLinkRecord
+    from kivyfn.three.render.binder import RenderBindingRecord
     from kivyfn.three.render.context import RenderContext, RenderPass, RenderPassOutput
     from kivyfn.three.render.shader import Shader
 
@@ -75,7 +71,7 @@ class Scene(SceneControllerBase):
         self.renderer: Renderer
         self.overlays: OverlayManager
         self.root: Node3D
-        self.nodes: SceneNodeRegistry
+        self.registry: SceneRegistry
 
     def on_kv_post(self, base_widget) -> None:
 
@@ -90,8 +86,9 @@ class Scene(SceneControllerBase):
         )
 
         self.overlays = OverlayManager(self)
-        self.nodes = SceneNodeRegistry()
+        self.registry = SceneRegistry()
         self.root = Node3D(name="root")
+        self.root.scene = self # root bootstrap only
 
         self.bind(scene_viewport_x=self.renderer.setter("scene_viewport_x"))
         self.bind(scene_viewport_y=self.renderer.setter("scene_viewport_y"))
@@ -208,32 +205,6 @@ class Scene(SceneControllerBase):
     # =================================== #
     # Stage API
     # =================================== #
-    def link_stage(
-        self,
-        *,
-        source: RenderStageName,
-        target_name: str | None = None,
-        target_tags: set[str] | None = None,
-    ) -> RenderLinkRecord | list[RenderLinkRecord]:
-        return self.renderer.link_stage(
-            source=source,
-            target_name=target_name,
-            target_tags=target_tags,
-        )
-
-    def unlink_stage(
-        self,
-        *,
-        source: RenderStageName,
-        target_name: str | None = None,
-        target_tags: set[str] | None = None,
-    ) -> RenderLinkRecord | list[RenderLinkRecord]:
-        return self.renderer.unlink_stage(
-            source=source,
-            target_name=target_name,
-            target_tags=target_tags,
-        )
-
     def hide_stage(self, name: RenderStageName) -> None:
         self.renderer.hide_stage(name)
 
@@ -242,84 +213,6 @@ class Scene(SceneControllerBase):
 
     def destroy_stage(self, name: RenderStageName) -> None:
         self.renderer.destroy_stage(name)
-
-
-    # =================================== #
-    # Node Lifecycle API
-    # =================================== #
-
-    def destroy(self, node: Node3D) -> None:
-
-        assert node.parent is not None
-
-        for current in node.walk(filter="all"):
-            self.nodes.unregister(current)
-
-        node.parent.remove_child(node)
-
-        self.overlays.detach_by_subtree(node)
-        self.renderer.queue_destroy(node)
-
-
-    def render(
-        self,
-        node: Node3D,
-        *,
-        stage: RenderStageName | None = None,
-        stages: list[RenderStageName] | None = None,
-        parent: Node3D | None = None,
-    ) -> None:
-
-        if stage is not None and stages is not None:
-            raise ValueError(
-                "Provide either 'stage' or 'stages', not both."
-            )
-
-        if stage is None and stages is None:
-            raise ValueError(
-                "Either 'stage' or 'stages' must be provided."
-            )
-
-        parent = parent or self.root
-        parent.add_child(node)
-
-        for current in node.walk(filter="all"):
-            self.nodes.register(current)
-
-        self.renderer.queue_render(
-            node,
-            stage=stage,
-            stages=stages,
-        )
-
-
-    def render_blueprint(
-        self,
-        blueprint: AssetBlueprint,
-        stage_name: str,
-        *,
-        parent: SceneObject | None = None,
-    ) -> SceneObject:
-
-        return self.loader.render_blueprint(
-            self,
-            blueprint=blueprint,
-            stage_name=stage_name,
-            parent=parent
-        )
-
-
-    def render_scene_blueprint(
-        self,
-        scene_blueprint: SceneBlueprint,
-        stage_name: str,
-    ) -> list[SceneObject]:
-
-        return self.loader.render_scene_blueprint(
-            self,
-            scene_blueprint=scene_blueprint,
-            stage_name=stage_name
-        )
 
     # =================================== #
     # Exports

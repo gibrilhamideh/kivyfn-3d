@@ -2,48 +2,47 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
-from dataclasses import dataclass
 from collections import deque
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal
 
 from kivy.clock import Clock
-from kivy.properties import NumericProperty
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
+from kivy.properties import NumericProperty
 
-from kivyfn.three.lights.manager import LightManager
 from kivyfn.three.lights.limits import LightLimits
+from kivyfn.three.lights.manager import LightManager
+from kivyfn.three.render.instances import RenderInstanceManager
+from kivyfn.three.render.registry import (
+    RenderMembershipRegistry,
+    RenderObjectRegistry,
+)
+from kivyfn.three.render.stages import RenderStageManager
 from kivyfn.three.views.view_manager import ViewManager
-from kivyfn.three.render.stage_manager import RenderStageManager
-from kivyfn.three.render.instruction_manager import InstructionManager
-from kivyfn.three.render.instructions import MaterialInstructions
 
 from kivyfn.three.types import (
-    SceneObject,
     RenderStage,
-    RenderContextName,
-    RenderPassName,
-    RenderStageName,
+    SceneObject,
     ViewName,
 )
 
-
 if TYPE_CHECKING:
-    from kivyfn.three.graph.node import Node3D
-    from kivyfn.three.views.view import View
+    from kivyfn.three.assets.object3d import Object3D
+    from kivyfn.three.render.binder import RenderBindingRecord
     from kivyfn.three.render.context import RenderContext, RenderPass
-    from kivyfn.three.render.binding_registry import RenderBindingRecord
-    from kivyfn.three.render.link_registry import RenderLinkRecord
+    from kivyfn.three.views.view import View
 
 
 @dataclass(slots=True)
 class RenderCommand:
-    op: Literal["render", "destroy"]
+    op: Literal["render", "destroy", "retag"]
     node: SceneObject
-    stage_name: str | None = None
+    old_tags: set[str] | None = None
+    new_tags: set[str] | None = None
+
 
 class Renderer(EventDispatcher):
-
     scene_viewport_x = NumericProperty(0)
     scene_viewport_y = NumericProperty(0)
     scene_viewport_width = NumericProperty(100)
@@ -53,17 +52,22 @@ class Renderer(EventDispatcher):
         self,
         canvas: InstructionGroup,
         *,
-        max_directional_lights,
-        max_point_lights,
-        max_spot_lights,
+        max_directional_lights: int,
+        max_point_lights: int,
+        max_spot_lights: int,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
 
         self.canvas = canvas
+
         self.stages = RenderStageManager()
-        self.instructions = InstructionManager(self.stages)
+        self.objects = RenderObjectRegistry()
+        self.memberships = RenderMembershipRegistry()
+        self.instances = RenderInstanceManager()
+
         self.views = ViewManager()
+
         self.lights = LightManager(
             renderer=self,
             limits=LightLimits(
@@ -80,10 +84,10 @@ class Renderer(EventDispatcher):
             )
         )
 
-        self.instructions.bind(
+        self.instances.bind(
             on_transform_dirty=self.queue_transform,
             on_material_dirty=self.queue_material,
-            on_visibility_dirty=self.queue_visibility
+            on_visibility_dirty=self.queue_visibility,
         )
 
         self.hidden: set[str] = set()
@@ -101,155 +105,112 @@ class Renderer(EventDispatcher):
         return (
             "Renderer("
             f"stages={len(self.stages)}, "
-            f"instructions={len(self.instructions.by_object)}"
+            f"objects={len(self.objects)}, "
             ")"
         )
 
     # =================================== #
     # Contexts
     # =================================== #
+
     def create_context(
-            self,
-            name: RenderContextName,
-            view_name: ViewName,
-            **kwargs
+        self,
+        view_name: ViewName,
+        **kwargs,
     ) -> RenderContext:
 
-        view = self.views.require(view_name)
-
-        stage = self.stages.create_context(name=name, **kwargs)
-        stage.bind(on_viewport_dirty=self.queue_viewport)
-
-        stage.scene_viewport_x = self.scene_viewport_x
-        stage.scene_viewport_y = self.scene_viewport_y
-        stage.scene_viewport_width = self.scene_viewport_width
-        stage.scene_viewport_height = self.scene_viewport_height
-
-        self.bind(scene_viewport_x=stage.setter("scene_viewport_x"))
-        self.bind(scene_viewport_y=stage.setter("scene_viewport_y"))
-        self.bind(scene_viewport_width=stage.setter("scene_viewport_width"))
-        self.bind(scene_viewport_height=stage.setter("scene_viewport_height"))
-
-        self.views.link(
-            view.name,
-            stage.name,
+        stage = self.stages.create_context(
+            **kwargs,
         )
 
+        view = self.views.require(view_name)
+        self.setup_viewport(stage, view)
+
         self.canvas.add(stage.ctx)
+        self.add_stage_memberships(stage)
         return stage
 
+    # =================================== #
+    # Render Passes
+    # =================================== #
 
-    # =================================== #
-    # Render Pass
-    # =================================== #
     def create_pass(
-            self,
-            name: RenderPassName,
-            view_name: ViewName,
-            **kwargs
+        self,
+        view_name: ViewName,
+        **kwargs,
     ) -> RenderPass:
 
-        view = self.views.require(view_name)
-
-
-        stage = self.stages.create_pass(name=name, **kwargs)
-        stage.bind(on_viewport_dirty=self.queue_viewport)
-
-        stage.scene_viewport_x = self.scene_viewport_x
-        stage.scene_viewport_y = self.scene_viewport_y
-        stage.scene_viewport_width = self.scene_viewport_width
-        stage.scene_viewport_height = self.scene_viewport_height
-
-        self.bind(scene_viewport_x=stage.setter("scene_viewport_x"))
-        self.bind(scene_viewport_y=stage.setter("scene_viewport_y"))
-        self.bind(scene_viewport_width=stage.setter("scene_viewport_width"))
-        self.bind(scene_viewport_height=stage.setter("scene_viewport_height"))
-
-        self.views.link(
-            view.name,
-            stage.name,
+        stage = self.stages.create_pass(
+            **kwargs,
         )
 
+        view = self.views.require(view_name)
+        self.setup_viewport(stage, view)
+
         self.canvas.add(stage.ctx)
+        self.add_stage_memberships(stage)
         return stage
 
-    def attach_pass(self, **kwargs) -> RenderBindingRecord | list[RenderBindingRecord]:
-
+    def attach_pass(
+        self,
+        **kwargs,
+    ) -> RenderBindingRecord | list[RenderBindingRecord]:
         return self.stages.attach_pass(**kwargs)
 
     # =================================== #
-    # Shared
+    # Stage Visibility / Destruction
     # =================================== #
-    def link_stage(self, **kwargs) -> RenderLinkRecord | list[RenderLinkRecord]:
-
-        return self.stages.link(**kwargs)
-
-    def unlink_stage(self, **kwargs) -> RenderLinkRecord | list[RenderLinkRecord]:
-
-        return self.stages.unlink(**kwargs)
 
     def hide_stage(
         self,
-        name: str,
+        stage_name: str,
     ) -> None:
-
-        if name in self.hidden:
+        if stage_name in self.hidden:
             return
 
-        stage = self.stages.require(name)
+        stage = self.stages.registry.require(stage_name)
         self.canvas.remove(stage.ctx)
-        self.hidden.add(name)
+        self.hidden.add(stage_name)
 
     def show_stage(
         self,
-        name: str,
+        stage_name: str,
     ) -> None:
-
-        if name not in self.hidden:
+        if stage_name not in self.hidden:
             return
 
-        stage = self.stages.require(name)
+        stage = self.stages.registry.require(stage_name)
         self.canvas.add(stage.ctx)
-        self.hidden.remove(name)
+        self.hidden.remove(stage_name)
 
     def destroy_stage(
         self,
-        name: str,
+        stage_name: str,
     ) -> None:
+        destroyed = self.stages.destroy(stage_name)
 
-        if name not in self.hidden:
-            stage = self.stages.require(name)
-            self.canvas.remove(stage.ctx)
+        for stage in destroyed:
+            if stage.name not in self.hidden:
+                self.canvas.remove(stage.ctx)
 
-        self.stages.destroy(name)
+            self.hidden.discard(stage.name)
+            self.remove_stage_memberships(stage.name)
 
     # =================================== #
     # Dirty Queue
     # =================================== #
+
     def queue_render(
         self,
         node: SceneObject,
-        *,
-        stage: RenderStageName | None = None,
-        stages: list[RenderStageName] | None = None,
     ) -> None:
-
-        stage_names = [stage] if stage is not None else stages
-
-        if stage_names is None:
-            raise RuntimeError("Unexpected missing render stages.")
-
-        for stage_name in stage_names:
-            self._lifecycle_queue.append(
-                RenderCommand(
-                    op="render",
-                    node=node,
-                    stage_name=stage_name,
-                )
+        self._lifecycle_queue.append(
+            RenderCommand(
+                op="render",
+                node=node,
             )
-
+        )
         self._trigger_dirty()
-
 
     def queue_destroy(
         self,
@@ -263,182 +224,325 @@ class Renderer(EventDispatcher):
         )
         self._trigger_dirty()
 
+    def queue_retag(
+        self,
+        node: SceneObject,
+        old_tags: set[str],
+        new_tags: set[str],
+    ) -> None:
+        self._lifecycle_queue.append(
+            RenderCommand(
+                op="retag",
+                node=node,
+                old_tags=set(old_tags),
+                new_tags=set(new_tags),
+            )
+        )
+        self._trigger_dirty()
+
     def queue_transform(
         self,
-        manager: InstructionManager,
-        node: SceneObject,
+        manager: RenderInstanceManager,
+        object3d: Object3D,
     ) -> None:
-        self._transform_queue.add(id(node))
+        self._transform_queue.add(id(object3d))
         self._trigger_dirty()
 
     def queue_material(
         self,
-        manager: InstructionManager,
-        node: SceneObject,
+        manager: RenderInstanceManager,
+        object3d: Object3D,
     ) -> None:
-        self._material_queue.add(id(node))
+        self._material_queue.add(id(object3d))
         self._trigger_dirty()
 
     def queue_visibility(
         self,
-        manager: InstructionManager,
-        node: SceneObject,
+        manager: RenderInstanceManager,
+        object3d: Object3D,
     ) -> None:
-        self._visibility_queue.add(id(node))
+        self._visibility_queue.add(id(object3d))
         self._trigger_dirty()
 
     def queue_view(
-            self,
-            view: View,
-            context: str
+        self,
+        view: View,
+        stage_name: str,
     ) -> None:
-        self._view_queue[context] = view
+        self._view_queue[stage_name] = view
         self._trigger_dirty()
 
     def queue_viewport(
-            self,
-            stage: RenderStage,
+        self,
+        stage: RenderStage,
     ) -> None:
         self._viewport_queue.add(stage.name)
         self._trigger_dirty()
 
-
-
     # =================================== #
     # Flush Queue
     # =================================== #
-    def flush_dirty(self, *_) -> None:
 
-        # ---) LifeCycle
+    def flush_dirty(
+        self,
+        *_,
+    ) -> None:
+        # ---) Lifecycle
         while self._lifecycle_queue:
             command = self._lifecycle_queue.popleft()
 
             if command.op == "render":
-                assert command.stage_name is not None
-
-                self.sync_render_queue(
-                    command.node,
-                    command.stage_name,
-                )
-                self.sync_transform_queue(command.node)
-                self.sync_material_queue(command.node)
-                self.sync_visibility_queue(command.node)
-
-                self.lights.create(command.node)
+                self.render(command.node)
 
             elif command.op == "destroy":
-                self.lights.destroy(command.node)
-                self.sync_destroy_queue(command.node)
+                self.destroy(command.node)
+
+            elif command.op == "retag":
+                if command.old_tags is None:
+                    raise RuntimeError("Missing old_tags for retag command.")
+
+                if command.new_tags is None:
+                    raise RuntimeError("Missing new_tags for retag command.")
+
+                self.retag(
+                    command.node,
+                    command.old_tags,
+                    command.new_tags,
+                )
 
         # ---) View
         while self._view_queue:
-            name, view = self._view_queue.popitem()
-            self.sync_view_queue(view, name)
+            stage_name, view = self._view_queue.popitem()
+            self.sync_view_queue(view, stage_name)
 
-        # ---) ViewPort
+        # ---) Viewport
         while self._viewport_queue:
-            name = self._viewport_queue.pop()
-            self.sync_viewport_queue(name)
-
+            stage_name = self._viewport_queue.pop()
+            self.sync_viewport_queue(stage_name)
 
         # ---) Transform
         while self._transform_queue:
-            node_id = self._transform_queue.pop()
-            node = self.instructions.objects.get(node_id)
+            object_id = self._transform_queue.pop()
+            object3d = self.objects.get(object_id)
 
-            if node is not None:
-                self.sync_transform_queue(node)
+            if object3d is not None:
+                self.instances.sync_transform(object3d)
 
-        # ---) Matrial
+        # ---) Material
         while self._material_queue:
-            node_id = self._material_queue.pop()
-            node = self.instructions.objects.get(node_id)
+            object_id = self._material_queue.pop()
+            object3d = self.objects.get(object_id)
 
-            if node is not None:
-                self.sync_material_queue(node)
+            if object3d is not None:
+                self.instances.sync_material(object3d)
 
-        # ---) Visiblity
+        # ---) Visibility
         while self._visibility_queue:
-            node_id = self._visibility_queue.pop()
-            node = self.instructions.objects.get(node_id)
+            object_id = self._visibility_queue.pop()
+            object3d = self.objects.get(object_id)
 
-            if node is not None:
-                self.sync_visibility_queue(node)
-
-
-
+            if object3d is not None:
+                self.instances.sync_visibility(object3d)
 
     # =================================== #
-    # Sync
+    # Lifecycle Sync
     # =================================== #
-    def sync_render_queue(self, node: SceneObject, stage_name: str):
-        stage = self.stages.require_context(stage_name)
-        self.instructions.create(node=node, stage=stage)
 
-    def sync_destroy_queue(self, node: Node3D):
-        self.instructions.destroy(node)
-
-    def sync_transform_queue(
+    def render(
         self,
         node: SceneObject,
+    ) -> None:
+        self.lights.create(node)
+
+        for object3d in node.walk(filter="objects"):
+
+            self.objects.register(object3d)
+            tags = self.objects.tags_of(object3d)
+
+            desired_stages = self.stages_for_tags(tags)
+            current_stages = self.memberships.stages_of(object3d)
+
+            for stage_name in current_stages - desired_stages:
+                self.remove_membership(object3d, stage_name)
+
+            for stage_name in desired_stages - current_stages:
+                self.add_membership(object3d, stage_name)
+
+            self.instances.sync_transform(object3d)
+            self.instances.sync_material(object3d)
+            self.instances.sync_visibility(object3d)
+
+    def destroy(
+        self,
+        node: SceneObject,
+    ) -> None:
+        self.lights.destroy(node)
+
+        for object3d in node.walk(filter="objects"):
+            active_stages = self.memberships.stages_of(object3d)
+
+            for stage_name in active_stages:
+                self.remove_membership(object3d, stage_name)
+
+            self.objects.unregister(object3d)
+
+    def retag(
+        self,
+        node: SceneObject,
+        old_tags: set[str],
+        new_tags: set[str],
     ) -> None:
         for object3d in node.walk(filter="objects"):
-            object_id = id(object3d)
+            if object3d is node:
+                self.objects.clear_tags(object3d)
 
-            model_mat = object3d.world_matrix
-            normal_mat = model_mat.compute_normal_matrix()
+                for tag in new_tags:
+                    self.objects.tag(object3d, tag)
 
-            for instructions in self.instructions.by_object.get(
-                object_id,
-                {},
-            ).values():
-                instructions.sync_transform(
-                    model_mat=model_mat,
-                    normal_mat=normal_mat,
-                )
+                tags = new_tags
+            else:
+                tags = self.objects.tags_of(object3d)
 
-    def sync_material_queue(
+
+            current_stages = self.memberships.stages_of(object3d)
+            desired_stages = self.stages_for_tags(tags)
+
+            for stage_name in current_stages - desired_stages:
+                self.remove_membership(object3d, stage_name)
+
+            for stage_name in desired_stages - current_stages:
+                self.add_membership(object3d, stage_name)
+
+            self.instances.sync_transform(object3d)
+            self.instances.sync_material(object3d)
+            self.instances.sync_visibility(object3d)
+
+
+    def add_membership(
         self,
-        node: SceneObject,
+        object3d: Object3D,
+        stage_name: str,
     ) -> None:
-        for object3d in node.walk(filter="objects"):
-            object_id = id(object3d)
-            for instructions in self.instructions.by_object.get(object_id, {}).values():
-                if not isinstance(instructions, MaterialInstructions):
-                    continue
-
-                instructions.set_material(object3d.material)
-
-    def sync_visibility_queue(
-        self,
-        node: SceneObject,
-    ) -> None:
-        if node.visible_in_tree:
-            self.instructions.show(node)
+        stage = self.stages.registry.get(stage_name)
+        if stage is None:
             return
 
-        self.instructions.hide(node)
+        self.instances.create(object3d, stage)
+        self.memberships.register(object3d, stage_name)
 
+    def remove_membership(
+        self,
+        object3d: Object3D,
+        stage_name: str,
+    ) -> None:
+        stage = self.stages.registry.get(stage_name)
+        if stage is not None:
+            self.instances.destroy(object3d, stage)
+
+        self.memberships.unregister(object3d, stage_name)
+
+    # =================================== #
+    # Stage Sync
+    # =================================== #
+
+    def add_stage_memberships(
+        self,
+        stage: RenderStage,
+    ) -> None:
+        for tag in self.stages.registry.tags_of(stage.name):
+            for object3d in self.objects.objects_of(tag):
+
+                tags = self.objects.tags_of(object3d)
+
+                desired_stages = self.stages_for_tags(tags)
+                current_stages = self.memberships.stages_of(object3d)
+
+                for stage_name in current_stages - desired_stages:
+                    self.remove_membership(object3d, stage_name)
+
+                for stage_name in desired_stages - current_stages:
+                    self.add_membership(object3d, stage_name)
+
+                self.instances.sync_transform(object3d)
+                self.instances.sync_material(object3d)
+                self.instances.sync_visibility(object3d)
+
+    def remove_stage_memberships(
+        self,
+        stage_name: str,
+    ) -> None:
+
+        object_ids = self.memberships.memberships_of(stage_name)
+
+        for object_id in object_ids:
+            object3d = self.objects.get(object_id)
+            if object3d is None:
+                continue
+
+            self.remove_membership(object3d, stage_name)
+
+    # =================================== #
+    # View / Viewport Sync
+    # =================================== #
 
     def sync_view_queue(
         self,
         view: View,
-        name: str,
+        stage_name: str,
     ) -> None:
-
-        stage = self.stages.require(name)
+        stage = self.stages.registry.require(stage_name)
         stage.update_view(view)
 
     def sync_viewport_queue(
         self,
-        name: str,
+        stage_name: str,
     ) -> None:
+        stage = self.stages.registry.require(stage_name)
+        view = self.views.view_for_stage(stage_name)
 
-        stage = self.stages.require(name)
-        view = self.views.view_for_stage(name)
         if view is None:
             return
 
         stage.update_view(view)
 
+    # =================================== #
+    # Matching
+    # =================================== #
 
+    def stages_for_tags(
+        self,
+        object_tags: set[str],
+    ) -> set[str]:
+        stage_names: set[str] = set()
+
+        for tag in object_tags:
+            for stage in self.stages.registry.stages_of(tag):
+                stage_names.add(stage.name)
+
+        return stage_names
+
+    # =================================== #
+    # Internals
+    # =================================== #
+
+    def setup_viewport(
+        self,
+        stage: RenderStage,
+        view: View
+    ) -> None:
+        stage.bind(on_viewport_dirty=self.queue_viewport)
+
+        stage.scene_viewport_x = self.scene_viewport_x
+        stage.scene_viewport_y = self.scene_viewport_y
+        stage.scene_viewport_width = self.scene_viewport_width
+        stage.scene_viewport_height = self.scene_viewport_height
+
+        self.bind(scene_viewport_x=stage.setter("scene_viewport_x"))
+        self.bind(scene_viewport_y=stage.setter("scene_viewport_y"))
+        self.bind(scene_viewport_width=stage.setter("scene_viewport_width"))
+        self.bind(scene_viewport_height=stage.setter("scene_viewport_height"))
+
+        self.views.link(
+            view.name,
+            stage.name,
+        )

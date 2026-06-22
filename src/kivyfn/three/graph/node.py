@@ -70,11 +70,14 @@ class Node3D(EventDispatcher):
     transform: Transform = ObjectProperty()
 
     __events__ = (
-        "on_transform_dirty",
-        "on_visibility_dirty",
         "on_press",
         "on_release",
         "on_drag",
+        "on_transform_dirty",
+        "on_visibility_dirty",
+        "on_enter_scene",
+        "on_leave_scene",
+
     )
 
     def __init__(
@@ -99,6 +102,8 @@ class Node3D(EventDispatcher):
             f"visible={self.visible}"
             ")"
         )
+
+
 
     # =================================== #
     # Matrices
@@ -218,13 +223,17 @@ class Node3D(EventDispatcher):
     def on_visibility_dirty(self) -> None:
         pass
 
+    def on_enter_scene(self, scene: Scene) -> None:
+        pass
+
+    def on_leave_scene(self, scene: Scene) -> None:
+        pass
+
+
     # =================================== #
     # Relationships
     # =================================== #
-    def add_child(
-        self,
-        child: Node3D | Object3D | Light3D,
-    ) -> None:
+    def add_child(self, child):
         if child.parent is self:
             return
 
@@ -234,13 +243,19 @@ class Node3D(EventDispatcher):
         self.children.append(child)
         child.parent = self
 
+        if self.scene is not None:
+            child._enter_scene(self.scene)
+
         child.mark_transform_dirty()
         child.mark_visibility_dirty()
 
-    def remove_child(
-        self,
-        child: Node3D | Object3D | Light3D,
-    ) -> None:
+    def remove_child(self, child):
+        if child.parent is not self:
+            return
+
+        if child.scene is not None:
+            child._leave_scene()
+
         self.children.remove(child)
         child.parent = None
 
@@ -250,6 +265,42 @@ class Node3D(EventDispatcher):
     def clear_children(self) -> None:
         for child in list(self.children):
             self.remove_child(child)
+
+    # =================================== #
+    # Scene context
+    # =================================== #
+    def _enter_scene(self, scene: Scene) -> None:
+        if self.scene is scene:
+            return
+
+        if self.scene is not None:
+            self._leave_scene()
+
+        self.scene = scene
+
+        scene.registry.register(self)
+        scene.renderer.queue_render(self)
+
+        self.dispatch("on_enter_scene", scene)
+
+        for child in self.children:
+            child._enter_scene(scene)
+
+    def _leave_scene(self) -> None:
+        if self.scene is None:
+            return
+
+        scene = self.scene
+
+        self.dispatch("on_leave_scene", scene)
+
+        for child in self.children:
+            child._leave_scene()
+
+        scene.renderer.queue_destroy(self)
+        scene.registry.unregister(self)
+
+        self.scene = None
 
     # =================================== #
     # Type Helpers

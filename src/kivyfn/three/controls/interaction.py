@@ -165,7 +165,7 @@ class RenderIdPicker(BasePicker):
         if render_id is None:
             return None
 
-        object3d = self.scene.nodes.get_by_render_id(render_id)
+        object3d = self.scene.registry.get_by_render_id(render_id)
         if object3d is None:
             return None
 
@@ -187,7 +187,7 @@ class RenderIdPicker(BasePicker):
     ) -> int | None:
         assert self.scene is not None
 
-        ctx = self.scene.renderer.stages.require_pass(
+        ctx = self.scene.renderer.stages.registry.require_pass(
             self.pass_name,
         )
 

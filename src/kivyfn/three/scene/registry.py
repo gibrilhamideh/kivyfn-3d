@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from kivyfn.three.assets.object3d import Object3D
 
 
-class SceneNodeRegistry:
+class SceneRegistry:
     """
     Tracks scene nodes by uid and renderable objects by render_id.
 

@@ -50,7 +50,7 @@ class Object3D(Node3D):
             ")"
         )
 
-    __events__ = ("on_material_dirty", )
+    __events__ = ("on_material_dirty", "on_tag_dirty")
 
     def __init__(
         self,
@@ -58,6 +58,8 @@ class Object3D(Node3D):
         material: Material,
         name: str = "",
         uid: str | None = None,
+        *,
+        tags: set[str] | None = None,
         **kwargs,
     ):
         super().__init__(
@@ -66,17 +68,24 @@ class Object3D(Node3D):
             **kwargs,
         )
 
+
+        self._tags = set(tags or ())
+
         self.geometry = geometry
         self.collider = Collider(self)
 
         self.set_material(material)
 
     # =================================== #
-    # Property Helpers
+    # Properties
     # =================================== #
     @property
     def kind(self):
         return "object"
+
+    @property
+    def tags(self) -> set[str]:
+        return set(self._tags)
 
     # =================================== #
     # Requirements
@@ -156,12 +165,52 @@ class Object3D(Node3D):
     def mark_material_dirty(self) -> None:
         self.dispatch("on_material_dirty")
 
+    def mark_tag_dirty(self, old: set[str]) -> None:
+        new = self.tags
+        self.dispatch("on_tag_dirty", old, new)
+
+        if self.scene is not None:
+            self.scene.renderer.queue_retag(self, old, new)
+
+    # =================================== #
+    # Tags
+    # =================================== #
+    def add_tag(self, tag: str) -> None:
+        if tag in self.tags:
+            return
+
+        old = set(self.tags)
+        self._tags.add(tag)
+        self.mark_tag_dirty(old)
+
+    def remove_tag(self, tag: str) -> None:
+        if tag not in self.tags:
+            return
+
+        old = set(self.tags)
+        self._tags.remove(tag)
+        self.mark_tag_dirty(old)
+
+
+    def set_tags(self, tags: set[str]) -> None:
+        tags = set(tags)
+
+        if self.tags == tags:
+            return
+
+        old = set(self.tags)
+        self._tags = tags
+        self.mark_tag_dirty(old)
+
     # =================================== #
     # Events
     # =================================== #
     def on_material_dirty(
         self,
     ) -> None:
+        pass
+
+    def on_tag_dirty(self, old: set[str], new: set[str]) -> None:
         pass
 
 
