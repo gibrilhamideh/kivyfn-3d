@@ -10,16 +10,16 @@ from kivyfn.three.math.vector import Vector2, Vector3
 
 if TYPE_CHECKING:
     from kivyfn.three.graph.node import Node3D
-    from kivyfn.three.scene.scene import Scene
+    from kivyfn.three.views.viewport import Viewport
 
 
 @dataclass
 class Overlay:
-    scene: Scene
+    name: str
     anchor: Node3D
     widget: Widget
+    viewport: Viewport
 
-    view_name: str
     offset: Vector2 = field(default_factory=Vector2.zero)
     world_offset: Vector3 = field(default_factory=Vector3.zero)
     hide_when_offscreen: bool = True
@@ -29,24 +29,19 @@ class Overlay:
             self.hide()
             return
 
-        view = self.scene.views.require(self.view_name)
-
         world_position = (
             self.anchor.world_position +
             self.world_offset
         )
 
-        screen_position = self.scene.viewport.world_to_screen(
-            world_position,
-            view=view,
-        )
+        screen_position = self.viewport.world_to_screen(world_position)
 
         if screen_position is None:
             if self.hide_when_offscreen:
                 self.hide()
             return
 
-        x, y, _z = screen_position
+        x, y, _ = screen_position
 
         self.show()
         self.widget.center_x = x + self.offset.x
