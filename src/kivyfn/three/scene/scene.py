@@ -8,7 +8,6 @@ from kivy.properties import NumericProperty
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.graph.node import Node3D
-from kivyfn.three.loaders.scene_loader import SceneLoader
 from kivyfn.three.overlays.manager import OverlayManager
 from kivyfn.three.scene.base import SceneControllerBase
 from kivyfn.three.scene.registry import SceneRegistry
@@ -65,7 +64,6 @@ class Scene(SceneControllerBase):
             max_spot_lights=max_spot_lights,
             **kwargs)
 
-        self.loader: SceneLoader
         self.tools: SceneTools
         self.viewport: Viewport
         self.renderer: Renderer
@@ -75,7 +73,6 @@ class Scene(SceneControllerBase):
 
     def on_kv_post(self, base_widget) -> None:
 
-        self.loader = SceneLoader()
         self.tools = SceneTools(self)
         self.viewport = Viewport(self)
         self.renderer = Renderer(

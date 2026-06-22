@@ -9,8 +9,8 @@ from collections.abc import Callable
 if TYPE_CHECKING:
     from kivyfn.three.assets.object3d import Object3D
     from kivyfn.three.graph.node import Node3D
-    from kivyfn.three.loaders.glb.blueprint import GlbBlueprint, GlbSceneBlueprint
-    from kivyfn.three.loaders.obj.blueprint import ObjBlueprint, ObjSceneBlueprint
+    from kivyfn.three.parsers.glb.blueprint import GlbBlueprint, GlbAsset
+    from kivyfn.three.parsers.obj.blueprint import ObjBlueprint, ObjAsset
     from kivyfn.three.render.context import RenderContext, RenderPass
 
     from kivyfn.three.lights.sources.directional import DirectionalLight
@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 
 LightSource: TypeAlias = "DirectionalLight | PointLight | SpotLight"
 
-SceneBlueprint: TypeAlias = "GlbSceneBlueprint | ObjSceneBlueprint"
-AssetBlueprint: TypeAlias = "GlbBlueprint | ObjBlueprint"
+SceneBlueprint: TypeAlias = "GlbBlueprint | ObjBlueprint"
+AssetBlueprint: TypeAlias = "GlbAsset | ObjAsset"
 
 RenderStage: TypeAlias = "RenderPass | RenderContext"
 

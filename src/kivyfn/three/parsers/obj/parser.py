@@ -9,7 +9,7 @@ import numpy as np
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.assets.geometry import Geometry, GeometryBounds
-from kivyfn.three.loaders.obj.blueprint import ObjSceneBlueprint, ObjBlueprint
+from kivyfn.three.parsers.obj.blueprint import ObjBlueprint, ObjAsset
 
 
 class ObjParser:
@@ -21,7 +21,7 @@ class ObjParser:
         self.swapyz = swapyz
         self.normalize = normalize
 
-        self.scene: ObjSceneBlueprint = ObjSceneBlueprint()
+        self.blueprint: ObjBlueprint = ObjBlueprint()
 
         self.vertices: list[list[float]] = []
         self.normals: list[list[float]] = []
@@ -41,7 +41,7 @@ class ObjParser:
     def load(
         self,
         filename: str | Path,
-    ) -> ObjSceneBlueprint:
+    ) -> ObjBlueprint:
 
         self.vertices = []
         self.normals = []
@@ -73,7 +73,7 @@ class ObjParser:
                     self._current_object = (
                         values[1]
                         if len(values) > 1
-                        else f"object_{len(self.scene.objects)}"
+                        else f"object_{len(self.blueprint.assets)}"
                     )
 
                 elif command == "v":
@@ -154,7 +154,7 @@ class ObjParser:
 
         self.finish_object()
 
-        return self.scene
+        return self.blueprint
 
     def finish_object(self) -> None:
         if self._current_object is None:
@@ -290,7 +290,7 @@ class ObjParser:
             bounds=bounds,
         )
 
-        self.scene.objects[self._current_object] = ObjBlueprint(
+        self.blueprint.assets[self._current_object] = ObjAsset(
             name=self._current_object,
             geometry=geometry,
             transform=transform,
