@@ -48,40 +48,42 @@ class SceneTools:
         *,
         pos: tuple[int, int] = (20, 20),
         size: tuple[int, int] = (256, 256),
-    ) -> RenderPassPreview:
+    ) -> None:
 
-        ctx = self.scene.stages.require_pass(stage)
-        with self.scene.canvas.after:
-            color = Color(1.0, 1.0, 1.0, 1.0)
-            rect = Rectangle(
-                pos=pos,
-                size=size,
-                texture=ctx.texture,
+        def tick(*_):
+
+            ctx = self.scene.stages.registry.require_pass(stage)
+            with self.scene.canvas.after:
+                color = Color(1.0, 1.0, 1.0, 1.0)
+                rect = Rectangle(
+                    pos=pos,
+                    size=size,
+                    texture=ctx.texture,
+                )
+
+            callback = partial(
+                self._sync_preview,
+                rect,
             )
 
-        callback = partial(
-            self._sync_preview,
-            rect,
-        )
+            ctx.bind(texture_ref=callback)
 
-        ctx.bind(texture_ref=callback)
+            preview = RenderPassPreview(
+                name=stage,
+                color=color,
+                rect=rect,
+                callback=callback,
+            )
 
-        preview = RenderPassPreview(
-            name=stage,
-            color=color,
-            rect=rect,
-            callback=callback,
-        )
+            self._previews.append(preview)
 
-        self._previews.append(preview)
-
-        return preview
+        Clock.schedule_once(tick, -1)
 
     def remove_preview(
         self,
         preview: RenderPassPreview,
     ) -> None:
-        ctx = self.scene.stages.require_pass(preview.name)
+        ctx = self.scene.stages.registry.require_pass(preview.name)
         ctx.unbind(
             texture_ref=preview.callback,
         )

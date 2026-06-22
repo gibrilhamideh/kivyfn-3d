@@ -30,6 +30,8 @@ class GlbAsset:
     children: list[GlbAsset] = field(default_factory=list)
     tags: set[str] = field(default_factory=set)
 
+    _counter: int = 0
+
     @property
     def uid(self) -> str | None:
         return self.extras.get("uid")
@@ -62,17 +64,21 @@ class GlbAsset:
         name: str = "",
         new_material: bool = True,
     ) -> SceneObject:
+
+        # TODO: wether children should increment also or not
+        # name = name or self.generate_name()
+        name = name or self.name
         if self.is_renderable:
             node = Object3D(
-                name=name or self.name,
+                name=name,
                 uid=self.uid,
                 geometry=self.require_geometry(),
                 material=self.require_material(copy=new_material),
-                tags=self.tags,
+                tags=self.tags.copy(),
             )
         else:
             node = Node3D(
-                name=name or self.name,
+                name=name,
                 uid=self.uid,
             )
 
@@ -86,6 +92,10 @@ class GlbAsset:
             )
 
         return node
+
+    def generate_name(self) -> str:
+        self._counter += 1
+        return f"{self.name}.{self._counter:03d}"
 
     # =================================== #
     # Tags

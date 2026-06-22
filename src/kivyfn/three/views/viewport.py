@@ -216,7 +216,7 @@ class Viewport(EventDispatcher):
         x: float,
         y: float,
     ) -> tuple[Vector3, Vector3]:
-        if self.view.projection_type == "orthographic":
+        if self.view.projection == "orthographic":
             return self._screen_to_orthographic_ray(x, y)
 
         return self._screen_to_perspective_ray(x, y)
