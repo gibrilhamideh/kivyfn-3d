@@ -99,7 +99,7 @@ class LightManager(EventDispatcher):
     # =================================== #
     # Lifecycle
     # =================================== #
-    def create(
+    def attach(
         self,
         node: SceneObject,
     ) -> None:
@@ -111,7 +111,9 @@ class LightManager(EventDispatcher):
             light_id = id(light)
 
             if light_id in self._bound_ids:
-                continue
+                raise ValueError(
+                    f"Light {light.name!r} is already attached."
+                )
 
             self.registry.add(light)
             self._bound_ids.add(light_id)
@@ -135,7 +137,7 @@ class LightManager(EventDispatcher):
         if changed:
             self._sync_uniforms_trigger()
 
-    def remove(
+    def detach(
         self,
         node: SceneObject,
     ) -> None:
@@ -144,9 +146,13 @@ class LightManager(EventDispatcher):
         for light in list(node.walk(filter="lights")):
             light = cast("LightSource", light)
 
-            light_name = self.registry.name_of(light)
-            if light_name is None:
-                continue
+
+
+            light_id = id(light)
+            if light_id not in self._bound_ids:
+                raise ValueError(
+                    f"Light {light.name!r} is not attached."
+                )
 
             light.unbind(
                 on_light_dirty=self.on_light_dirty,
@@ -158,10 +164,9 @@ class LightManager(EventDispatcher):
                 on_visibility_dirty=self.on_visibility_dirty,
             )
 
-            self._bound_ids.discard(id(light))
-
+            self._bound_ids.discard(light_id)
             shadow_pass = self._shadow_passes.pop(
-                light_name,
+                light.name,
                 None,
             )
 
@@ -173,7 +178,7 @@ class LightManager(EventDispatcher):
                     shadow_pass,
                 )
 
-            self.registry.remove(light_name)
+            self.registry.remove(light.name)
 
             changed = True
 
@@ -214,11 +219,7 @@ class LightManager(EventDispatcher):
 
             light = cast("LightSource", light)
 
-            light_name = self.registry.name_of(light)
-            if light_name is None:
-                continue
-
-            pass_name = self._shadow_passes.get(light_name)
+            pass_name = self._shadow_passes.get(light.name)
             if pass_name is None:
                 continue
 
@@ -246,11 +247,7 @@ class LightManager(EventDispatcher):
 
             light = cast("LightSource", light)
 
-            light_name = self.registry.name_of(light)
-            if light_name is None:
-                continue
-
-            pass_name = self._shadow_passes.get(light_name)
+            pass_name = self._shadow_passes.get(light.name)
             if pass_name is None:
                 continue
 
@@ -264,7 +261,7 @@ class LightManager(EventDispatcher):
     # =================================== #
     def sync_uniforms(self, *_) -> None:
 
-        affected_tags = self.registry.affected_tags()
+        affected_tags = self.registry.tags()
         if not affected_tags:
             return
 
@@ -289,7 +286,13 @@ class LightManager(EventDispatcher):
             culled = seen.get(key)
 
             if culled is None:
-                candidates = self.registry.values_for_tags(tags)
+                candidates_by_id: dict[int, LightSource] = {}
+
+                for tag in tags:
+                    for light in self.registry.lights_of(tag):
+                        candidates_by_id[id(light)] = light
+
+                candidates = list(candidates_by_id.values())
 
                 culled = self.culler.select(
                     lights=candidates,
@@ -315,11 +318,7 @@ class LightManager(EventDispatcher):
         if config is None:
             return
 
-        light_name = self.registry.name_of(light)
-        if light_name is None:
-            return
-
-        pass_name = self._shadow_passes.get(light_name)
+        pass_name = self._shadow_passes.get(light.name)
         if pass_name is None:
             return
 
@@ -348,8 +347,7 @@ class LightManager(EventDispatcher):
         light: LightSource,
         config: ShadowConfig,
     ) -> None:
-        light_name = self.registry.require_name_of(light)
-        pass_name = self.registry.shadow_pass_name(light_name)
+        pass_name = self.registry.shadow_pass_name(light.name)
 
         view_config = config.view
 
@@ -395,7 +393,7 @@ class LightManager(EventDispatcher):
             target_tags=set(config.receiver_tags),
         )
 
-        self._shadow_passes[light_name] = shadow_pass.name
+        self._shadow_passes[light.name] = shadow_pass.name
 
         self.sync_shadow_uniforms(light)
 

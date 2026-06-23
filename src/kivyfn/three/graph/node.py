@@ -349,7 +349,12 @@ class Node3D(EventDispatcher):
     # =================================== #
     # Scene context
     # =================================== #
-    def _enter_scene(self, scene: Scene) -> None:
+    def _enter_scene(
+        self,
+        scene: Scene,
+        *,
+        render: bool = True,
+    ) -> None:
         if self.scene is scene:
             return
 
@@ -359,14 +364,23 @@ class Node3D(EventDispatcher):
         self.scene = scene
 
         scene.registry.register(self)
-        scene.renderer.queue_render(self)
+
+        if render:
+            scene.renderer.queue_render(self)
 
         self.dispatch("on_enter_scene", scene)
 
         for child in self.children:
-            child._enter_scene(scene)
+            child._enter_scene(
+                scene,
+                render=False,
+            )
 
-    def _leave_scene(self) -> None:
+    def _leave_scene(
+        self,
+        *,
+        render: bool = True,
+    ) -> None:
         if self.scene is None:
             return
 
@@ -375,12 +389,16 @@ class Node3D(EventDispatcher):
         self.dispatch("on_leave_scene", scene)
 
         for child in self.children:
-            child._leave_scene()
+            child._leave_scene(
+                render=False,
+            )
 
         scene.overlays.clear_anchor(self)
-        scene.renderer.queue_remove(self)
-        scene.registry.unregister(self)
 
+        if render:
+            scene.renderer.queue_remove(self)
+
+        scene.registry.unregister(self)
         self.scene = None
 
     # =================================== #

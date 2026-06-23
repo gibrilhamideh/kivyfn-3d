@@ -311,7 +311,7 @@ class Renderer(EventDispatcher):
         self,
         node: SceneObject,
     ) -> None:
-        self.lights.create(node)
+        self.lights.attach(node)
 
         for object3d in node.walk(filter="objects"):
 
@@ -335,7 +335,7 @@ class Renderer(EventDispatcher):
         self,
         node: SceneObject,
     ) -> None:
-        self.lights.remove(node)
+        self.lights.detach(node)
 
         for object3d in node.walk(filter="objects"):
             active_stages = self.memberships.stages_of(object3d)

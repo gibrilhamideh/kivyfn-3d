@@ -43,7 +43,6 @@ RenderPassOutput = Literal[
 RenderPassName: TypeAlias = str
 RenderContextName: TypeAlias = str
 RenderStageName: TypeAlias = str
-ViewName: TypeAlias = str
 LightName: TypeAlias = str
 
 

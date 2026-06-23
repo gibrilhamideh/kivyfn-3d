@@ -8,7 +8,6 @@ from kivyfn.three.types import (
         LightName, 
         LightSource,
         RenderPassName,
-        ViewName,
 )
 
 
@@ -16,7 +15,6 @@ class LightRegistry:
 
     def __init__(self) -> None:
         self._lights: dict[LightName, LightSource] = {}
-        self._ids: dict[int, LightName] = {}
         self._tags: dict[str, set[LightName]] = defaultdict(set)
 
     def __len__(self) -> int:
@@ -39,24 +37,11 @@ class LightRegistry:
 
             index += 1
 
-    def shadow_view_name(
-        self,
-        light_name: LightName,
-    ) -> ViewName:
-        return light_name
-
     def shadow_pass_name(
         self,
         light_name: LightName,
     ) -> RenderPassName:
         return light_name
-
-    def point_shadow_view_name(
-        self,
-        light_name: LightName,
-        face: str,
-    ) -> ViewName:
-        return f"{light_name}.{face}"
 
     def point_shadow_pass_name(
         self,
@@ -72,10 +57,6 @@ class LightRegistry:
         self,
         light: LightSource,
     ) -> LightName:
-        light_id = id(light)
-
-        if light_id in self._ids:
-            return self._ids[light_id]
 
         base_name = light.config.base_name
         name = self.generate_name(base_name)
@@ -83,8 +64,6 @@ class LightRegistry:
         light.name = name
 
         self._lights[name] = light
-        self._ids[light_id] = name
-
         self._index_light(
             name=name,
             light=light,
@@ -101,7 +80,6 @@ class LightRegistry:
         self._unindex_light(name)
 
         del self._lights[name]
-        del self._ids[id(light)]
 
         return light
 
@@ -109,11 +87,9 @@ class LightRegistry:
         self,
         light: LightSource,
     ) -> None:
-        name = self.require_name_of(light)
-
-        self._unindex_light(name)
+        self._unindex_light(light.name)
         self._index_light(
-            name=name,
+            name=light.name,
             light=light,
         )
 
@@ -122,7 +98,6 @@ class LightRegistry:
         name: LightName,
     ) -> LightSource | None:
         return self._lights.get(name)
-
 
     def require(
         self,
@@ -137,84 +112,24 @@ class LightRegistry:
 
         return light
 
-    def name_of(
-        self,
-        light: LightSource,
-    ) -> LightName | None:
-        return self._ids.get(id(light))
 
-    def require_name_of(
-        self,
-        light: LightSource,
-    ) -> LightName:
-        name = self.name_of(light)
 
-        if name is None:
-            raise ValueError(
-                f"Light {light!r} is not registered."
-            )
-
-        return name
-
-    def contains(
-        self,
-        name: LightName,
-    ) -> bool:
-        return name in self._lights
-
-    def values(self) -> list[LightSource]:
-        return list(self._lights.values())
-
-    def names(self) -> list[LightName]:
-        return list(self._lights.keys())
-
-    def items(self) -> list[tuple[LightName, LightSource]]:
-        return list(self._lights.items())
 
     # =================================== #
     # Tag API
     # =================================== #
-    def names_for_tags(
+    def lights_of(
         self,
-        tags: set[str],
-    ) -> set[LightName]:
-        names: set[LightName] = set()
-
-        for tag in tags:
-            names.update(
-                self._tags.get(
-                    tag,
-                    set(),
-                )
-            )
-
-        return names
-
-    def values_for_tags(
-        self,
-        tags: set[str],
+        tag: str,
     ) -> list[LightSource]:
-        names = self.names_for_tags(tags)
-
         return [
             self._lights[name]
-            for name in names
+            for name in self._tags.get(tag, set())
             if name in self._lights
         ]
 
-    def items_for_tags(
-        self,
-        tags: set[str],
-    ) -> list[tuple[LightName, LightSource]]:
-        names = self.names_for_tags(tags)
 
-        return [
-            (name, self._lights[name])
-            for name in names
-            if name in self._lights
-        ]
-
-    def affected_tags(self) -> set[str]:
+    def tags(self) -> set[str]:
         return set(self._tags.keys())
 
     # =================================== #
