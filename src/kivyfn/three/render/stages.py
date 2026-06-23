@@ -20,6 +20,7 @@ from kivyfn.three.render.binder import (
     RenderBindingRecord,
     RenderBindingRegistry,
     RenderBinderManager,
+    RenderBindingGraph
 )
 
 
@@ -34,7 +35,7 @@ class RenderStageManager:
 
         self.binder_manager = RenderBinderManager(
             stage_registry=self.registry,
-            binder_registry=self.bindings,
+            binding_registry=self.bindings,
         )
 
         self.hidden = {}
@@ -59,56 +60,26 @@ class RenderStageManager:
     ) -> RenderStage:
         self.registry.require(name)
 
-        self.bindings.require_no_dependents(name)
-        return self.registry.unregister(name)
+        graph = self.removal_plan(name)
+        if graph.dependents:
+            dependents = ", ".join(graph.dependents)
 
-    def destroy(
-        self,
-        name: RenderStageName,
-    ) -> list[RenderStage]:
-        """
-        Recursively destroys a render stage and stages that depend on its output bindings.
-
-        Example:
-
-            shadow-pass -> main-context -> ui-context
-
-            destroy("shadow-pass")
-
-        Removes:
-
-            ui-context
-            main-context
-            shadow-pass
-        """
-        self.registry.require(name)
-
-        destroyed: list[RenderStage] = []
-        visited: set[str] = set()
-
-        def walk(stage_name: str) -> None:
-            if stage_name in visited:
-                return
-
-            visited.add(stage_name)
-
-            for dependent in self.dependents(stage_name):
-                walk(dependent)
-
-            binder_records = set(self.bindings.outgoing(stage_name) or ())
-            binder_records |= set(self.bindings.incoming(stage_name) or ())
-
-            for record in binder_records:
-                self.binder_manager.detach(record)
-                self.bindings.remove(record)
-
-            destroyed.append(
-                self.registry.unregister(stage_name)
+            raise RuntimeError(
+                f"Cannot remove render stage {name!r} because it is "
+                f"required by: {dependents}."
             )
 
-        walk(name)
+        for record in list(self.bindings.incoming(name) or ()):
+            self.binder_manager.detach(record)
+            self.bindings.remove(record)
 
-        return destroyed
+        return self.registry.unregister(name)
+
+    def removal_plan(
+        self,
+        name: RenderStageName,
+    ) -> RenderBindingGraph:
+        return self.bindings.graph_of(name)
 
 
     # =================================== #
@@ -239,21 +210,27 @@ class RenderStageManager:
     # Dependency API
     # =================================== #
 
-    def dependencies(
+    def dependencies_of(
         self,
-        target: str,
+        name: str,
     ) -> set[str]:
-        bound = self.bindings.dependencies(target)
+        bound = self.bindings.dependencies_of(name)
 
         return set(bound or ())
 
-    def dependents(
+    def dependents_of(
         self,
-        source: str,
+        name: str,
     ) -> set[str]:
-        bound = self.bindings.dependents(source)
+        bound = self.bindings.dependents_of(name)
 
         return set(bound or ())
+
+    def graph_of(
+        self,
+        name: RenderStageName,
+    ) -> RenderBindingGraph:
+        return self.bindings.graph_of(name)
 
 
     # =================================== #

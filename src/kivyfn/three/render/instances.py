@@ -219,16 +219,16 @@ class RenderInstanceManager(EventDispatcher):
         )
 
     # =================================== #
-    # Destroy
+    # Remove
     # =================================== #
 
-    def destroy(
+    def remove(
         self,
         object3d: Object3D,
         stage: RenderStage | None = None,
     ) -> None:
         if stage is not None:
-            self._destroy_instance(
+            self._remove_instance(
                 object3d=object3d,
                 stage_name=stage.name,
             )
@@ -239,12 +239,12 @@ class RenderInstanceManager(EventDispatcher):
                 object3d=object3d,
             )
         ):
-            self._destroy_instance(
+            self._remove_instance(
                 object3d=object3d,
                 stage_name=stage_name,
             )
 
-    def _destroy_instance(
+    def _remove_instance(
         self,
         object3d: Object3D,
         stage_name: str,

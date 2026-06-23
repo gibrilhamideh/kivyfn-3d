@@ -32,6 +32,12 @@ RenderPassOutput = Literal[
 
 RENDER_PASS_TEXTURE_START_SLOT = 10
 
+@dataclass(slots=True, frozen=True)
+class RenderBindingGraph:
+    target: str
+    dependencies: list[str]
+    dependents: list[str]
+
 @dataclass(slots=True)
 class RenderTextureBinding:
     record: RenderBindingRecord
@@ -45,10 +51,10 @@ class RenderBinderManager:
         self,
         *,
         stage_registry: RenderStageRegistry,
-        binder_registry: RenderBindingRegistry,
+        binding_registry: RenderBindingRegistry,
     ) -> None:
         self._stage_registry = stage_registry
-        self._binder_registry = binder_registry
+        self._binding_registry = binding_registry
 
         self._texture_bindings: dict[RenderBindingRecord, RenderTextureBinding] = {}
 
@@ -65,7 +71,7 @@ class RenderBinderManager:
         if index is None:
             index = self._next_texture_slot(target_name)
 
-        record = self._binder_registry.add(
+        record = self._binding_registry.add(
             source=pass_name,
             target=target_name,
             index=index,
@@ -84,6 +90,10 @@ class RenderBinderManager:
         record: RenderBindingRecord,
     ) -> RenderTextureBinding:
         texture_binding = self._texture_bindings.pop(record)
+
+        render_pass = self._stage_registry.require_pass(record.source)
+        render_pass.unbind(texture_ref=texture_binding.callback)
+
         return texture_binding
 
 
@@ -95,8 +105,8 @@ class RenderBinderManager:
         target: RenderStage,
     ) -> None:
 
-        instruction = target.create_texture_binder(
-            output_uniform=render_pass.output_uniform,
+        instruction = target.bind_texture(
+            uniform=render_pass.output_uniform,
             texture=render_pass.texture,
             slot=record.index,
         )
@@ -132,7 +142,7 @@ class RenderBinderManager:
     ) -> int:
         used_slots = {
             record.index
-            for record in self._binder_registry.incoming(target_name) or ()
+            for record in self._binding_registry.incoming(target_name) or ()
         }
 
         index = RENDER_PASS_TEXTURE_START_SLOT
@@ -153,10 +163,11 @@ class RenderBindingRecord:
 class RenderBindingRegistry:
 
     def __init__(self, registry: RenderStageRegistry) -> None:
-        self.registry = registry
+        self._registry = registry
         self._records: set[RenderBindingRecord] = set()
         self._outgoing: defaultdict[str, set[RenderBindingRecord]] = defaultdict(set)
         self._incoming: defaultdict[str, set[RenderBindingRecord]] = defaultdict(set)
+        self._links: set[tuple[str, str]] = set()
 
     # =================================== #
     # Registry API
@@ -168,11 +179,18 @@ class RenderBindingRegistry:
         *,
         index: int,
     ) -> RenderBindingRecord:
-        self.registry.require(source)
-        self.registry.require(target)
+        self._registry.require(source)
+        self._registry.require(target)
 
         if source == target:
             raise ValueError("A render stage cannot bind to itself.")
+
+        link = (source, target)
+        if link in self._links:
+            raise ValueError(
+                f"Render pass {source!r} is already attached "
+                f"to render stage {target!r}."
+            )
 
         record = RenderBindingRecord(
             source=source,
@@ -180,10 +198,9 @@ class RenderBindingRegistry:
             index=index,
         )
 
-        if record in self._records:
-            return record
 
         self._records.add(record)
+        self._links.add(link)
         self._outgoing[source].add(record)
         self._incoming[target].add(record)
 
@@ -200,6 +217,7 @@ class RenderBindingRegistry:
             )
 
         self._records.remove(record)
+        self._links.discard((record.source, record.target))
 
         self._outgoing[record.source].discard(record)
         if not self._outgoing[record.source]:
@@ -213,9 +231,9 @@ class RenderBindingRegistry:
 
     def outgoing(
         self,
-        source: str,
+        name: str,
     ) -> set[RenderBindingRecord] | None:
-        records = self._outgoing.get(source)
+        records = self._outgoing.get(name)
 
         if not records:
             return None
@@ -224,9 +242,9 @@ class RenderBindingRegistry:
 
     def incoming(
         self,
-        target: str,
+        name: str,
     ) -> set[RenderBindingRecord] | None:
-        records = self._incoming.get(target)
+        records = self._incoming.get(name)
 
         if not records:
             return None
@@ -236,66 +254,80 @@ class RenderBindingRegistry:
 
     def has_outgoing(
         self,
-        source: str,
+        name: str,
     ) -> bool:
-        return source in self._outgoing
+        return name in self._outgoing
 
     def has_incoming(
         self,
-        target: str,
+        name: str,
     ) -> bool:
-        return target in self._incoming
+        return name in self._incoming
 
 
     # =================================== #
     # Dependencies API
     # =================================== #
-    def dependents(
-        self,
-        source: str,
-    ) -> set[str] | None:
-        records = self._outgoing.get(source)
-
+    def dependents_of(self, name: str) -> set[str]:
+        records = self._outgoing.get(name)
         if not records:
-            return None
+            return set()
 
-        return {
-            record.target
-            for record in records
-        }
+        return {record.target for record in records}
 
-    def dependencies(
-        self,
-        target: str,
-    ) -> set[str] | None:
-        records = self._incoming.get(target)
-
+    def dependencies_of(self, name: str) -> set[str]:
+        records = self._incoming.get(name)
         if not records:
-            return None
+            return set()
 
-        return {
-            record.source
-            for record in records
-        }
+        return {record.source for record in records}
 
-    def has_dependency(
+
+    def graph_of(
         self,
         name: str,
-    ) -> bool:
-        return self.has_outgoing(name)
+    ) -> RenderBindingGraph:
+        self._registry.require(name)
 
-    def require_no_dependents(
-        self,
-        name: str,
-    ) -> None:
-        dependents = self.dependents(name)
-
-        if dependents is None:
-            return
-
-        dependents_text = ", ".join(sorted(dependents))
-
-        raise RuntimeError(
-            f"Cannot destroy render stage '{name}' because it is "
-            f"required by: {dependents_text}."
+        return RenderBindingGraph(
+            target=name,
+            dependencies=self._walk_graph(
+                name,
+                next_of=self.dependencies_of,
+            ),
+            dependents=self._walk_graph(
+                name,
+                next_of=self.dependents_of,
+            ),
         )
+
+    def _walk_graph(
+        self,
+        name: str,
+        *,
+        next_of,
+    ) -> list[str]:
+        visited: set[str] = {name}
+        result: list[str] = []
+        current: set[str] = {name}
+
+        while current:
+            next_level: set[str] = set()
+
+            for stage_name in current:
+                for next_name in next_of(stage_name):
+                    if next_name in visited:
+                        continue
+
+                    visited.add(next_name)
+                    next_level.add(next_name)
+
+            if not next_level:
+                break
+
+            result.extend(next_level)
+            current = next_level
+
+        return result
+
+

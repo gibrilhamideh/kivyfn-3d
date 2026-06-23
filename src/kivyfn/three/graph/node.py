@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from kivyfn.three.controls.interaction import InteractionEvent
     from kivyfn.three.behaviors.behavior import Behavior
     from kivyfn.three.overlays.overlay import Overlay
+    from kivyfn.three.views.viewport import Viewport
 
 
 
@@ -275,7 +276,7 @@ class Node3D(EventDispatcher):
         widget: Widget,
         *,
         name: str,
-        view_name: str,
+        viewport: Viewport,
         offset: Vector2 | None = None,
         world_offset: Vector3 | None = None,
         hide_when_offscreen: bool = True,
@@ -290,7 +291,7 @@ class Node3D(EventDispatcher):
             anchor=self,
             widget=widget,
             name=name,
-            view_name=view_name,
+            viewport=viewport,
             offset=offset,
             world_offset=world_offset,
             hide_when_offscreen=hide_when_offscreen,
@@ -333,17 +334,17 @@ class Node3D(EventDispatcher):
     ) -> bool:
         return self.get_overlay(name) is not None
 
-    def overlays(self) -> list[Overlay]:
+    def overlays(self) -> dict[str, Overlay]:
         if self.scene is None:
-            return []
+            return {}
 
-        return self.scene.overlays.overlays_of(self)
+        return self.scene.overlays.overlays_of(anchor=self)
 
     def clear_overlays(self) -> None:
         if self.scene is None:
             return
 
-        self.scene.overlays.clear(self)
+        self.scene.overlays.clear_anchor(self)
 
     # =================================== #
     # Scene context
@@ -376,9 +377,8 @@ class Node3D(EventDispatcher):
         for child in self.children:
             child._leave_scene()
 
-        scene.overlays.clear(self)
-
-        scene.renderer.queue_destroy(self)
+        scene.overlays.clear_anchor(self)
+        scene.renderer.queue_remove(self)
         scene.registry.unregister(self)
 
         self.scene = None
@@ -1203,7 +1203,7 @@ class Node3D(EventDispatcher):
     ) -> Behavior:
         behavior = self.behaviors.pop(name)
 
-        behavior.destroy()
+        behavior.remove()
         return behavior
 
     # =================================== #

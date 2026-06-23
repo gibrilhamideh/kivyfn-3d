@@ -135,7 +135,7 @@ class LightManager(EventDispatcher):
         if changed:
             self._sync_uniforms_trigger()
 
-    def destroy(
+    def remove(
         self,
         node: SceneObject,
     ) -> None:
@@ -169,7 +169,7 @@ class LightManager(EventDispatcher):
                 shadow_pass is not None
                 and self.renderer.stages.registry.get(shadow_pass) is not None
             ):
-                self.renderer.destroy_stage(
+                self.renderer.remove_stage(
                     shadow_pass,
                 )
 

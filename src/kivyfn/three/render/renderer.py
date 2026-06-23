@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class RenderCommand:
-    op: Literal["render", "destroy", "retag"]
+    op: Literal["render", "remove", "retag"]
     node: SceneObject
     old_tags: set[str] | None = None
     new_tags: set[str] | None = None
@@ -163,18 +163,22 @@ class Renderer(EventDispatcher):
         self.canvas.add(stage.ctx)
         self.hidden.remove(stage_name)
 
-    def destroy_stage(
+    def remove_stage(
         self,
         stage_name: str,
     ) -> None:
-        destroyed = self.stages.destroy(stage_name)
+        stage = self.stages.registry.require(stage_name)
 
-        for stage in destroyed:
-            if stage.name not in self.hidden:
-                self.canvas.remove(stage.ctx)
+        self.scene.overlays.clear_viewport(stage.viewport)
+        self.remove_stage_memberships(stage)
 
-            self.hidden.discard(stage.name)
-            self.remove_stage_memberships(stage.name)
+        if stage.name not in self.hidden:
+            self.canvas.remove(stage.ctx)
+
+        self.hidden.discard(stage.name)
+
+        removed = self.stages.remove(stage.name)
+        removed.destroy()
 
     # =================================== #
     # Dirty Queue
@@ -192,13 +196,13 @@ class Renderer(EventDispatcher):
         )
         self._trigger_dirty()
 
-    def queue_destroy(
+    def queue_remove(
         self,
         node: SceneObject,
     ) -> None:
         self._lifecycle_queue.append(
             RenderCommand(
-                op="destroy",
+                op="remove",
                 node=node,
             )
         )
@@ -259,8 +263,8 @@ class Renderer(EventDispatcher):
             if command.op == "render":
                 self.render(command.node)
 
-            elif command.op == "destroy":
-                self.destroy(command.node)
+            elif command.op == "remove":
+                self.remove(command.node)
 
             elif command.op == "retag":
                 if command.old_tags is None:
@@ -327,11 +331,11 @@ class Renderer(EventDispatcher):
             self.instances.sync_material(object3d)
             self.instances.sync_visibility(object3d)
 
-    def destroy(
+    def remove(
         self,
         node: SceneObject,
     ) -> None:
-        self.lights.destroy(node)
+        self.lights.remove(node)
 
         for object3d in node.walk(filter="objects"):
             active_stages = self.memberships.stages_of(object3d)
@@ -392,7 +396,7 @@ class Renderer(EventDispatcher):
     ) -> None:
         stage = self.stages.registry.get(stage_name)
         if stage is not None:
-            self.instances.destroy(object3d, stage)
+            self.instances.remove(object3d, stage)
 
         self.memberships.unregister(object3d, stage_name)
 
@@ -424,17 +428,17 @@ class Renderer(EventDispatcher):
 
     def remove_stage_memberships(
         self,
-        stage_name: str,
+        stage: RenderStage,
     ) -> None:
-
-        object_ids = self.memberships.memberships_of(stage_name)
+        object_ids = self.memberships.memberships_of(stage.name)
 
         for object_id in object_ids:
             object3d = self.objects.get(object_id)
             if object3d is None:
                 continue
 
-            self.remove_membership(object3d, stage_name)
+            self.instances.remove(object3d, stage)
+            self.memberships.unregister(object3d, stage.name)
 
 
     # =================================== #

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from kivy.properties import NumericProperty
 
+from kivyfn.three.types import RenderPassOutput
 from kivyfn.three.render.renderer import Renderer
 from kivyfn.three.graph.node import Node3D
 from kivyfn.three.overlays.manager import OverlayManager
@@ -22,7 +23,7 @@ from kivyfn.three.types import (
 if TYPE_CHECKING:
     from kivyfn.three.views.camera import Camera
     from kivyfn.three.render.binder import RenderBindingRecord
-    from kivyfn.three.render.context import RenderContext, RenderPass, RenderPassOutput
+    from kivyfn.three.render.context import RenderContext, RenderPass
     from kivyfn.three.render.shader import Shader
 
 
@@ -202,8 +203,8 @@ class Scene(SceneControllerBase):
     def show_stage(self, name: RenderStageName) -> None:
         self.renderer.show_stage(name)
 
-    def destroy_stage(self, name: RenderStageName) -> None:
-        self.renderer.destroy_stage(name)
+    def remove_stage(self, name: RenderStageName) -> None:
+        self.renderer.remove_stage(name)
 
     # =================================== #
     # Exports

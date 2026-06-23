@@ -26,7 +26,7 @@ class Behavior(EventDispatcher):
         self.name = name or self.__class__.__name__
         self.timelines = TimelineManager()
 
-    def destroy(self) -> None:
+    def remove(self) -> None:
         self.timelines.stop_all()
 
 
