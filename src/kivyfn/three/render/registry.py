@@ -6,8 +6,7 @@ from collections import defaultdict
 from typing import NoReturn
 
 from kivyfn.three.assets.object3d import Object3D
-from kivyfn.three.types import RenderStage
-from kivyfn.three.render.context import RenderContext, RenderPass2D, RenderPassCube
+from kivyfn.three.render.stage import RenderStage
 
 
 class RenderStageRegistry:
@@ -15,11 +14,11 @@ class RenderStageRegistry:
     Tracks render stages and their render tags.
 
     Responsibilities:
-    - Register and unregister RenderContext and RenderPass instances.
+    - Register and unregister RenderStage instances.
     - Support direct lookup by stage name.
     - Maintain stage -> tags relationships.
     - Maintain tag -> stage relationships.
-    - Support lookup of stages, contexts, and passes by one render tag.
+    - Support lookup of stages by one render tag.
 
     This registry does NOT track scene objects.
     This registry does NOT track active object membership in stages.
@@ -30,28 +29,64 @@ class RenderStageRegistry:
     - Callers that need multi-tag logic should loop outside the registry.
     """
 
-    def __init__(self) -> None:
-        self._contexts: dict[str, RenderContext] = {}
-        self._passes: dict[str, RenderPass2D] = {}
-        self._cube_passes: dict[str, RenderPassCube] = {}
+    def __init__(
+        self,
+    ) -> None:
+        self._stages: dict[str, RenderStage] = {}
 
         self._stage_tags: dict[str, set[str]] = {}
         self._tag_stages: dict[str, set[str]] = defaultdict(set)
 
-    def __len__(self) -> int:
-        return len(self._contexts) + len(self._passes) + len(self._cube_passes)
+    def __len__(
+        self,
+    ) -> int:
+        return len(self._stages)
 
     @property
-    def contexts(self) -> dict[str, RenderContext]:
-        return self._contexts.copy()
+    def stages(
+        self,
+    ) -> dict[str, RenderStage]:
+        return self._stages.copy()
 
     @property
-    def passes(self) -> dict[str, RenderPass2D]:
-        return self._passes.copy()
+    def screen_stages(
+        self,
+    ) -> dict[str, RenderStage]:
+        return {
+            name: stage
+            for name, stage in self._stages.items()
+            if stage.is_screen
+        }
 
     @property
-    def cube_passes(self) -> dict[str, RenderPassCube]:
-        return self._cube_passes.copy()
+    def texture_2d_stages(
+        self,
+    ) -> dict[str, RenderStage]:
+        return {
+            name: stage
+            for name, stage in self._stages.items()
+            if stage.is_texture_2d
+        }
+
+    @property
+    def texture_cube_stages(
+        self,
+    ) -> dict[str, RenderStage]:
+        return {
+            name: stage
+            for name, stage in self._stages.items()
+            if stage.is_texture_cube
+        }
+
+    @property
+    def output_stages(
+        self,
+    ) -> dict[str, RenderStage]:
+        return {
+            name: stage
+            for name, stage in self._stages.items()
+            if stage.is_texture_2d or stage.is_texture_cube
+        }
 
     # =================================== #
     # Stages
@@ -63,21 +98,12 @@ class RenderStageRegistry:
     ) -> None:
         stage_name = stage.name
 
-        if (
-            stage_name in self._contexts
-            or stage_name in self._passes
-            or stage_name in self._cube_passes
-        ):
+        if stage_name in self._stages:
             raise ValueError(
-                f"Render stage '{stage_name}' is already registered."
+                f"Render stage {stage_name!r} is already registered."
             )
 
-        if isinstance(stage, RenderPassCube):
-            self._cube_passes[stage_name] = stage
-        elif isinstance(stage, RenderPass2D):
-            self._passes[stage_name] = stage
-        else:
-            self._contexts[stage_name] = stage
+        self._stages[stage_name] = stage
 
     def unregister(
         self,
@@ -86,17 +112,7 @@ class RenderStageRegistry:
         stage = self.require(stage_name)
 
         self.clear_tags(stage_name)
-
-        if isinstance(stage, RenderPassCube):
-            del self._cube_passes[stage_name]
-        elif isinstance(stage, RenderPass2D):
-            del self._passes[stage_name]
-        elif isinstance(stage, RenderContext):
-            self._contexts[stage_name] = stage
-        else:
-            raise TypeError(
-                f"Unsupported render stage type: {type(stage).__name__}."
-            )
+        del self._stages[stage_name]
 
         return stage
 
@@ -104,52 +120,69 @@ class RenderStageRegistry:
         self,
         stage_name: str,
     ) -> bool:
-        return self.get(stage_name) is not None
+        return stage_name in self._stages
 
     # =================================== #
     # Get
     # =================================== #
+
     def get(
         self,
         stage_name: str,
     ) -> RenderStage | None:
-        return (
-            self._contexts.get(stage_name)
-            or self._passes.get(stage_name)
-            or self._cube_passes.get(stage_name)
-        )
+        return self._stages.get(stage_name)
 
-    def get_context(
+    def get_screen_stage(
         self,
         stage_name: str,
-    ) -> RenderContext | None:
-        return self._contexts.get(stage_name)
+    ) -> RenderStage | None:
+        stage = self.get(stage_name)
 
-    def get_pass(
+        if stage is None or not stage.is_screen:
+            return None
+
+        return stage
+
+    def get_texture_2d_stage(
         self,
         stage_name: str,
-    ) -> RenderPass2D | None:
-        return self._passes.get(stage_name)
+    ) -> RenderStage | None:
+        stage = self.get(stage_name)
 
-    def get_cube_pass(
+        if stage is None or not stage.is_texture_2d:
+            return None
+
+        return stage
+
+    def get_texture_cube_stage(
         self,
         stage_name: str,
-    ) -> RenderPassCube | None:
-        return self._cube_passes.get(stage_name)
+    ) -> RenderStage | None:
+        stage = self.get(stage_name)
 
+        if stage is None or not stage.is_texture_cube:
+            return None
+
+        return stage
 
     def get_output_stage(
         self,
         stage_name: str,
-    ) -> RenderPass2D | RenderPassCube | None:
-        return (
-            self._passes.get(stage_name)
-            or self._cube_passes.get(stage_name)
-        )
+    ) -> RenderStage | None:
+        stage = self.get(stage_name)
+
+        if stage is None:
+            return None
+
+        if not stage.is_texture_2d and not stage.is_texture_cube:
+            return None
+
+        return stage
 
     # =================================== #
     # Require
     # =================================== #
+
     def require(
         self,
         stage_name: str,
@@ -158,46 +191,46 @@ class RenderStageRegistry:
 
         if stage is None:
             raise KeyError(
-                f"Render stage '{stage_name}' is not registered."
+                f"Render stage {stage_name!r} is not registered."
             )
 
         return stage
 
-    def require_context(
+    def require_screen_stage(
         self,
         stage_name: str,
-    ) -> RenderContext:
+    ) -> RenderStage:
         stage = self.require(stage_name)
 
-        if not isinstance(stage, RenderContext):
+        if not stage.is_screen:
             raise TypeError(
-                f"Render stage '{stage_name}' is not a RenderContext."
+                f"Render stage {stage_name!r} is not a screen stage."
             )
 
         return stage
 
-    def require_pass(
+    def require_texture_2d_stage(
         self,
         stage_name: str,
-    ) -> RenderPass2D:
+    ) -> RenderStage:
         stage = self.require(stage_name)
 
-        if not isinstance(stage, RenderPass2D):
+        if not stage.is_texture_2d:
             raise TypeError(
-                f"Render stage '{stage_name}' is not a RenderPass."
+                f"Render stage {stage_name!r} is not a texture-2d stage."
             )
 
         return stage
 
-    def require_cube_pass(
+    def require_texture_cube_stage(
         self,
         stage_name: str,
-    ) -> RenderPassCube:
+    ) -> RenderStage:
         stage = self.require(stage_name)
 
-        if not isinstance(stage, RenderPassCube):
+        if not stage.is_texture_cube:
             raise TypeError(
-                f"Render stage '{stage_name}' is not a RenderPassCube."
+                f"Render stage {stage_name!r} is not a texture-cube stage."
             )
 
         return stage
@@ -205,16 +238,15 @@ class RenderStageRegistry:
     def require_output_stage(
         self,
         stage_name: str,
-    ) -> RenderPass2D | RenderPassCube:
-        stage = self.get_output_stage(stage_name)
+    ) -> RenderStage:
+        stage = self.require(stage_name)
 
-        if stage is None:
+        if not stage.is_texture_2d and not stage.is_texture_cube:
             raise TypeError(
-                f"Render stage '{stage_name}' is not an output render stage."
+                f"Render stage {stage_name!r} is not an output stage."
             )
 
         return stage
-
 
     # =================================== #
     # Tags
@@ -284,44 +316,44 @@ class RenderStageRegistry:
             if (stage := self.get(stage_name)) is not None
         ]
 
-    def contexts_of(
+    def screen_stages_of(
         self,
         tag: str,
-    ) -> list[RenderContext]:
+    ) -> list[RenderStage]:
         return [
             stage
             for stage in self.stages_of(tag)
-            if isinstance(stage, RenderContext)
+            if stage.is_screen
         ]
 
-    def passes_of(
+    def texture_2d_stages_of(
         self,
         tag: str,
-    ) -> list[RenderPass2D]:
+    ) -> list[RenderStage]:
         return [
             stage
             for stage in self.stages_of(tag)
-            if isinstance(stage, RenderPass2D)
+            if stage.is_texture_2d
         ]
 
-    def cube_passes_of(
+    def texture_cube_stages_of(
         self,
         tag: str,
-    ) -> list[RenderPassCube]:
+    ) -> list[RenderStage]:
         return [
             stage
             for stage in self.stages_of(tag)
-            if isinstance(stage, RenderPassCube)
+            if stage.is_texture_cube
         ]
 
     def output_stages_of(
         self,
         tag: str,
-    ) -> list[RenderPass2D | RenderPassCube]:
+    ) -> list[RenderStage]:
         return [
             stage
             for stage in self.stages_of(tag)
-            if isinstance(stage, (RenderPass2D, RenderPassCube))
+            if stage.is_texture_2d or stage.is_texture_cube
         ]
 
 

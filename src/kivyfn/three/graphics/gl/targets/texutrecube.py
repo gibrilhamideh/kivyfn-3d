@@ -53,6 +53,7 @@ class TextureCubeTarget(BaseTargetContext):
         view: View,
         viewport: Viewport,
         texture: TextureCube,
+        attach_as: str,
         size: int | tuple[int, int] | None = None,
         clear_color: Color = (0.0, 0.0, 0.0, 0.0),
         clear_color_buffer: bool = True,
@@ -84,6 +85,7 @@ class TextureCubeTarget(BaseTargetContext):
             )
 
         self.texture = texture
+        self.attach_as = attach_as
 
         self.size = (width, height)
         self.width = width

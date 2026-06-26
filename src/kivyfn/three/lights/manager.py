@@ -8,15 +8,12 @@ from typing import TYPE_CHECKING, Any, cast
 from kivy.clock import Clock
 from kivy.event import EventDispatcher
 
+from kivyfn.three.types import LightSource
 from kivyfn.three.lights.culling import LightCuller
 from kivyfn.three.lights.registry import LightRegistry
 from kivyfn.three.lights.sources.point import PointLight
-from kivyfn.three.render.context import (
-    RenderContext,
-    RenderPass2D,
-    RenderPassCube,
-)
-from kivyfn.three.types import LightSource
+from kivyfn.three.render.stage import RenderStage
+
 
 if TYPE_CHECKING:
     from kivyfn.three.lights.culling import CulledLights
@@ -85,7 +82,7 @@ class LightManager(EventDispatcher):
         self.uniforms = LightUniformBuffer(limits)
         self.culler = LightCuller(limits=limits)
 
-        self._shadow_passes: dict[str, str] = {}
+        self._shadow_stages: set[str] = set()
         self._bound_ids: set[int] = set()
 
         self._uniform_trigger = Clock.create_trigger(
@@ -175,18 +172,13 @@ class LightManager(EventDispatcher):
 
             self._bound_ids.discard(light_id)
 
-            shadow_pass = self._shadow_passes.pop(
-                light.name,
-                None,
-            )
+            if light.name in self._shadow_stages:
+                self._shadow_stages.remove(light.name)
 
-            if (
-                shadow_pass is not None
-                and self.renderer.stages.registry.get(shadow_pass) is not None
-            ):
-                self.renderer.remove_stage(
-                    shadow_pass,
-                )
+                if self.renderer.stages.registry.get(light.name) is not None:
+                    self.renderer.remove_stage(
+                        light.name,
+                    )
 
             self.registry.remove(light.name)
 
@@ -228,22 +220,24 @@ class LightManager(EventDispatcher):
         for light in node.walk(filter="lights"):
             light = cast("LightSource", light)
 
-            pass_name = self._shadow_passes.get(light.name)
-            if pass_name is None:
+            if light.name not in self._shadow_stages:
                 continue
 
-            shadow_pass = self.renderer.stages.registry.require(pass_name)
+            stage_name = light.name
+            shadow_stage = self.renderer.stages.registry.require(
+                stage_name,
+            )
 
-            if isinstance(shadow_pass, RenderPassCube):
-                shadow_pass.view.position = light.world_position
+            if shadow_stage.is_texture_cube:
+                shadow_stage.view.position = light.world_position
                 self.sync_shadow_uniforms(light)
                 continue
 
-            if isinstance(shadow_pass, RenderPass2D):
+            if shadow_stage.is_texture_2d:
                 position = light.world_position
                 target = position + light.world_forward
 
-                shadow_pass.view.set_look_at(
+                shadow_stage.view.set_look_at(
                     position=position,
                     target=target,
                 )
@@ -252,8 +246,7 @@ class LightManager(EventDispatcher):
                 continue
 
             raise TypeError(
-                f"Shadow stage {pass_name!r} is not a shadow pass."
-            )
+                f"Shadow stage {stage_name!r} is not a texture shadow stage.")
 
     # =================================== #
     # Sync Visibility
@@ -265,14 +258,13 @@ class LightManager(EventDispatcher):
         for light in node.walk(filter="lights"):
             light = cast("LightSource", light)
 
-            pass_name = self._shadow_passes.get(light.name)
-            if pass_name is None:
+            if light.name not in self._shadow_stages:
                 continue
 
             if light.enabled and light.visible_in_tree:
-                self.renderer.show_stage(pass_name)
+                self.renderer.show_stage(light.name)
             else:
-                self.renderer.hide_stage(pass_name)
+                self.renderer.hide_stage(light.name)
 
     # =================================== #
     # Sync Uniforms
@@ -285,21 +277,19 @@ class LightManager(EventDispatcher):
         if not affected_tags:
             return
 
-        contexts: dict[str, RenderContext] = {}
+        stages: dict[str, RenderStage] = {}
 
         for tag in affected_tags:
-            for stage in self.renderer.stages.registry.contexts_of(tag):
-                contexts[stage.name] = stage
+            for stage in self.renderer.stages.registry.screen_stages_of(tag):
+                stages[stage.name] = stage
 
         seen: dict[tuple[int, frozenset[str]], CulledLights] = {}
 
-        for stage in contexts.values():
+        for stage in stages.values():
             tags = self.renderer.stages.registry.tags_of(stage.name)
 
-            view = stage.require_planar_view()
-
             key = (
-                id(view),
+                id(stage.view),
                 frozenset(tags),
             )
 
@@ -316,7 +306,7 @@ class LightManager(EventDispatcher):
 
                 culled = self.culler.select(
                     lights=candidates,
-                    view=view,
+                    view=stage.view,
                 )
 
                 seen[key] = culled
@@ -336,37 +326,38 @@ class LightManager(EventDispatcher):
         if config is None:
             return
 
-        pass_name = self._shadow_passes.get(light.name)
-        if pass_name is None:
+
+        if light.name not in self._shadow_stages:
             return
 
-        shadow_pass = self.renderer.stages.registry.require(pass_name)
+        shadow_stage = self.renderer.stages.registry.require(light.name)
 
-        if isinstance(shadow_pass, RenderPassCube):
+        if shadow_stage.is_texture_cube:
             self._apply_uniforms_to_tags(
                 tags=set(config.receiver_tags),
                 uniforms={
                     "shadow_bias": config.bias,
                     "shadow_normal_bias": config.normal_bias,
-                    "shadow_far": shadow_pass.view.far,
+                    "shadow_far": shadow_stage.view.far,
                 },
             )
 
-            shadow_pass.apply_uniform(
+            shadow_stage.apply_uniform(
                 "shadow_far",
-                shadow_pass.view.far,
+                shadow_stage.view.far,
             )
             return
 
-        if isinstance(shadow_pass, RenderPass2D):
-            view = shadow_pass.view
+        if shadow_stage.is_texture_2d:
+            view = shadow_stage.view
 
             self._apply_uniforms_to_tags(
                 tags=set(config.receiver_tags),
                 uniforms={
-                    config.view_uniform: view.get_view_matrix().to_uniform(),
+                    config.view_uniform: view.get_view_matrix(mode="planar").to_uniform(),
                     config.projection_uniform: view.get_projection_matrix(
-                        shadow_pass.render_aspect,
+                        mode="planar",
+                        aspect=shadow_stage.target.viewport.aspect, #NOTE: Here
                     ).to_uniform(),
                     "shadow_bias": config.bias,
                     "shadow_normal_bias": config.normal_bias,
@@ -375,7 +366,7 @@ class LightManager(EventDispatcher):
             return
 
         raise TypeError(
-            f"Shadow stage {pass_name!r} is not a shadow pass."
+            f"Shadow stage {light.name!r} is not a shadow pass."
         )
 
     # =================================== #
@@ -405,15 +396,16 @@ class LightManager(EventDispatcher):
         light: LightSource,
         config: ShadowConfig,
     ) -> None:
-        pass_name = light.name
         view_config = config.view
 
-        shadow_pass = self.renderer.create_pass(
-            name=pass_name,
+        shadow_stage = self.renderer.create_texture_2d_stage(
+            name=light.name,
             camera=None,
             shader=config.shader,
-            output="depth",
-            output_uniform=config.texture_uniform,
+            use_material=False,
+            use_textures=False,
+            use_render_id=False,
+            attach_as=config.texture_uniform,
             size=[
                 config.resolution,
                 config.resolution,
@@ -428,7 +420,7 @@ class LightManager(EventDispatcher):
             clear_stencil_buffer=False,
         )
 
-        view = shadow_pass.view
+        view = shadow_stage.view
 
         view.set_look_at(
             position=light.world_position,
@@ -441,14 +433,14 @@ class LightManager(EventDispatcher):
         view.ortho_size = view_config.ortho_size
         view.fov = view_config.fov
 
-        shadow_pass.sync_view()
+        shadow_stage.target.sync_view()
 
-        self.renderer.attach_pass(
-            name=shadow_pass.name,
+        self.renderer.attach_output(
+            name=light.name,
             target_tags=set(config.receiver_tags),
         )
 
-        self._shadow_passes[light.name] = shadow_pass.name
+        self._shadow_stages.add(light.name)
 
         self.sync_shadow_uniforms(light)
 
@@ -458,13 +450,14 @@ class LightManager(EventDispatcher):
         light: PointLight,
         config: ShadowConfig,
     ) -> None:
-        pass_name = light.name
 
-        shadow_pass = self.renderer.create_cube_pass(
-            name=pass_name,
+        shadow_stage = self.renderer.create_texture_cube_stage(
+            name=light.name,
             shader=config.shader,
-            output="depth",
-            output_uniform=config.texture_uniform,
+            attach_as=config.texture_uniform,
+            use_material=False,
+            use_textures=False,
+            use_render_id=False,
             size=config.resolution,
             tags=set(config.caster_tags),
             push_viewport=True,
@@ -476,18 +469,18 @@ class LightManager(EventDispatcher):
             clear_stencil_buffer=False,
         )
 
-        shadow_pass.view.position = light.world_position
-        shadow_pass.view.near = config.view.near
-        shadow_pass.view.far = config.view.far
+        shadow_stage.view.position = light.world_position
+        shadow_stage.view.near = config.view.near
+        shadow_stage.view.far = config.view.far
 
-        shadow_pass.sync_view()
+        shadow_stage.target.sync_view()
 
-        self.renderer.attach_pass(
-            name=shadow_pass.name,
+        self.renderer.attach_output(
+            name=light.name,
             target_tags=set(config.receiver_tags),
         )
 
-        self._shadow_passes[light.name] = shadow_pass.name
+        self._shadow_stages.add(light.name)
         self.sync_shadow_uniforms(light)
 
     # =================================== #
@@ -618,13 +611,13 @@ class LightManager(EventDispatcher):
         tags: set[str],
         uniforms: dict[str, Any],
     ) -> None:
-        contexts: dict[str, RenderContext] = {}
+        stages: dict[str, RenderStage] = {}
 
         for tag in tags:
-            for stage in self.renderer.stages.registry.contexts_of(tag):
-                contexts[stage.name] = stage
+            for stage in self.renderer.stages.registry.screen_stages_of(tag):
+                stages[stage.name] = stage
 
-        for stage in contexts.values():
+        for stage in stages.values():
             self._apply_uniforms(
                 stage=stage,
                 uniforms=uniforms,
@@ -633,7 +626,7 @@ class LightManager(EventDispatcher):
     def _apply_uniforms(
         self,
         *,
-        stage: RenderContext,
+        stage: RenderStage,
         uniforms: dict[str, Any],
     ) -> None:
         for name, value in uniforms.items():

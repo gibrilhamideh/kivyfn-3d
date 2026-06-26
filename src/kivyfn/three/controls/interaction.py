@@ -7,15 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 from kivy.input.providers.mouse import MouseMotionEvent
 
-from kivyfn.three.controls.base import BaseController
 from kivyfn.three.math.vector import Vector3
+from kivyfn.three.controls.base import BaseController
+from kivyfn.three.views.transform import ViewTransform
 
 if TYPE_CHECKING:
     from kivyfn.three.assets.object3d import Object3D
-    from kivyfn.three.render.context import BaseContext, RenderPass2D
     from kivyfn.three.scene.scene import Scene
-    from kivyfn.three.views.view import View
-    from kivyfn.three.views.viewport import Viewport
+    from kivyfn.three.render.stage import RenderStage
 
 
 @dataclass(slots=True)
@@ -65,6 +64,7 @@ class BasePicker:
     # =================================== #
     # Stage
     # =================================== #
+
     def require_scene(self) -> Scene:
         if self.scene is None:
             raise RuntimeError(
@@ -73,51 +73,42 @@ class BasePicker:
 
         return self.scene
 
-    def require_stage(self) -> BaseContext:
+    def require_stage(self) -> RenderStage:
         scene = self.require_scene()
 
-        stage = scene.renderer.stages.registry.require(
+        return scene.renderer.stages.registry.require(
             self.stage_name,
         )
-
-        return stage
-
-    def require_viewport(self) -> Viewport:
-        stage = self.require_stage()
-
-        return stage.require_viewport()
-
-    def require_view(self) -> View:
-        stage = self.require_stage()
-
-        return stage.require_planar_view()
 
     # =================================== #
     # Coordinates
     # =================================== #
+
     def touch_inside_viewport(
         self,
         touch: Any,
     ) -> bool:
-        viewport = self.require_viewport()
+        stage = self.require_stage()
+        rect = stage.viewport.rect
 
         return (
-            viewport.x <= touch.x < viewport.x + viewport.width
-            and viewport.y <= touch.y < viewport.y + viewport.height
+            rect.x <= touch.x < rect.x + rect.width
+            and rect.y <= touch.y < rect.y + rect.height
         )
 
     def touch_to_viewport_pixel(
         self,
         touch: Any,
     ) -> tuple[int, int] | None:
-        viewport = self.require_viewport()
-
         if not self.touch_inside_viewport(touch):
             return None
 
+        stage = self.require_stage()
+        rect = stage.viewport.rect
+
         return (
-            int(touch.x - viewport.x),
-            int(touch.y - viewport.y),
+            int(touch.x - rect.x),
+            int(touch.y - rect.y),
         )
 
     def make_ray(
@@ -127,11 +118,12 @@ class BasePicker:
         if not self.touch_inside_viewport(touch):
             return None
 
-        viewport = self.require_viewport()
-        view = self.require_view()
+        stage = self.require_stage()
+        rect = stage.viewport.rect
 
-        return viewport.screen_to_ray(
-            view,
+        return ViewTransform.screen_to_ray(
+            rect,
+            stage.view,
             touch.x,
             touch.y,
         )
@@ -139,6 +131,7 @@ class BasePicker:
     # =================================== #
     # Pick
     # =================================== #
+
     def pick(
         self,
         touch: MouseMotionEvent,
@@ -194,23 +187,6 @@ class RaycastPicker(BasePicker):
 
 
 class RenderIdPicker(BasePicker):
-    def __init__(
-        self,
-        pass_name: str,
-    ) -> None:
-        super().__init__(
-            stage_name=pass_name,
-        )
-
-        self.pass_name = pass_name
-
-    def require_pass(self) -> RenderPass2D:
-        scene = self.require_scene()
-
-        return scene.renderer.stages.registry.require_pass(
-            self.pass_name,
-        )
-
     def pick(
         self,
         touch: MouseMotionEvent,
@@ -245,7 +221,8 @@ class RenderIdPicker(BasePicker):
         self,
         touch: MouseMotionEvent,
     ) -> int | None:
-        render_pass = self.require_pass()
+        stage = self.require_stage()
+        target = stage.require_target("texture-2d")
 
         pixel = self.touch_to_viewport_pixel(touch)
         if pixel is None:
@@ -253,7 +230,7 @@ class RenderIdPicker(BasePicker):
 
         x, y = pixel
 
-        r, g, b, _ = render_pass.get_pixel_color(
+        r, g, b, _ = target.get_pixel_color(
             x,
             y,
         )

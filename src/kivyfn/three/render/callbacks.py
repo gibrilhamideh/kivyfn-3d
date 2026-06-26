@@ -2,27 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from kivy.graphics import Callback
+
+from kivyfn.three.render.stage import RenderStage
 from kivyfn.three.math.matrix import Matrix3, Matrix4
-
-if TYPE_CHECKING:
-    from kivyfn.three.types import RenderStage
-    from kivyfn.three.assets.material import Material
-    from kivyfn.three.render.context import RenderContext
-
-TEXTURE_NAMES = (
-    "base_texture",
-    "normal_texture",
-    "emissive_texture",
-    "metallic_roughness_texture",
-    "occlusion_texture",
-    "roughness_texture",
-    "metallic_texture",
-    "specular_texture",
-    "displacement_texture",
-)
+from kivyfn.three.assets.material import Material
 
 
 class TransformCallback(Callback):
@@ -63,18 +47,16 @@ class TransformCallback(Callback):
             self.normal_mat.to_uniform(),
         )
 
-class MaterialCallback(Callback):
+class GeometryCallback(Callback):
     def __init__(
         self,
         *,
-        stage: RenderContext,
-        material: Material,
-        texture_slots: dict[str, int],
+        stage: RenderStage,
+        has_tangents: bool,
         **kwargs,
     ) -> None:
         self.stage = stage
-        self.material = material
-        self.texture_slots = texture_slots
+        self.has_tangents = has_tangents
 
         super().__init__(
             self.apply,
@@ -85,24 +67,33 @@ class MaterialCallback(Callback):
         self,
         *_,
     ) -> None:
+        self.stage.apply_uniform(
+            "has_tangents",
+            1 if self.has_tangents else 0,
+        )
 
-        for texture_name in TEXTURE_NAMES:
-            self.stage.apply_uniform(
-                f"has_{texture_name}",
-                1.0
-                if getattr(self.material, texture_name) is not None
-                else 0.0,
-            )
+class MaterialCallback(Callback):
+    def __init__(
+        self,
+        *,
+        stage: RenderStage,
+        material: Material,
+        **kwargs,
+    ) -> None:
+        self.stage = stage
+        self.material = material
 
+        super().__init__(
+            self.apply,
+            **kwargs,
+        )
+
+    def apply(
+        self,
+        *_,
+    ) -> None:
         for key, value in self.material.uniforms.items():
             if value is None:
-                continue
-
-            if key in self.texture_slots:
-                self.stage.apply_uniform(
-                    key,
-                    self.texture_slots[key],
-                )
                 continue
 
             self.stage.apply_uniform(
@@ -117,12 +108,12 @@ class ObjectIdCallback(Callback):
         *,
         stage: RenderStage,
         render_id: int,
-        output_uniform: str,
+        uniform: str,
         **kwargs,
     ) -> None:
         self.stage = stage
         self.render_id = render_id
-        self.output_uniform = output_uniform
+        self.uniform = uniform
 
         super().__init__(
             self.apply,
@@ -139,17 +130,16 @@ class ObjectIdCallback(Callback):
         g = (render_id >> 8) & 0xFF
         b = render_id & 0xFF
 
-        # r = render_id & 0xFF
-        # g = (render_id * 17) & 0xFF
-        # b = (render_id * 53) & 0xFF
-
-        id = [
+        value = [
             r / 255.0,
             g / 255.0,
             b / 255.0,
             1.0,
         ]
 
-        self.stage.apply_uniform(self.output_uniform, id)
+        self.stage.apply_uniform(
+            self.uniform,
+            value,
+        )
 
 

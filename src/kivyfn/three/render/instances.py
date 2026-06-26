@@ -2,50 +2,27 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, overload
 from collections import defaultdict
-
-from kivy.event import EventDispatcher
+from typing import overload
 
 from kivy.event import EventDispatcher
 from kivy.graphics import (
-    BindTexture,
     InstructionGroup,
     Mesh,
 )
-
+from kivyfn.three.assets.geometry import Geometry
+from kivyfn.three.assets.material import Material
+from kivyfn.three.assets.object3d import Object3D
 from kivyfn.three.math.matrix import Matrix3, Matrix4
+from kivyfn.three.graphics.gl.bind import BindTexture
+from kivyfn.three.render.stage import RenderStage
+from kivyfn.three.render.config import TEXTURE_SLOTS
 from kivyfn.three.render.callbacks import (
     MaterialCallback,
     ObjectIdCallback,
     TransformCallback,
+    GeometryCallback,
 )
-
-if TYPE_CHECKING:
-    from kivyfn.three.types import RenderStage
-    from kivyfn.three.assets.geometry import Geometry
-    from kivyfn.three.assets.material import Material
-    from kivyfn.three.render.context import RenderContext
-
-
-TEXTURE_SLOTS = {
-    "base_texture": 1,
-    "normal_texture": 2,
-    "emissive_texture": 3,
-    "metallic_roughness_texture": 4,
-    "occlusion_texture": 5,
-    "roughness_texture": 6,
-    "metallic_texture": 7,
-    "specular_texture": 8,
-    "displacement_texture": 9,
-}
-
-
-from kivyfn.three.render.context import RenderContext, RenderPass2D, RenderPassCube
-
-if TYPE_CHECKING:
-    from kivyfn.three.assets.object3d import Object3D
-    from kivyfn.three.types import RenderPassOutput, RenderStage
 
 
 class RenderInstanceManager(EventDispatcher):
@@ -54,17 +31,13 @@ class RenderInstanceManager(EventDispatcher):
 
     A render instance is:
 
-        Object3D + RenderStage -> BaseInstance
+        Object3D + RenderStage -> RenderInstance
 
     Each instance owns the concrete Kivy graphics instruction group needed
     to render one object in one stage.
 
     This manager does NOT decide which objects belong to which stages.
     That belongs to Renderer and the render registries.
-
-    Internal indexes:
-    - object_id -> stage_name -> instance
-    - stage_name -> object_id -> instance
     """
 
     __events__ = (
@@ -73,11 +46,17 @@ class RenderInstanceManager(EventDispatcher):
         "on_visibility_dirty",
     )
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+    ) -> None:
         super().__init__()
 
-        self._instances_by_object: defaultdict[int, dict[str, BaseInstance]] = defaultdict(dict)
-        self._instances_by_stage: defaultdict[str, dict[int, BaseInstance]] = defaultdict(dict)
+        self._instances_by_object: defaultdict[int, dict[str, RenderInstance]] = (
+            defaultdict(dict)
+        )
+        self._instances_by_stage: defaultdict[str, dict[int, RenderInstance]] = (
+            defaultdict(dict)
+        )
 
         self._objects: dict[int, Object3D] = {}
         self._bound_objects: set[int] = set()
@@ -92,7 +71,7 @@ class RenderInstanceManager(EventDispatcher):
         *,
         object3d: Object3D,
         stage_name: None = None,
-    ) -> dict[str, BaseInstance]:
+    ) -> dict[str, RenderInstance]:
         ...
 
     @overload
@@ -101,7 +80,7 @@ class RenderInstanceManager(EventDispatcher):
         *,
         object3d: None = None,
         stage_name: str,
-    ) -> dict[int, BaseInstance]:
+    ) -> dict[int, RenderInstance]:
         ...
 
     def instances_of(
@@ -109,7 +88,7 @@ class RenderInstanceManager(EventDispatcher):
         *,
         object3d: Object3D | None = None,
         stage_name: str | None = None,
-    ) -> dict[str, BaseInstance] | dict[int, BaseInstance]:
+    ) -> dict[str, RenderInstance] | dict[int, RenderInstance]:
         if object3d is None and stage_name is None:
             raise ValueError(
                 "instances_of() requires either 'object3d' or 'stage_name'."
@@ -117,13 +96,15 @@ class RenderInstanceManager(EventDispatcher):
 
         if object3d is not None and stage_name is not None:
             raise ValueError(
-                "instances_of() accepts either 'object3d' or 'stage_name', not both."
+                "instances_of() accepts either 'object3d' or 'stage_name', "
+                "not both."
             )
 
         if object3d is not None:
             return self._instances_by_object.get(id(object3d), {})
 
         assert stage_name is not None
+
         return self._instances_by_stage.get(stage_name, {})
 
     # =================================== #
@@ -134,7 +115,7 @@ class RenderInstanceManager(EventDispatcher):
         self,
         object3d: Object3D,
         stage: RenderStage,
-    ) -> BaseInstance:
+    ) -> RenderInstance:
         object_id = id(object3d)
         stage_name = stage.name
 
@@ -142,8 +123,12 @@ class RenderInstanceManager(EventDispatcher):
         if existing is not None:
             return existing
 
-        instance = self._create_instance(
-            object3d=object3d,
+        instance = RenderInstance(
+            geometry=object3d.geometry,
+            material=object3d.material,
+            render_id=object3d.require_render_id()
+            if stage.use_render_id
+            else None,
             stage=stage,
         )
 
@@ -156,67 +141,6 @@ class RenderInstanceManager(EventDispatcher):
         self.bind_object(object3d)
 
         return instance
-
-    def _create_instance(
-        self,
-        object3d: Object3D,
-        stage: RenderStage,
-    ) -> BaseInstance:
-        if isinstance(stage, RenderContext):
-            return MaterialInstance(
-                geometry=object3d.geometry,
-                material=object3d.material,
-                stage=stage,
-            )
-
-        return self._create_pass_instance(
-            object3d=object3d,
-            stage=stage,
-            output=stage.output,
-            output_uniform=stage.output_uniform,
-        )
-
-    def _create_pass_instance(
-        self,
-        object3d: Object3D,
-        stage: RenderPass2D | RenderPassCube,
-        output: RenderPassOutput,
-        output_uniform: str,
-    ) -> BaseInstance:
-        if output == "depth":
-            return DepthInstance(
-                geometry=object3d.geometry,
-                stage=stage,
-                output_uniform=output_uniform,
-            )
-
-        if output == "position":
-            return PositionInstance(
-                geometry=object3d.geometry,
-                stage=stage,
-                output_uniform=output_uniform,
-            )
-
-        if output == "normal":
-            return NormalInstance(
-                geometry=object3d.geometry,
-                stage=stage,
-                output_uniform=output_uniform,
-            )
-
-        if output == "id":
-            return ObjectIdInstance(
-                geometry=object3d.geometry,
-                render_id=object3d.require_render_id(),
-                stage=stage,
-                output_uniform=output_uniform,
-            )
-
-        return ColorInstance(
-            geometry=object3d.geometry,
-            stage=stage,
-            output_uniform=output_uniform,
-        )
 
     # =================================== #
     # Remove
@@ -296,8 +220,7 @@ class RenderInstanceManager(EventDispatcher):
         object3d: Object3D,
     ) -> None:
         for instance in self.instances_of(object3d=object3d).values():
-            if isinstance(instance, MaterialInstance):
-                instance.set_material(object3d.material)
+            instance.set_material(object3d.material)
 
     def sync_visibility(
         self,
@@ -415,28 +338,59 @@ class RenderInstanceManager(EventDispatcher):
         pass
 
 
-
-
-
-class BaseInstance(EventDispatcher):
+class RenderInstance(EventDispatcher):
     def __init__(
         self,
         *,
         geometry: Geometry,
+        material: Material,
+        render_id: int | None,
         stage: RenderStage,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
 
         self.stage = stage
         self.geometry = geometry
+        self.material = material
+        self.render_id = render_id
         self.visible = True
 
         self.group = InstructionGroup()
+        self.texture_group = InstructionGroup()
+        self.render_group = InstructionGroup()
+
+        self.texture_binders: dict[str, BindTexture] = {}
 
         self.transform_callback = TransformCallback(
             stage=stage,
         )
+
+        self.geometry_callback = GeometryCallback(
+            stage=stage,
+            has_tangents=geometry.has_tangents,
+        )
+
+        self.material_callback = MaterialCallback(
+            stage=stage,
+            material=material,
+        )
+
+        self.object_id_callback: ObjectIdCallback | None = None
+
+        if stage.use_render_id:
+            if render_id is None:
+                raise ValueError(
+                    f"Render stage {stage.name!r} requires render_id."
+                )
+
+            target = stage.require_target("render-pass")
+
+            self.object_id_callback = ObjectIdCallback(
+                stage=stage,
+                render_id=render_id,
+                uniform=target.attach_as,
+            )
 
         self.mesh = Mesh(
             vertices=geometry.vertices,
@@ -446,22 +400,67 @@ class BaseInstance(EventDispatcher):
             texture=geometry.texture,
         )
 
-        self.instructions = [
-            self.transform_callback,
-            self.mesh,
-        ]
-
         self.rebuild()
+        self.sync_uniforms()
+        self.sync_textures()
 
-    def rebuild(self) -> None:
+    # =================================== #
+    # Build
+    # =================================== #
+
+    def rebuild(
+        self,
+    ) -> None:
         self.group.clear()
+        self.texture_group.clear()
+        self.render_group.clear()
 
         if not self.visible:
             return
 
-        for instruction in self.instructions:
-            if instruction is not None:
-                self.group.add(instruction)
+        self.build_texture_group()
+        self.build_render_group()
+
+        self.group.add(self.texture_group)
+        self.group.add(self.render_group)
+
+    def build_texture_group(
+        self,
+    ) -> None:
+        if not self.stage.use_textures:
+            return
+
+        for binder in self.texture_binders.values():
+            self.texture_group.add(binder)
+
+    def build_render_group(
+        self,
+    ) -> None:
+        self.render_group.add(
+            self.transform_callback,
+        )
+
+        self.render_group.add(
+            self.geometry_callback,
+        )
+
+        if self.stage.use_material:
+            self.render_group.add(
+                self.material_callback,
+            )
+
+        if self.object_id_callback is not None:
+            self.render_group.add(
+                self.object_id_callback,
+            )
+
+        self.render_group.add(
+            self.mesh,
+        )
+
+    # =================================== #
+    # Sync
+    # =================================== #
 
     def sync_transform(
         self,
@@ -473,84 +472,70 @@ class BaseInstance(EventDispatcher):
             normal_mat=normal_mat,
         )
 
-    def sync_uniforms(self, *_):
-        pass
-
-    def sync_textures(self, *_):
-        pass
-
-    def show(self) -> None:
-        if self.visible:
-            return
-
-        self.visible = True
-        self.rebuild()
-
-    def hide(self) -> None:
-        if not self.visible:
-            return
-
-        self.visible = False
-        self.rebuild()
-
-    def destroy(self) -> None:
-        self.group.clear()
-        self.instructions.clear()
-
-
-class MaterialInstance(BaseInstance):
-    def __init__(
+    def sync_uniforms(
         self,
-        *,
-        geometry: Geometry,
-        material: Material,
-        stage: RenderContext,
-    ):
-        super().__init__(
-            geometry=geometry,
-            stage=stage,
-        )
+        *_,
+    ) -> None:
+        if self.stage.use_material:
+            self.material_callback.ask_update()
 
-        self.material = material
+        if self.object_id_callback is not None:
+            self.object_id_callback.ask_update()
 
-        self.texture_binders = {
-            name: BindTexture(index=slot)
-            for name, slot in TEXTURE_SLOTS.items()
-        }
+    def sync_textures(
+        self,
+        *_,
+    ) -> None:
+        if not self.stage.use_textures:
+            self.clear_texture_binders()
+            return
 
-        self.material_callback = MaterialCallback(
-            stage=stage,
-            material=material,
-            texture_slots=TEXTURE_SLOTS,
-        )
+        changed = False
 
-        self.instructions = [
-            self.transform_callback,
-            *self.texture_binders.values(),
-            self.material_callback,
-            self.mesh,
-        ]
+        for name, slot in TEXTURE_SLOTS.items():
+            texture = getattr(
+                self.material,
+                name,
+                None,
+            )
 
-        self.rebuild()
-        self.sync_uniforms()
-        self.sync_textures()
+            binder = self.texture_binders.get(name)
 
-    def sync_textures(self, *_):
-        # BUG:
-        # Texture binders are never cleared when a material texture
-        # becomes None. This may leave a previously bound texture
-        # active in OpenGL state. Need a strategy for handling
-        # missing textures (default textures vs use_* uniforms flags).
-        for name, binder in self.texture_binders.items():
-            texture = getattr(self.material, name, None)
+            if texture is None:
+                if binder is not None:
+                    self.texture_binders.pop(name)
+                    changed = True
 
-            if texture is not None:
+                continue
+
+            if binder is None:
+                self.texture_binders[name] = BindTexture(
+                    stage=self.stage,
+                    uniform=name,
+                    texture=texture,
+                    slot=slot,
+                )
+                changed = True
+                continue
+
+            if binder.texture is not texture:
                 binder.texture = texture
+                binder.ask_update()
 
-        self.material_callback.ask_update()
+        if changed:
+            self.rebuild()
 
-    def sync_uniforms(self, *_):
-        self.material_callback.ask_update()
+        if self.stage.use_material:
+            self.material_callback.ask_update()
+
+    def clear_texture_binders(
+        self,
+    ) -> None:
+        if not self.texture_binders:
+            return
+
+        self.texture_binders.clear()
+        self.rebuild()
 
     def set_material(
         self,
@@ -562,56 +547,39 @@ class MaterialInstance(BaseInstance):
         self.sync_uniforms()
         self.sync_textures()
 
-class BasePassInstance(BaseInstance):
-    def __init__(
+    # =================================== #
+    # Visibility
+    # =================================== #
+
+    def show(
         self,
-        *,
-        output_uniform: str,
-        **kwargs
-    ):
+    ) -> None:
+        if self.visible:
+            return
 
-        self.output_uniform = output_uniform
-        super().__init__(**kwargs)
-
-
-class ObjectIdInstance(BasePassInstance):
-    def __init__(
-        self,
-        *,
-        render_id: int,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-
-        self.render_id = render_id
-        self.object_id_callback = ObjectIdCallback(
-            stage=self.stage,
-            render_id=self.render_id,
-            output_uniform=self.output_uniform
-        )
-
-        self.instructions = [
-            self.transform_callback,
-            self.object_id_callback,
-            self.mesh,
-        ]
-
+        self.visible = True
         self.rebuild()
 
-    def sync_uniforms(self, *_):
-        self.object_id_callback.ask_update()
+    def hide(
+        self,
+    ) -> None:
+        if not self.visible:
+            return
 
-class ColorInstance(BasePassInstance):
-    pass
+        self.visible = False
+        self.rebuild()
 
-class NormalInstance(BasePassInstance):
-    pass
+    # =================================== #
+    # Delete
+    # =================================== #
 
-class DepthInstance(BasePassInstance):
-    pass
-
-class PositionInstance(BasePassInstance):
-    pass
+    def destroy(
+        self,
+    ) -> None:
+        self.texture_binders.clear()
+        self.texture_group.clear()
+        self.render_group.clear()
+        self.group.clear()
 
 
 

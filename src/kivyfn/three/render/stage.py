@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal, overload
 from pathlib import Path
 from pprint import pformat
-from typing import Any, Literal
 
 from kivy.event import EventDispatcher
 from kivy.graphics import Instruction
@@ -14,7 +14,9 @@ from kivy.properties import (
     StringProperty,
 )
 
-from kivyfn.three.types import StageTargets
+from kivyfn.three.views.view import View
+from kivyfn.three.views.viewport import Viewport
+from kivyfn.three.render.config import RenderInstanceConfig
 from kivyfn.three.render.shader import Shader
 from kivyfn.three.graphics.gl import (
     BindTexture,
@@ -27,17 +29,24 @@ from kivyfn.three.graphics.gl.targets import (
     Texture2DTarget,
     TextureCubeTarget
 )
-from kivyfn.three.views.view import View
-from kivyfn.three.views.viewport import Viewport
 
-ShaderReloadEvent = Literal[
-    "manual",
-    "modified",
-    "created",
-    "moved",
-]
+from kivyfn.three.types import (
+        StageTargets,
+        RenderPassTarget,
+        ShaderReloadEvent,
+)
+
+
 
 TextureBindable = Texture2D | TextureCube
+
+
+TargetKind = Literal[
+    "screen",
+    "texture-2d",
+    "texture-cube",
+    "render-pass",
+]
 
 
 class RenderStage(EventDispatcher):
@@ -45,7 +54,6 @@ class RenderStage(EventDispatcher):
     name: str = StringProperty("")
     shader: Shader = ObjectProperty()
     target: StageTargets = ObjectProperty()
-
     hot_reload: bool = BooleanProperty(False)
 
     __events__ = (
@@ -60,6 +68,9 @@ class RenderStage(EventDispatcher):
         shader: Shader,
         target: StageTargets,
         hot_reload: bool = False,
+        use_material: bool = True,
+        use_textures: bool = True,
+        use_render_id: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -69,6 +80,12 @@ class RenderStage(EventDispatcher):
         self.target = target
 
         self.hot_reload = hot_reload
+
+        self.instance_config = RenderInstanceConfig(
+            use_material=use_material,
+            use_textures=use_textures,
+            use_render_id=use_render_id,
+        )
 
         self._bind_events()
         self.sync_shader()
@@ -187,6 +204,13 @@ class RenderStage(EventDispatcher):
             slot=slot
         )
 
+    def unbind_texture(
+        self,
+        instruction: BindTexture,
+    ) -> None:
+        self.target.remove_texture(instruction)
+        self.ask_update()
+
     # =================================== #
     # Instructions
     # =================================== #
@@ -259,6 +283,88 @@ class RenderStage(EventDispatcher):
     @property
     def viewport(self) -> Viewport:
         return self.target.viewport
+
+    @property
+    def use_material(
+        self,
+    ) -> bool:
+        return self.instance_config.use_material
+
+    @property
+    def use_textures(
+        self,
+    ) -> bool:
+        return self.instance_config.use_textures
+
+    @property
+    def use_render_id(
+        self,
+    ) -> bool:
+        return self.instance_config.use_render_id
+
+    # =================================== #
+    # Reuiqre
+    # =================================== #
+
+    @overload
+    def require_target(
+        self,
+        kind: Literal["screen"],
+    ) -> ScreenTarget:
+        ...
+
+
+    @overload
+    def require_target(
+        self,
+        kind: Literal["texture-2d"],
+    ) -> Texture2DTarget:
+        ...
+
+
+    @overload
+    def require_target(
+        self,
+        kind: Literal["texture-cube"],
+    ) -> TextureCubeTarget:
+        ...
+
+
+    @overload
+    def require_target(
+        self,
+        kind: Literal["render-pass"],
+    ) -> RenderPassTarget:
+        ...
+
+
+    def require_target(
+        self,
+        kind: TargetKind,
+    ) -> ScreenTarget | Texture2DTarget | TextureCubeTarget | RenderPassTarget:
+        if kind == "screen":
+            return self.target.as_screen
+
+        if kind == "texture-2d":
+            return self.target.as_texture_2d
+
+        if kind == "texture-cube":
+            return self.target.as_texture_cube
+
+        if kind == "render-pass":
+            if self.is_texture_2d:
+                return self.target.as_texture_2d
+
+            if self.is_texture_cube:
+                return self.target.as_texture_cube
+
+            raise TypeError(
+                f"Render stage {self.name!r} is not a render-pass stage."
+            )
+
+        raise ValueError(
+            f"Unknown target kind: {kind!r}."
+        )
 
 
 

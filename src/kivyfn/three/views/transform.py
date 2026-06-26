@@ -46,7 +46,7 @@ class ViewTransform:
         view: View,
         point: Vector3,
     ) -> tuple[float, float, float] | None:
-        projection = view.get_projection_matrix(rect.aspect)
+        projection = view.get_projection_matrix(mode="planar", aspect=rect.aspect)
         view_matrix = view.get_view_matrix()
 
         ndc = (projection @ view_matrix).transform_point(point)

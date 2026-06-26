@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import io
 import os
 import xxhash
 from dataclasses import dataclass
@@ -11,11 +10,10 @@ from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import numpy as np
-from kivy.core.image import Image
-from kivy.graphics.texture import Texture
 from pygltflib import GLTF2
 
 from kivyfn.three.parsers.glb.blueprint import GlbBlueprint, GlbAsset
+from kivyfn.three.graphics.gl.texture import Texture2D
 from kivyfn.three.math.matrix import Matrix3
 from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.quaternion import Quaternion
@@ -215,11 +213,11 @@ class GlbParser:
         self._buffer_bytes: bytes | None = None
         self._base_path: Path | None = None
 
-        self._texture_cache: dict[int, Texture] = {}
+        self._texture_cache: dict[int, Texture2D] = {}
         self._image_bytes_cache: dict[int, tuple[bytes, str]] = {}
         self._image_texture_cache: dict[
             tuple[str, int | None, int | None, int | None, int | None],
-            Texture,
+            Texture2D,
         ] = {}
 
     def parse(
@@ -550,8 +548,6 @@ class GlbParser:
         if occlusion_texture is not None:
             material.occlusion_texture = occlusion_texture
 
-        material.sync_uniforms()
-
         return material
 
     def _apply_pbr_material(
@@ -591,7 +587,7 @@ class GlbParser:
         if roughness_factor is not None:
             material.roughness_factor = float(roughness_factor)
 
-        base_texture = self._load_texture_from_info(
+        base_color_texture = self._load_texture_from_info(
             getattr(
                 pbr,
                 "baseColorTexture",
@@ -599,8 +595,8 @@ class GlbParser:
             )
         )
 
-        if base_texture is not None:
-            material.base_texture = base_texture
+        if base_color_texture is not None:
+            material.base_color_texture = base_color_texture
 
         metallic_roughness_texture = self._load_texture_from_info(
             getattr(
@@ -622,7 +618,7 @@ class GlbParser:
     def _load_texture_from_info(
         self,
         texture_info: Any,
-    ) -> Texture | None:
+    ) -> Texture2D | None:
         if texture_info is None:
             return None
 
@@ -640,7 +636,7 @@ class GlbParser:
     def _load_texture(
         self,
         texture_index: int,
-    ) -> Texture | None:
+    ) -> Texture2D | None:
         if (
             not self._gltf.textures
             or texture_index < 0
@@ -692,7 +688,7 @@ class GlbParser:
             int | None,
             int | None,
         ],
-    ) -> Texture | None:
+    ) -> Texture2D | None:
         image_data = self._load_image_data(image_index)
 
         if image_data is None:
@@ -715,17 +711,15 @@ class GlbParser:
         if cached_texture is not None:
             return cached_texture
 
-        image = Image(
-            io.BytesIO(image_bytes),
+
+        texture = Texture2D.from_bytes(
+            image_bytes,
             ext=extension,
             mipmap=True,
-            nocache=True,
+            wrap="repeat",
+            min_filter="linear_mipmap_linear",
+            mag_filter="linear",
         )
-
-        texture = image.texture
-
-        if texture is None:
-            return None
 
         texture.min_filter = "linear_mipmap_linear"
         texture.mag_filter = "linear"
@@ -805,7 +799,7 @@ class GlbParser:
 
     def _apply_sampler(
         self,
-        texture: Texture,
+        texture: Texture2D,
         gltf_texture: Any,
     ) -> None:
         sampler_index = getattr(
@@ -1063,7 +1057,6 @@ class GlbParser:
     # =================================== #
     # Geometry
     # =================================== #
-
     def _process_primitive_geometry(
         self,
         primitive: GlbPrimitive,
@@ -1071,7 +1064,9 @@ class GlbParser:
         if primitive.position_index is None:
             return None
 
-        positions = self._read_accessor(primitive.position_index)
+        positions = self._read_accessor(
+            primitive.position_index,
+        )
 
         if positions is None:
             return None
@@ -1083,8 +1078,14 @@ class GlbParser:
 
         vertex_count = positions.shape[0]
 
+        # =================================== #
+        # Indices
+        # =================================== #
+
         if primitive.indices_index is not None:
-            indices = self._read_accessor(primitive.indices_index)
+            indices = self._read_accessor(
+                primitive.indices_index,
+            )
 
             if indices is None:
                 return None
@@ -1100,26 +1101,40 @@ class GlbParser:
                 dtype=np.int64,
             )
 
-        normals = self._read_accessor(primitive.normal_index)
+        # =================================== #
+        # Normals
+        # =================================== #
+
+        normals = self._read_accessor(
+            primitive.normal_index,
+        )
 
         if normals is None or normals.shape[1] < 3:
             normals = np.zeros_like(
                 positions[:, :3],
                 dtype=np.float32,
             )
+
         else:
             normals = normals[:, :3].astype(
                 np.float32,
                 copy=False,
             )
 
-        uvs = self._read_accessor(primitive.uv_index)
+        # =================================== #
+        # UVs
+        # =================================== #
+
+        uvs = self._read_accessor(
+            primitive.uv_index,
+        )
 
         if uvs is None or uvs.shape[1] < 2:
             uvs = np.zeros(
                 (vertex_count, 2),
                 dtype=np.float32,
             )
+
         else:
             uvs = uvs[:, :2].astype(
                 np.float32,
@@ -1132,23 +1147,20 @@ class GlbParser:
         if self.flip_v:
             uvs[:, 1] = 1.0 - uvs[:, 1]
 
-        tangents = self._read_accessor(primitive.tangent_index)
+        # =================================== #
+        # Tangents
+        # =================================== #
 
-        has_source_tangents = (
+        tangents = self._read_accessor(
+            primitive.tangent_index,
+        )
+
+        has_tangents = (
             tangents is not None
             and tangents.shape[1] >= 4
         )
 
-        if not has_source_tangents:
-            tangents = np.zeros(
-                (vertex_count, 4),
-                dtype=np.float32,
-            )
-
-            tangents[:, 0] = 1.0
-            tangents[:, 3] = 1.0
-
-        else:
+        if has_tangents:
             assert tangents is not None
 
             tangents = tangents[:, :4].astype(
@@ -1156,31 +1168,60 @@ class GlbParser:
                 copy=False,
             )
 
+            packed_vertices = np.column_stack(
+                [
+                    positions[:, :3],
+                    normals,
+                    uvs,
+                    tangents,
+                ]
+            ).reshape(-1)
+
+            fmt = [
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+                (b"v_tangent", 4, "float"),
+            ]
+
+        else:
+            packed_vertices = np.column_stack(
+                [
+                    positions[:, :3],
+                    normals,
+                    uvs,
+                ]
+            ).reshape(-1)
+
+            fmt = [
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+            ]
+
+        # =================================== #
+        # Winding
+        # =================================== #
+
         if self.flip_winding and len(final_indices) % 3 == 0:
             final_indices = final_indices.reshape(-1, 3)
             final_indices[:, [1, 2]] = final_indices[:, [2, 1]]
             final_indices = final_indices.reshape(-1)
 
-        final_indices = self._ensure_uint16_indices(final_indices)
-
-        bounds = GeometryBounds.from_positions(
-            positions
+        final_indices = self._ensure_uint16_indices(
+            final_indices,
         )
 
-        packed_vertices = np.column_stack(
-            [
-                positions[:, :3],
-                normals,
-                uvs,
-                tangents,
-            ]
-        ).reshape(-1)
+        bounds = GeometryBounds.from_positions(
+            positions,
+        )
 
         return Geometry(
+            fmt=fmt,
             vertices=packed_vertices,
             indices=final_indices,
             bounds=bounds,
-            has_source_tangents=has_source_tangents,
+            has_tangents=has_tangents,
         )
 
     def _ensure_uint16_indices(

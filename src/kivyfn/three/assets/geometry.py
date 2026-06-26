@@ -8,8 +8,7 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from kivy.graphics.texture import Texture
-
+from kivyfn.three.graphics.gl.texture import Texture2D
 from kivyfn.three.math.vector import Vector3
 
 
@@ -117,7 +116,6 @@ class Geometry:
             (b"v_pos", 3, "float"),
             (b"v_normal", 3, "float"),
             (b"v_uv", 2, "float"),
-            (b"v_tangent", 4, "float"),
         ]
     )
 
@@ -137,9 +135,9 @@ class Geometry:
 
     mode: RenderMode = "triangles"
 
-    texture: Texture | None = None
+    texture: Texture2D | None = None
 
-    has_source_tangents: bool = False
+    has_tangents: bool = False
 
     bounds: GeometryBounds = field(
         default_factory=GeometryBounds,
@@ -160,7 +158,7 @@ class Geometry:
             f"  stride={self.stride},\n"
             f"  mode={self.mode!r},\n"
             f"  has_texture={self.texture is not None},\n"
-            f"  has_source_tangents={self.has_source_tangents},\n"
+            f"  has_tangents={self.has_tangents},\n"
             f"  bounds={self.bounds}\n"
             ")"
         )

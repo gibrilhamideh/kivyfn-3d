@@ -4,19 +4,13 @@ from __future__ import annotations
 
 from os import fsdecode
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from kivy.clock import Clock
 from kivy.event import EventDispatcher
 from kivy.properties import BooleanProperty, ObjectProperty, StringProperty
 
-
-ShaderReloadEvent = Literal[
-    "manual",
-    "modified",
-    "created",
-    "moved",
-]
+from kivyfn.three.types import ShaderReloadEvent
 
 
 class Shader(EventDispatcher):

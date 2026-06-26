@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
@@ -14,6 +14,13 @@ from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.graphics.gl.core import GL
 from kivyfn.three.graphics.gl.bind import BindTexture
 from kivyfn.three.graphics.gl.texture import Texture2D, TextureCube
+
+if TYPE_CHECKING:
+    from kivyfn.three.graphics.gl.targets import (
+        ScreenTarget,
+        Texture2DTarget,
+        TextureCubeTarget,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +123,13 @@ class BaseTargetContext(KivyRenderContext):
         self.render_group.remove(c)
         self.ask_update()
 
+    def remove_texture(
+        self,
+        c: Instruction,
+    ) -> None:
+        self.texture_group.remove(c)
+        self.ask_update()
+
     def clear(
         self,
     ) -> None:
@@ -197,5 +211,43 @@ class BaseTargetContext(KivyRenderContext):
         raise NotImplementedError(
             f"{type(self).__name__} must provide its own sync_view() implementation"
         )
+
+    # =================================== #
+    # Cast
+    # =================================== #
+    @property
+    def as_screen(self) -> ScreenTarget:
+        from kivyfn.three.graphics.gl.targets import ScreenTarget
+
+        if type(self) is not ScreenTarget:
+            raise TypeError(
+                f"{type(self).__name__} is not a ScreenTarget."
+            )
+
+        return cast("ScreenTarget", self)
+
+
+    @property
+    def as_texture_2d(self) -> Texture2DTarget:
+        from kivyfn.three.graphics.gl.targets import Texture2DTarget
+
+        if type(self) is not Texture2DTarget:
+            raise TypeError(
+                f"{type(self).__name__} is not a Texture2DTarget."
+            )
+
+        return cast("Texture2DTarget", self)
+
+
+    @property
+    def as_texture_cube(self) -> TextureCubeTarget:
+        from kivyfn.three.graphics.gl.targets import TextureCubeTarget
+
+        if type(self) is not TextureCubeTarget:
+            raise TypeError(
+                f"{type(self).__name__} is not a TextureCubeTarget."
+            )
+
+        return cast("TextureCubeTarget", self)
 
 

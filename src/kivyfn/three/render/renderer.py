@@ -19,16 +19,14 @@ from kivyfn.three.render.registry import (
 )
 from kivyfn.three.render.stages import RenderStageManager
 
-from kivyfn.three.types import (
-    RenderStage,
-    SceneObject,
-)
+from kivyfn.three.types import SceneObject
+
 
 if TYPE_CHECKING:
     from kivyfn.three.scene.scene import Scene
     from kivyfn.three.assets.object3d import Object3D
     from kivyfn.three.render.binder import RenderBindingRecord
-    from kivyfn.three.render.context import RenderContext, RenderPass2D, RenderPassCube
+    from kivyfn.three.render.stage import RenderStage
 
 
 @dataclass(slots=True)
@@ -99,52 +97,53 @@ class Renderer(EventDispatcher):
     # Contexts
     # =================================== #
 
-    def create_context(
+    def create_screen_stage(
         self,
         **kwargs,
-    ) -> RenderContext:
-
-        stage = self.stages.create_context(
+    ) -> RenderStage:
+        stage = self.stages.create_screen_stage(
             scene=self.scene,
             **kwargs,
         )
 
-        self.canvas.add(stage.ctx)
+        self.canvas.add(stage.target)
         self.add_stage_memberships(stage)
+
         return stage
 
-
-    def create_pass(
+    def create_texture_2d_stage(
         self,
         **kwargs,
-    ) -> RenderPass2D:
-
-        stage = self.stages.create_pass(
+    ) -> RenderStage:
+        stage = self.stages.create_texture_2d_stage(
+            scene=self.scene,
             **kwargs,
         )
 
-        self.canvas.add(stage.ctx)
+        self.canvas.add(stage.target)
         self.add_stage_memberships(stage)
+
         return stage
 
-    def create_cube_pass(
+    def create_texture_cube_stage(
         self,
         **kwargs,
-    ) -> RenderPassCube:
-
-        stage = self.stages.create_cube_pass(
+    ) -> RenderStage:
+        stage = self.stages.create_texture_cube_stage(
+            scene=self.scene,
             **kwargs,
         )
 
-        self.canvas.add(stage.ctx)
+        self.canvas.add(stage.target)
         self.add_stage_memberships(stage)
+
         return stage
 
-    def attach_pass(
+    def attach_output(
         self,
         **kwargs,
     ) -> RenderBindingRecord | list[RenderBindingRecord]:
-        return self.stages.attach_pass(**kwargs)
+        return self.stages.attach_output(**kwargs)
 
 
     # =================================== #
@@ -159,7 +158,8 @@ class Renderer(EventDispatcher):
             return
 
         stage = self.stages.registry.require(stage_name)
-        self.canvas.remove(stage.ctx)
+
+        self.canvas.remove(stage.target)
         self.hidden.add(stage_name)
 
     def show_stage(
@@ -170,7 +170,8 @@ class Renderer(EventDispatcher):
             return
 
         stage = self.stages.registry.require(stage_name)
-        self.canvas.add(stage.ctx)
+
+        self.canvas.add(stage.target)
         self.hidden.remove(stage_name)
 
     def remove_stage(
@@ -178,20 +179,16 @@ class Renderer(EventDispatcher):
         stage_name: str,
     ) -> None:
         stage = self.stages.registry.require(stage_name)
-        ctx = self.stages.registry.get_context(stage_name)
-
-        if ctx is not None:
-            self.scene.overlays.clear_viewport(ctx.viewport)
 
         self.remove_stage_memberships(stage)
 
         if stage.name not in self.hidden:
-            self.canvas.remove(stage.ctx)
+            self.canvas.remove(stage.target)
 
         self.hidden.discard(stage.name)
 
         removed = self.stages.remove(stage.name)
-        removed.destroy()
+        removed.delete()
 
     # =================================== #
     # Dirty Queue

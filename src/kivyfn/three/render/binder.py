@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TypeAlias
 
+from kivyfn.three.types import RenderPassTarget
 from kivyfn.three.graphics.gl import BindTexture
-from kivyfn.three.render.context import RenderPass2D, RenderPassCube
+from kivyfn.three.graphics.gl.targets import Texture2DTarget, TextureCubeTarget
 from kivyfn.three.render.registry import RenderStageRegistry
 
-RenderPassLike: TypeAlias = "RenderPass2D | RenderPassCube"
 
-RENDER_PASS_TEXTURE_START_SLOT = 10
+ATTACHED_TEXTURE_START_SLOT = 10
 
 
 @dataclass(slots=True, frozen=True)
@@ -44,25 +43,31 @@ class RenderBinderManager:
     def attach(
         self,
         *,
-        pass_name: str,
+        source_name: str,
         target_name: str,
         index: int | None = None,
     ) -> RenderBindingRecord:
-        render_pass = self._require_output_stage(pass_name)
-        target = self._stage_registry.require(target_name)
+        source_target = self._require_output_target(source_name)
+        target_stage = self._stage_registry.require(target_name)
+
+        if not source_target.attach_as:
+            raise ValueError(
+                f"Render stage {source_name!r} cannot be attached because "
+                "its target.attach_as is empty."
+            )
 
         if index is None:
             index = self._next_texture_slot(target_name)
 
         record = self._binding_registry.add(
-            source=pass_name,
+            source=source_name,
             target=target_name,
             index=index,
         )
 
-        instruction = target.bind_texture(
-            uniform=render_pass.output_uniform,
-            texture=render_pass.texture,
+        instruction = target_stage.bind_texture(
+            uniform=source_target.attach_as,
+            texture=source_target.texture,
             slot=record.index,
         )
 
@@ -76,9 +81,8 @@ class RenderBinderManager:
     ) -> BindTexture:
         instruction = self._texture_bindings.pop(record)
 
-        target = self._stage_registry.require(record.target)
-        target.texture_group.remove(instruction)
-        target.ask_update()
+        target_stage = self._stage_registry.require(record.target)
+        target_stage.unbind_texture(instruction)
 
         return instruction
 
@@ -91,25 +95,26 @@ class RenderBinderManager:
             for record in self._binding_registry.incoming(target_name) or ()
         }
 
-        index = RENDER_PASS_TEXTURE_START_SLOT
+        index = ATTACHED_TEXTURE_START_SLOT
 
         while index in used_slots:
             index += 1
 
         return index
 
-    def _require_output_stage(
+    def _require_output_target(
         self,
         name: str,
-    ) -> RenderPassLike:
+    ) -> RenderPassTarget:
         stage = self._stage_registry.require(name)
+        target = stage.target
 
-        if not isinstance(stage, (RenderPass2D, RenderPassCube)):
+        if not isinstance(target, (Texture2DTarget, TextureCubeTarget)):
             raise TypeError(
                 f"Render stage {name!r} is not attachable as an output stage."
             )
 
-        return stage
+        return target
 
 
 

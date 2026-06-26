@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Literal, Self
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Self
+from io import BytesIO
 
 from kivy.core.image import Image
 
@@ -213,15 +214,78 @@ class Texture2D:
                 f"Texture source does not exist: {path}"
             )
 
+        return cls.from_bytes(
+            path.read_bytes(),
+            ext=path.suffix.lstrip(".") or "png",
+            flip_vertical=flip_vertical,
+            mipmap=mipmap,
+            wrap=wrap,
+            min_filter=min_filter,
+            mag_filter=mag_filter,
+        )
+
+    @classmethod
+    def from_rgba(
+        cls,
+        rgba: Rgba,
+        *,
+        wrap: TextureWrap = "clamp_to_edge",
+        min_filter: TextureMinFilter = "linear",
+        mag_filter: TextureMagFilter = "linear",
+    ) -> Self:
+        texture_id = GL.create_texture(GL.TEXTURE_2D)
+
+        GL.tex_image_2d(
+            target=GL.TEXTURE_2D,
+            width=1,
+            height=1,
+            pixels=bytes(rgba),
+            format=GL.RGBA,
+            type=GL.UNSIGNED_BYTE,
+        )
+
+        configure_texture_2d(
+            wrap=wrap,
+            min_filter=min_filter,
+            mag_filter=mag_filter,
+        )
+
+        GL.unbind_texture(GL.TEXTURE_2D)
+
+        return cls(
+            id=texture_id,
+            size=(1, 1),
+            resizable=False,
+            format=GL.RGBA,
+            type=GL.UNSIGNED_BYTE,
+            mipmap=False,
+            wrap=wrap,
+            min_filter=min_filter,
+            mag_filter=mag_filter,
+        )
+
+    @classmethod
+    def from_bytes(
+        cls,
+        data: bytes,
+        *,
+        ext: str = "png",
+        flip_vertical: bool = False,
+        mipmap: bool = False,
+        wrap: TextureWrap = "clamp_to_edge",
+        min_filter: TextureMinFilter | None = None,
+        mag_filter: TextureMagFilter = "linear",
+    ) -> Self:
         image = Image(
-            str(path),
+            BytesIO(data),
+            ext=ext,
             nocache=True,
         )
 
         source = image.texture
         if source is None:
             raise RuntimeError(
-                f"Failed to load texture source: {path}"
+                "Failed to load texture from bytes."
             )
 
         if flip_vertical:
@@ -265,46 +329,6 @@ class Texture2D:
             mipmap=mipmap,
             wrap=wrap,
             min_filter=resolved_min_filter,
-            mag_filter=mag_filter,
-        )
-
-    @classmethod
-    def from_rgba(
-        cls,
-        rgba: Rgba,
-        *,
-        wrap: TextureWrap = "clamp_to_edge",
-        min_filter: TextureMinFilter = "linear",
-        mag_filter: TextureMagFilter = "linear",
-    ) -> Self:
-        texture_id = GL.create_texture(GL.TEXTURE_2D)
-
-        GL.tex_image_2d(
-            target=GL.TEXTURE_2D,
-            width=1,
-            height=1,
-            pixels=bytes(rgba),
-            format=GL.RGBA,
-            type=GL.UNSIGNED_BYTE,
-        )
-
-        configure_texture_2d(
-            wrap=wrap,
-            min_filter=min_filter,
-            mag_filter=mag_filter,
-        )
-
-        GL.unbind_texture(GL.TEXTURE_2D)
-
-        return cls(
-            id=texture_id,
-            size=(1, 1),
-            resizable=False,
-            format=GL.RGBA,
-            type=GL.UNSIGNED_BYTE,
-            mipmap=False,
-            wrap=wrap,
-            min_filter=min_filter,
             mag_filter=mag_filter,
         )
 

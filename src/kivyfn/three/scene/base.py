@@ -7,19 +7,15 @@ from typing import TYPE_CHECKING, cast
 from kivy.core.window import Window
 from kivy.graphics.opengl import glViewport
 from kivy.graphics import (
-    Color,
-    Rectangle,
     Callback,
     InstructionGroup
 )
 
 from kivy.input.providers.mouse import MouseMotionEvent
-from kivy.properties import (
-    AliasProperty,
-    ColorProperty,
-    NumericProperty,
-)
+from kivy.properties import NumericProperty
 from kivy.uix.widget import Widget
+
+from kivyfn.three.views.viewport import SceneViewport
 
 if TYPE_CHECKING:
     from kivyfn.three.scene.scene import Scene
@@ -27,67 +23,34 @@ if TYPE_CHECKING:
 
 
 class SceneBase(Widget):
-    bg_color: tuple[float, float, float, float] = ColorProperty(
-        (0.0, 0.0, 0.0, 0.0)
-    )
 
     origin_x: int = NumericProperty(0)
     origin_y: int = NumericProperty(0)
 
-    def _get_scene_viewport_x(self) -> int:
-        return int(self.x + self.origin_x)
-
-    def _get_scene_viewport_y(self) -> int:
-        return int(self.y + self.origin_y)
-
-    def _get_scene_viewport_width(self) -> int:
-        return int(self.width)
-
-    def _get_scene_viewport_height(self) -> int:
-        return int(self.height)
-
-    scene_viewport_x: int = AliasProperty(
-        _get_scene_viewport_x,
-        None,
-        bind=["x", "origin_x"],
-    )
-
-    scene_viewport_y: int = AliasProperty(
-        _get_scene_viewport_y,
-        None,
-        bind=["y", "origin_y"],
-    )
-
-    scene_viewport_width: int = AliasProperty(
-        _get_scene_viewport_width,
-        None,
-        bind=["width"],
-    )
-
-    scene_viewport_height: int = AliasProperty(
-        _get_scene_viewport_height,
-        None,
-        bind=["height"],
-    )
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        with self.canvas.before:
-            self._bg_color = Color(*self.bg_color)
-            self._bg_rect = Rectangle(
-                pos=self.pos,
-                size=self.size,
-            )
+        self.scene_viewport = SceneViewport()
+        self._sync_scene_viewport()
 
         with self.canvas:
             self.render_group = InstructionGroup()
             Callback(self._restore_viewport)
 
         self.bind(
-            pos=self._update_bg_rect,
-            size=self._update_bg_rect,
+            x=self._sync_scene_viewport,
+            y=self._sync_scene_viewport,
+            width=self._sync_scene_viewport,
+            height=self._sync_scene_viewport,
+            origin_x=self._sync_scene_viewport,
+            origin_y=self._sync_scene_viewport,
         )
+
+    def _sync_scene_viewport(self, *_):
+        self.scene_viewport.x = int(self.x + self.origin_x)
+        self.scene_viewport.y = int(self.y + self.origin_y)
+        self.scene_viewport.width = int(self.width)
+        self.scene_viewport.height = int(self.height)
 
     def _restore_viewport(self, *_) -> None:
         glViewport(
@@ -97,12 +60,6 @@ class SceneBase(Widget):
             Window.height,
         )
 
-    def _update_bg_rect(self, *_):
-        self._bg_rect.pos = self.pos
-        self._bg_rect.size = self.size
-
-    def on_bg_color(self, *_):
-        self._bg_color.rgba = self.bg_color
 
 
 class SceneControllerBase(SceneBase):
