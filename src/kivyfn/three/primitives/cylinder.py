@@ -6,9 +6,9 @@ import math
 
 import numpy as np
 
+from kivyfn.three.assets.geometry import Geometry
 from kivyfn.three.assets.material import Material
 from kivyfn.three.assets.object3d import Object3D
-from kivyfn.three.assets.geometry import Geometry
 
 
 class Cylinder(Object3D):
@@ -18,16 +18,33 @@ class Cylinder(Object3D):
         height: float = 1.0,
         segments: int = 32,
         material: Material | None = None,
+        with_tangents: bool = True,
         **kwargs,
     ):
+        if radius <= 0.0:
+            raise ValueError(
+                "Cylinder radius must be greater than 0."
+            )
+
+        if height <= 0.0:
+            raise ValueError(
+                "Cylinder height must be greater than 0."
+            )
+
+        if segments < 3:
+            raise ValueError(
+                "Cylinder segments must be at least 3."
+            )
+
         half_height = height / 2.0
 
-        vertices: list[float] = []
+        vertices_with_tangents: list[float] = []
         indices: list[int] = []
 
-        # ==========================================
+        # =================================== #
         # Side vertices
-        # ==========================================
+        # =================================== #
+
         for i in range(segments + 1):
             u = i / segments
             angle = u * math.pi * 2.0
@@ -46,91 +63,60 @@ class Cylinder(Object3D):
             tangent_y = 0.0
             tangent_z = cos_a
 
-            # Bottom
-            vertices.extend([
-                x, -half_height, z,
-                nx, ny, nz,
-                u, 0.0,
-                tangent_x, tangent_y, tangent_z, 1.0,
-            ])
+            vertices_with_tangents.extend(
+                [
+                    x, -half_height, z,
+                    nx, ny, nz,
+                    u, 0.0,
+                    tangent_x, tangent_y, tangent_z, 1.0,
+                ]
+            )
 
-            # Top
-            vertices.extend([
-                x, half_height, z,
-                nx, ny, nz,
-                u, 1.0,
-                tangent_x, tangent_y, tangent_z, 1.0,
-            ])
+            vertices_with_tangents.extend(
+                [
+                    x, half_height, z,
+                    nx, ny, nz,
+                    u, 1.0,
+                    tangent_x, tangent_y, tangent_z, 1.0,
+                ]
+            )
 
-        # ==========================================
+        # =================================== #
         # Side indices
-        # ==========================================
+        # =================================== #
+
         for i in range(segments):
             base = i * 2
 
-            indices.extend([
-                base,
-                base + 1,
-                base + 2,
+            indices.extend(
+                [
+                    base,
+                    base + 1,
+                    base + 2,
 
-                base + 2,
-                base + 1,
-                base + 3,
-            ])
+                    base + 2,
+                    base + 1,
+                    base + 3,
+                ]
+            )
 
-        # ==========================================
-        # Top center vertex
-        # ==========================================
-        top_center_index = len(vertices) // 12
+        # =================================== #
+        # Top cap
+        # =================================== #
 
-        vertices.extend([
-            0.0, half_height, 0.0,
-            0.0, 1.0, 0.0,
-            0.5, 0.5,
-            1.0, 0.0, 0.0, 1.0,
-        ])
+        top_center_index = len(vertices_with_tangents) // 12
 
-        # Top ring
-        for i in range(segments + 1):
-            u = i / segments
-            angle = u * math.pi * 2.0
-
-            cos_a = math.cos(angle)
-            sin_a = math.sin(angle)
-
-            x = cos_a * radius
-            z = sin_a * radius
-
-            vertices.extend([
-                x, half_height, z,
+        vertices_with_tangents.extend(
+            [
+                0.0, half_height, 0.0,
                 0.0, 1.0, 0.0,
-                (cos_a * 0.5) + 0.5,
-                (sin_a * 0.5) + 0.5,
+                0.5, 0.5,
                 1.0, 0.0, 0.0, 1.0,
-            ])
+            ]
+        )
 
         top_start = top_center_index + 1
 
-        for i in range(segments):
-            indices.extend([
-                top_center_index,
-                top_start + i,
-                top_start + i + 1,
-            ])
-
-        # ==========================================
-        # Bottom center vertex
-        # ==========================================
-        bottom_center_index = len(vertices) // 12
-
-        vertices.extend([
-            0.0, -half_height, 0.0,
-            0.0, -1.0, 0.0,
-            0.5, 0.5,
-            1.0, 0.0, 0.0, 1.0,
-        ])
-
-        # Bottom ring
         for i in range(segments + 1):
             u = i / segments
             angle = u * math.pi * 2.0
@@ -141,33 +127,106 @@ class Cylinder(Object3D):
             x = cos_a * radius
             z = sin_a * radius
 
-            vertices.extend([
-                x, -half_height, z,
+            vertices_with_tangents.extend(
+                [
+                    x, half_height, z,
+                    0.0, 1.0, 0.0,
+                    cos_a * 0.5 + 0.5,
+                    sin_a * 0.5 + 0.5,
+                    1.0, 0.0, 0.0, 1.0,
+                ]
+            )
+
+        for i in range(segments):
+            indices.extend(
+                [
+                    top_center_index,
+                    top_start + i,
+                    top_start + i + 1,
+                ]
+            )
+
+        # =================================== #
+        # Bottom cap
+        # =================================== #
+
+        bottom_center_index = len(vertices_with_tangents) // 12
+
+        vertices_with_tangents.extend(
+            [
+                0.0, -half_height, 0.0,
                 0.0, -1.0, 0.0,
-                (cos_a * 0.5) + 0.5,
-                (sin_a * 0.5) + 0.5,
+                0.5, 0.5,
                 1.0, 0.0, 0.0, 1.0,
-            ])
+            ]
+        )
 
         bottom_start = bottom_center_index + 1
 
+        for i in range(segments + 1):
+            u = i / segments
+            angle = u * math.pi * 2.0
+
+            cos_a = math.cos(angle)
+            sin_a = math.sin(angle)
+
+            x = cos_a * radius
+            z = sin_a * radius
+
+            vertices_with_tangents.extend(
+                [
+                    x, -half_height, z,
+                    0.0, -1.0, 0.0,
+                    cos_a * 0.5 + 0.5,
+                    sin_a * 0.5 + 0.5,
+                    1.0, 0.0, 0.0, 1.0,
+                ]
+            )
+
         for i in range(segments):
-            indices.extend([
-                bottom_center_index,
-                bottom_start + i + 1,
-                bottom_start + i,
-            ])
+            indices.extend(
+                [
+                    bottom_center_index,
+                    bottom_start + i + 1,
+                    bottom_start + i,
+                ]
+            )
+
+        vertices_array = np.array(
+            vertices_with_tangents,
+            dtype=np.float32,
+        )
+
+        if with_tangents:
+            vertices = vertices_array
+
+            fmt = [
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+                (b"v_tangent", 4, "float"),
+            ]
+
+        else:
+            vertices = vertices_array.reshape(
+                -1,
+                12,
+            )[:, :8].reshape(-1)
+
+            fmt = [
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+            ]
 
         geometry = Geometry(
-            vertices=np.array(
-                vertices,
-                dtype=np.float32,
-            ),
+            fmt=fmt,
+            vertices=vertices,
             indices=np.array(
                 indices,
                 dtype=np.uint16,
             ),
-            has_source_tangents=False,
+            has_tangents=with_tangents,
         )
 
         super().__init__(

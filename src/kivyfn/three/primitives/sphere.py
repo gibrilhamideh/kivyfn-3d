@@ -6,9 +6,9 @@ import math
 
 import numpy as np
 
+from kivyfn.three.assets.geometry import Geometry
 from kivyfn.three.assets.material import Material
 from kivyfn.three.assets.object3d import Object3D
-from kivyfn.three.assets.geometry import Geometry
 
 
 class Sphere(Object3D):
@@ -18,14 +18,31 @@ class Sphere(Object3D):
         segments: int = 32,
         rings: int = 16,
         material: Material | None = None,
+        with_tangents: bool = True,
         **kwargs,
     ):
-        vertices: list[float] = []
+        if radius <= 0.0:
+            raise ValueError(
+                "Sphere radius must be greater than 0."
+            )
+
+        if segments < 3:
+            raise ValueError(
+                "Sphere segments must be at least 3."
+            )
+
+        if rings < 2:
+            raise ValueError(
+                "Sphere rings must be at least 2."
+            )
+
+        vertices_with_tangents: list[float] = []
         indices: list[int] = []
 
-        # ==========================================
+        # =================================== #
         # Vertices
-        # ==========================================
+        # =================================== #
+
         for ring in range(rings + 1):
             v = ring / rings
             theta = v * math.pi
@@ -56,16 +73,19 @@ class Sphere(Object3D):
                 tangent_y = 0.0
                 tangent_z = cos_phi
 
-                vertices.extend([
-                    px, py, pz,
-                    nx, ny, nz,
-                    u, 1.0 - v,
-                    tangent_x, tangent_y, tangent_z, 1.0,
-                ])
+                vertices_with_tangents.extend(
+                    [
+                        px, py, pz,
+                        nx, ny, nz,
+                        u, 1.0 - v,
+                        tangent_x, tangent_y, tangent_z, 1.0,
+                    ]
+                )
 
-        # ==========================================
+        # =================================== #
         # Indices
-        # ==========================================
+        # =================================== #
+
         stride = segments + 1
 
         for ring in range(rings):
@@ -73,26 +93,53 @@ class Sphere(Object3D):
                 current = ring * stride + segment
                 next_row = current + stride
 
-                indices.extend([
-                    current,
-                    next_row,
-                    current + 1,
+                indices.extend(
+                    [
+                        current,
+                        next_row,
+                        current + 1,
 
-                    current + 1,
-                    next_row,
-                    next_row + 1,
-                ])
+                        current + 1,
+                        next_row,
+                        next_row + 1,
+                    ]
+                )
+
+        vertices_array = np.array(
+            vertices_with_tangents,
+            dtype=np.float32,
+        )
+
+        if with_tangents:
+            vertices = vertices_array
+
+            fmt = [
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+                (b"v_tangent", 4, "float"),
+            ]
+
+        else:
+            vertices = vertices_array.reshape(
+                -1,
+                12,
+            )[:, :8].reshape(-1)
+
+            fmt = [
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+            ]
 
         geometry = Geometry(
-            vertices=np.array(
-                vertices,
-                dtype=np.float32,
-            ),
+            fmt=fmt,
+            vertices=vertices,
             indices=np.array(
                 indices,
                 dtype=np.uint16,
             ),
-            has_source_tangents=False,
+            has_tangents=with_tangents,
         )
 
         super().__init__(

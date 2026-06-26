@@ -215,6 +215,7 @@ class TextureCubeTarget(BaseTargetContext):
     def bind_face(
         self,
         face_name: CubeFaceName,
+        *_,
     ) -> None:
         if self._bound_face is not None:
             raise RuntimeError(
@@ -240,6 +241,7 @@ class TextureCubeTarget(BaseTargetContext):
     def release_face(
         self,
         face: CubeFaceName,
+        *_,
     ) -> None:
         if self._bound_face != face:
             raise RuntimeError(
@@ -410,6 +412,7 @@ class TextureCubeTarget(BaseTargetContext):
     def sync_face_view(
         self,
         face: CubeFaceName,
+        *_,
     ) -> None:
 
         view: View = self.view

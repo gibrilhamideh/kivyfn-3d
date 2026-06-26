@@ -174,8 +174,8 @@ class RenderStage(EventDispatcher):
     # Shader
     # =================================== #
     def sync_shader(self) -> None:
-        self.program.vs = self.shader.vertex_source
-        self.program.fs = self.shader.fragment_source
+        # self.program.fs = self.shader.fragment_source
+        # self.program.vs = self.shader.vertex_source
 
         self.sync_uniforms()
 

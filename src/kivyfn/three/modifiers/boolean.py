@@ -603,7 +603,7 @@ def _transform_geometry(
         ).copy(),
         mode=geometry.mode,
         texture=geometry.texture,
-        has_source_tangents=geometry.has_source_tangents,
+        has_tangents=geometry.has_tangents,
     )
 
 
@@ -730,7 +730,7 @@ def _copy_geometry(
         indices=geometry.indices.copy(),
         mode=geometry.mode,
         texture=geometry.texture,
-        has_source_tangents=geometry.has_source_tangents,
+        has_tangents=geometry.has_tangents,
     )
 
 

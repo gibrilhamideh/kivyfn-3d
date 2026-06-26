@@ -142,6 +142,10 @@ class Material(EventDispatcher):
         allownone=True,
     )
 
+    __events__ = (
+        "on_dirty",
+    )
+
     def __init__(
         self,
         name: str = "",
@@ -214,6 +218,22 @@ class Material(EventDispatcher):
                 key,
                 value,
             )
+
+        self.bind(
+            metallic_factor=self._mark_dirty,
+            roughness_factor=self._mark_dirty,
+            emissive_factor=self._mark_dirty,
+            base_color=self._mark_dirty,
+            base_color_texture=self._mark_dirty,
+            normal_texture=self._mark_dirty,
+            emissive_texture=self._mark_dirty,
+            occlusion_texture=self._mark_dirty,
+            metallic_roughness_texture=self._mark_dirty,
+            roughness_texture=self._mark_dirty,
+            metallic_texture=self._mark_dirty,
+            specular_texture=self._mark_dirty,
+            displacement_texture=self._mark_dirty,
+        )
 
     def __repr__(
         self,
@@ -289,6 +309,7 @@ class Material(EventDispatcher):
             )
 
         self._custom[name] = value
+        self._mark_dirty()
 
     def remove_custom(
         self,
@@ -299,10 +320,13 @@ class Material(EventDispatcher):
             None,
         )
 
+        self._mark_dirty()
+
     def clear_custom(
         self,
     ) -> None:
         self._custom.clear()
+        self._mark_dirty()
 
     # =================================== #
     # Textures
@@ -411,3 +435,19 @@ class Material(EventDispatcher):
             custom=custom,
             **overrides,
         )
+
+    # =================================== #
+    # Dirty Flags
+    # =================================== #
+    def _mark_dirty(
+        self,
+        *_,
+    ) -> None:
+            self.dispatch(
+                "on_dirty",
+            )
+
+    def on_dirty(
+        self,
+    ) -> None:
+        pass

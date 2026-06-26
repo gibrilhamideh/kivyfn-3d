@@ -126,35 +126,15 @@ class Object3D(Node3D):
         self,
         material: Material,
     ) -> None:
-        material.bind(
-            uniforms=self._on_material_changed,
-            base_texture=self._on_material_changed,
-            normal_texture=self._on_material_changed,
-            emissive_texture=self._on_material_changed,
-            metallic_roughness_texture=self._on_material_changed,
-            occlusion_texture=self._on_material_changed,
-            roughness_texture=self._on_material_changed,
-            metallic_texture=self._on_material_changed,
-            specular_texture=self._on_material_changed,
-            displacement_texture=self._on_material_changed,
-        )
+        material.bind(on_dirty=self._on_material_changed)
+
 
     def unbind_material(
         self,
         material: Material,
     ) -> None:
-        material.unbind(
-            uniforms=self._on_material_changed,
-            base_texture=self._on_material_changed,
-            normal_texture=self._on_material_changed,
-            emissive_texture=self._on_material_changed,
-            metallic_roughness_texture=self._on_material_changed,
-            occlusion_texture=self._on_material_changed,
-            roughness_texture=self._on_material_changed,
-            metallic_texture=self._on_material_changed,
-            specular_texture=self._on_material_changed,
-            displacement_texture=self._on_material_changed,
-        )
+
+        material.unbind(on_dirty=self._on_material_changed)
 
     def _on_material_changed(self, *_):
         self.mark_material_dirty()

@@ -110,6 +110,9 @@ class RenderStageManager:
         tags: set[str] | None = None,
         hot_reload: bool = False,
         depth_test: bool = True,
+        use_material: bool = False,
+        use_textures: bool = False,
+        use_render_id: bool = False,
         local_x: int = 0,
         local_y: int = 0,
         local_width: int = 1024,
@@ -138,6 +141,9 @@ class RenderStageManager:
             shader=shader,
             target=target,
             hot_reload=hot_reload,
+            use_material=use_material,
+            use_textures=use_textures,
+            use_render_id=use_render_id,
         )
 
         return self.add(
@@ -159,6 +165,9 @@ class RenderStageManager:
         size: int | tuple[int, int] | list[int] = 1024,
         hot_reload: bool = False,
         depth_test: bool = True,
+        use_material: bool = False,
+        use_textures: bool = False,
+        use_render_id: bool = False,
         push_viewport: bool = True,
         viewport_source: ViewportSource = "local",
         clear_color: Color = (0.0, 0.0, 0.0, 0.0),
@@ -213,6 +222,9 @@ class RenderStageManager:
             shader=shader,
             target=target,
             hot_reload=hot_reload,
+            use_material=use_material,
+            use_textures=use_textures,
+            use_render_id=use_render_id,
         )
 
         return self.add(
@@ -233,6 +245,9 @@ class RenderStageManager:
         size: int | tuple[int, int] | list[int] = 1024,
         hot_reload: bool = False,
         depth_test: bool = True,
+        use_material: bool = False,
+        use_textures: bool = False,
+        use_render_id: bool = False,
         push_viewport: bool = True,
         viewport_source: ViewportSource = "local",
         clear_color: Color = (0.0, 0.0, 0.0, 0.0),
@@ -241,6 +256,7 @@ class RenderStageManager:
         clear_stencil_buffer: bool = False,
         with_depthbuffer: bool = True,
         with_stencilbuffer: bool = False,
+
     ) -> RenderStage:
         width, height = normalize_size(size)
 
@@ -292,6 +308,9 @@ class RenderStageManager:
             shader=shader,
             target=target,
             hot_reload=hot_reload,
+            use_material=use_material,
+            use_textures=use_textures,
+            use_render_id=use_render_id,
         )
 
         return self.add(

@@ -8,9 +8,9 @@ import numpy as np
 
 from kivy.properties import OptionProperty
 
+from kivyfn.three.assets.geometry import Geometry
 from kivyfn.three.assets.material import Material
 from kivyfn.three.assets.object3d import Object3D
-from kivyfn.three.assets.geometry import Geometry
 
 
 class Plane(Object3D):
@@ -32,8 +32,19 @@ class Plane(Object3D):
         shape: str = "rectangle",
         segments: int = 64,
         material: Material | None = None,
+        with_tangents: bool = True,
         **kwargs,
     ):
+        if width <= 0.0:
+            raise ValueError(
+                "Plane width must be greater than 0."
+            )
+
+        if height <= 0.0:
+            raise ValueError(
+                "Plane height must be greater than 0."
+            )
+
         self.axis = axis
         self.shape = shape
 
@@ -43,6 +54,7 @@ class Plane(Object3D):
             axis=axis,
             shape=shape,
             segments=segments,
+            with_tangents=with_tangents,
         )
 
         super().__init__(
@@ -58,12 +70,14 @@ class Plane(Object3D):
         axis: str,
         shape: str,
         segments: int,
+        with_tangents: bool,
     ) -> Geometry:
         if shape == "rectangle":
             return self._create_rectangle_geometry(
                 width=width,
                 height=height,
                 axis=axis,
+                with_tangents=with_tangents,
             )
 
         if shape == "circle":
@@ -72,6 +86,7 @@ class Plane(Object3D):
                 height=height,
                 axis=axis,
                 segments=segments,
+                with_tangents=with_tangents,
             )
 
         raise ValueError(
@@ -84,12 +99,13 @@ class Plane(Object3D):
         width: float,
         height: float,
         axis: str,
+        with_tangents: bool,
     ) -> Geometry:
         hw = width / 2.0
         hh = height / 2.0
 
         if axis == "xy":
-            vertices = [
+            vertices_with_tangents = [
                 -hw, -hh, 0.0,  0, 0, 1,  0, 0,  1, 0, 0, 1,
                  hw, -hh, 0.0,  0, 0, 1,  1, 0,  1, 0, 0, 1,
                  hw,  hh, 0.0,  0, 0, 1,  1, 1,  1, 0, 0, 1,
@@ -97,7 +113,7 @@ class Plane(Object3D):
             ]
 
         elif axis == "xz":
-            vertices = [
+            vertices_with_tangents = [
                 -hw, 0.0, -hh,  0, 1, 0,  0, 0,  1, 0, 0, 1,
                  hw, 0.0, -hh,  0, 1, 0,  1, 0,  1, 0, 0, 1,
                  hw, 0.0,  hh,  0, 1, 0,  1, 1,  1, 0, 0, 1,
@@ -105,7 +121,7 @@ class Plane(Object3D):
             ]
 
         elif axis == "yz":
-            vertices = [
+            vertices_with_tangents = [
                 0.0, -hw, -hh,  1, 0, 0,  0, 0,  0, 1, 0, 1,
                 0.0,  hw, -hh,  1, 0, 0,  1, 0,  0, 1, 0, 1,
                 0.0,  hw,  hh,  1, 0, 0,  1, 1,  0, 1, 0, 1,
@@ -118,21 +134,46 @@ class Plane(Object3D):
                 "Expected 'xy', 'xz', or 'yz'."
             )
 
-        indices = [
-            0, 1, 2,
-            2, 3, 0,
-        ]
+        vertices_array = np.array(
+            vertices_with_tangents,
+            dtype=np.float32,
+        )
+
+        if with_tangents:
+            vertices = vertices_array
+
+            fmt = [
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+                (b"v_tangent", 4, "float"),
+            ]
+
+        else:
+            vertices = vertices_array.reshape(
+                -1,
+                12,
+            )[:, :8].reshape(-1)
+
+            fmt = [
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+            ]
+
+        indices = np.array(
+            [
+                0, 1, 2,
+                2, 3, 0,
+            ],
+            dtype=np.uint16,
+        )
 
         return Geometry(
-            vertices=np.array(
-                vertices,
-                dtype=np.float32,
-            ),
-            indices=np.array(
-                indices,
-                dtype=np.uint16,
-            ),
-            has_source_tangents=False,
+            fmt=fmt,
+            vertices=vertices,
+            indices=indices,
+            has_tangents=with_tangents,
         )
 
     def _create_circle_geometry(
@@ -141,6 +182,7 @@ class Plane(Object3D):
         height: float,
         axis: str,
         segments: int,
+        with_tangents: bool,
     ) -> Geometry:
         if segments < 3:
             raise ValueError(
@@ -150,7 +192,7 @@ class Plane(Object3D):
         rx = width / 2.0
         rz = height / 2.0
 
-        vertices: list[float] = []
+        vertices_with_tangents: list[float] = []
         indices: list[int] = []
 
         center_pos = self._make_position(
@@ -162,7 +204,7 @@ class Plane(Object3D):
         normal = self._make_normal(axis)
         tangent = self._make_tangent(axis)
 
-        vertices.extend(
+        vertices_with_tangents.extend(
             [
                 *center_pos,
                 *normal,
@@ -187,7 +229,7 @@ class Plane(Object3D):
                 y=y,
             )
 
-            vertices.extend(
+            vertices_with_tangents.extend(
                 [
                     *position,
                     *normal,
@@ -209,16 +251,41 @@ class Plane(Object3D):
                 ]
             )
 
+        vertices_array = np.array(
+            vertices_with_tangents,
+            dtype=np.float32,
+        )
+
+        if with_tangents:
+            vertices = vertices_array
+
+            fmt = [
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+                (b"v_tangent", 4, "float"),
+            ]
+
+        else:
+            vertices = vertices_array.reshape(
+                -1,
+                12,
+            )[:, :8].reshape(-1)
+
+            fmt = [
+                (b"v_pos", 3, "float"),
+                (b"v_normal", 3, "float"),
+                (b"v_uv", 2, "float"),
+            ]
+
         return Geometry(
-            vertices=np.array(
-                vertices,
-                dtype=np.float32,
-            ),
+            fmt=fmt,
+            vertices=vertices,
             indices=np.array(
                 indices,
                 dtype=np.uint16,
             ),
-            has_source_tangents=False,
+            has_tangents=with_tangents,
         )
 
     def _make_position(
