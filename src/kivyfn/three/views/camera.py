@@ -1,6 +1,7 @@
 # kivyfn/three/views/camera.py
 
 from __future__ import annotations
+
 from typing import Literal
 from weakref import WeakSet
 
@@ -8,7 +9,7 @@ from kivy.event import EventDispatcher
 from kivy.properties import NumericProperty, ObjectProperty, OptionProperty
 
 from kivyfn.three.math.vector import Vector3
-from kivyfn.three.views.viewport import Viewport
+from kivyfn.three.views.view import ProjectionMode, View
 
 
 class Camera(EventDispatcher):
@@ -21,26 +22,40 @@ class Camera(EventDispatcher):
     far: float = NumericProperty(1000.0)
 
     ortho_size: float = NumericProperty(20.0)
-    projection: Literal[
+    projection: ProjectionMode = OptionProperty(
         "perspective",
-        "orthographic"
-        ] = OptionProperty("perspective", options=["perspective", "orthographic"])
-
+        options=[
+            "perspective",
+            "orthographic",
+        ],
+    )
 
     def __init__(
         self,
         position: Vector3 | None = None,
         target: Vector3 | None = None,
         up: Vector3 | None = None,
+        *,
+        fov: float = 45.0,
+        near: float = 1.0,
+        far: float = 1000.0,
+        ortho_size: float = 20.0,
+        projection: ProjectionMode = "perspective",
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
 
-        self._viewports: WeakSet[Viewport] = WeakSet()
+        self._views: WeakSet[View] = WeakSet()
 
         self.position = position or Vector3(0.0, 0.0, 10.0)
         self.target = target or Vector3.zero()
         self.up = up or Vector3(0.0, 1.0, 0.0)
+
+        self.fov = fov
+        self.near = near
+        self.far = far
+        self.ortho_size = ortho_size
+        self.projection = projection
 
         self.bind(
             position=self.sync,
@@ -55,31 +70,29 @@ class Camera(EventDispatcher):
 
     def attach(
         self,
-        viewport: Viewport,
-    ) -> Viewport:
-        self._viewports.add(viewport)
-        self.sync_viewport(viewport)
-        return viewport
+        view: View,
+    ) -> View:
+        self._views.add(view)
+        self.sync_view(view)
+        return view
 
     def detach(
         self,
-        viewport: Viewport,
+        view: View,
     ) -> None:
-        self._viewports.discard(viewport)
+        self._views.discard(view)
 
     def sync(
         self,
         *_,
     ) -> None:
-        for viewport in list(self._viewports):
-            self.sync_viewport(viewport)
+        for view in list(self._views):
+            self.sync_view(view)
 
-    def sync_viewport(
+    def sync_view(
         self,
-        viewport: Viewport,
+        view: View,
     ) -> None:
-        view = viewport.view
-
         view.position = self.position
         view.target = self.target
         view.up = self.up

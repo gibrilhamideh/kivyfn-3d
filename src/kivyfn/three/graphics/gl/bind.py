@@ -1,18 +1,12 @@
-# kivyfn/three/render/instructions/texture.py
+# kivyfn/three/graphics/gl/bind.py
 
 from __future__ import annotations
 
 from typing import Any, Protocol
 
 from kivy.graphics import Callback
-from kivy.graphics.opengl import (
-    GL_TEXTURE0,
-    GL_TEXTURE_CUBE_MAP,
-    glActiveTexture,
-    glBindTexture,
-)
 
-from kivyfn.three.render.resources import CubeTexture
+from kivyfn.three.graphics.gl.core import GL
 
 
 class UniformTarget(Protocol):
@@ -24,15 +18,20 @@ class UniformTarget(Protocol):
         ...
 
 
-class BindCubeTexture(Callback):
+class TextureBindable(Protocol):
+    target: int
+    id: int
+
+
+class BindTexture(Callback):
     def __init__(
         self,
         *,
         stage: UniformTarget,
         uniform: str,
-        texture: CubeTexture,
+        texture: TextureBindable,
         slot: int,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         self.stage = stage
         self.uniform = uniform
@@ -46,12 +45,12 @@ class BindCubeTexture(Callback):
 
     def apply(
         self,
-        *_,
+        *_: Any,
     ) -> None:
-        glActiveTexture(GL_TEXTURE0 + self.slot)
-        glBindTexture(
-            GL_TEXTURE_CUBE_MAP,
-            self.texture.texture_id,
+        GL.bind_texture_slot(
+            target=self.texture.target,
+            id=self.texture.id,
+            slot=self.slot,
         )
 
         self.stage.apply_uniform(

@@ -11,9 +11,11 @@ from kivyfn.three.controls.base import BaseController
 from kivyfn.three.math.vector import Vector3
 
 if TYPE_CHECKING:
-    from kivyfn.three.views.viewport import Viewport
     from kivyfn.three.assets.object3d import Object3D
+    from kivyfn.three.render.context import BaseContext, RenderPass2D
     from kivyfn.three.scene.scene import Scene
+    from kivyfn.three.views.view import View
+    from kivyfn.three.views.viewport import Viewport
 
 
 @dataclass(slots=True)
@@ -60,33 +62,88 @@ class BasePicker:
     def detach(self) -> None:
         self.scene = None
 
-    def get_viewport(self) -> Viewport:
+    # =================================== #
+    # Stage
+    # =================================== #
+    def require_scene(self) -> Scene:
+        if self.scene is None:
+            raise RuntimeError(
+                f"{type(self).__name__} is not attached to a scene."
+            )
 
-        name = self.stage_name
+        return self.scene
+
+    def require_stage(self) -> BaseContext:
         scene = self.require_scene()
-        stage = scene.stages.registry.require(name)
-        return stage.viewport
+
+        stage = scene.renderer.stages.registry.require(
+            self.stage_name,
+        )
+
+        return stage
+
+    def require_viewport(self) -> Viewport:
+        stage = self.require_stage()
+
+        return stage.require_viewport()
+
+    def require_view(self) -> View:
+        stage = self.require_stage()
+
+        return stage.require_planar_view()
+
+    # =================================== #
+    # Coordinates
+    # =================================== #
+    def touch_inside_viewport(
+        self,
+        touch: Any,
+    ) -> bool:
+        viewport = self.require_viewport()
+
+        return (
+            viewport.x <= touch.x < viewport.x + viewport.width
+            and viewport.y <= touch.y < viewport.y + viewport.height
+        )
+
+    def touch_to_viewport_pixel(
+        self,
+        touch: Any,
+    ) -> tuple[int, int] | None:
+        viewport = self.require_viewport()
+
+        if not self.touch_inside_viewport(touch):
+            return None
+
+        return (
+            int(touch.x - viewport.x),
+            int(touch.y - viewport.y),
+        )
 
     def make_ray(
         self,
         touch: Any,
     ) -> tuple[Vector3, Vector3] | None:
-        viewport = self.get_viewport()
+        if not self.touch_inside_viewport(touch):
+            return None
+
+        viewport = self.require_viewport()
+        view = self.require_view()
 
         return viewport.screen_to_ray(
+            view,
             touch.x,
             touch.y,
         )
 
+    # =================================== #
+    # Pick
+    # =================================== #
     def pick(
         self,
         touch: MouseMotionEvent,
     ) -> InteractionEvent | None:
         raise NotImplementedError
-
-    def require_scene(self) -> Scene:
-        assert self.scene is not None
-        return self.scene
 
 
 class RaycastPicker(BasePicker):
@@ -94,8 +151,7 @@ class RaycastPicker(BasePicker):
         self,
         touch: Any,
     ) -> InteractionEvent | None:
-
-        assert self.scene is not None
+        scene = self.require_scene()
 
         ray = self.make_ray(touch)
         if ray is None:
@@ -104,7 +160,7 @@ class RaycastPicker(BasePicker):
         origin, direction = ray
         closest: InteractionEvent | None = None
 
-        for object3d in self.scene.root.walk(filter="objects"):
+        for object3d in scene.root.walk(filter="objects"):
             if not object3d.pickable:
                 continue
 
@@ -148,11 +204,17 @@ class RenderIdPicker(BasePicker):
 
         self.pass_name = pass_name
 
+    def require_pass(self) -> RenderPass2D:
+        scene = self.require_scene()
+
+        return scene.renderer.stages.registry.require_pass(
+            self.pass_name,
+        )
+
     def pick(
         self,
         touch: MouseMotionEvent,
     ) -> InteractionEvent | None:
-
         scene = self.require_scene()
 
         ray = self.make_ray(touch)
@@ -183,16 +245,17 @@ class RenderIdPicker(BasePicker):
         self,
         touch: MouseMotionEvent,
     ) -> int | None:
-        assert self.scene is not None
+        render_pass = self.require_pass()
 
-        ctx = self.scene.renderer.stages.registry.require_pass(
-            self.pass_name,
-        )
+        pixel = self.touch_to_viewport_pixel(touch)
+        if pixel is None:
+            return None
 
+        x, y = pixel
 
-        r, g, b, _ = ctx.get_pixel_color(
-            int(touch.x),
-            int(touch.y),
+        r, g, b, _ = render_pass.get_pixel_color(
+            x,
+            y,
         )
 
         render_id = (r << 16) | (g << 8) | b
@@ -245,7 +308,10 @@ class InteractionController(BaseController):
         current = target
 
         while current is not None:
-            current.dispatch(event_name, event)
+            current.dispatch(
+                event_name,
+                event,
+            )
 
             if event.propagation_stopped:
                 return

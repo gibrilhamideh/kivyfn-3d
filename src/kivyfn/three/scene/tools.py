@@ -10,7 +10,6 @@ from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle
 from kivy.graphics.texture import Texture
 
-from kivyfn.three.types import RenderPassName
 
 if TYPE_CHECKING:
     from kivyfn.three import Scene
@@ -18,7 +17,7 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class RenderPassPreview:
-    name: RenderPassName
+    name: str
     color: Color
     rect: Rectangle
     callback: Callable[..., None]
@@ -44,7 +43,7 @@ class SceneTools:
     # =================================== #
     def display_preview(
         self,
-        stage: RenderPassName,
+        stage: str,
         *,
         pos: tuple[int, int] = (20, 20),
         size: tuple[int, int] = (256, 256),
@@ -105,6 +104,34 @@ class SceneTools:
         texture: Texture,
     ) -> None:
         rect.texture = texture
+
+    def display_cube_preview(
+        self,
+        stage: str,
+        *,
+        pos: tuple[int, int] = (20, 20),
+        size: tuple[int, int] = (96, 96),
+        gap: int = 8,
+    ) -> None:
+
+        def tick(*_):
+            ctx = self.scene.stages.registry.require_cube_pass(stage)
+            faces = ("px", "nx", "py", "ny", "pz", "nz")
+
+            with self.scene.canvas.after:
+                color = Color(1.0, 1.0, 1.0, 1.0)
+
+                for index, face in enumerate(faces):
+                    x = pos[0] + (index % 3) * (size[0] + gap)
+                    y = pos[1] + (index // 3) * (size[1] + gap)
+
+                    Rectangle(
+                        pos=(x, y),
+                        size=size,
+                        texture=ctx.face_textures[face],
+                    )
+
+        Clock.schedule_once(tick, -1)
 
     # =================================== #
     # FPS / Frame Time

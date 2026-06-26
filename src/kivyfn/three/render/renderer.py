@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from kivyfn.three.scene.scene import Scene
     from kivyfn.three.assets.object3d import Object3D
     from kivyfn.three.render.binder import RenderBindingRecord
-    from kivyfn.three.render.context import RenderContext, RenderPass
+    from kivyfn.three.render.context import RenderContext, RenderPass2D, RenderPassCube
 
 
 @dataclass(slots=True)
@@ -113,17 +113,26 @@ class Renderer(EventDispatcher):
         self.add_stage_memberships(stage)
         return stage
 
-    # =================================== #
-    # Render Passes
-    # =================================== #
 
     def create_pass(
         self,
         **kwargs,
-    ) -> RenderPass:
+    ) -> RenderPass2D:
 
         stage = self.stages.create_pass(
-            scene=self.scene,
+            **kwargs,
+        )
+
+        self.canvas.add(stage.ctx)
+        self.add_stage_memberships(stage)
+        return stage
+
+    def create_cube_pass(
+        self,
+        **kwargs,
+    ) -> RenderPassCube:
+
+        stage = self.stages.create_cube_pass(
             **kwargs,
         )
 
@@ -136,6 +145,7 @@ class Renderer(EventDispatcher):
         **kwargs,
     ) -> RenderBindingRecord | list[RenderBindingRecord]:
         return self.stages.attach_pass(**kwargs)
+
 
     # =================================== #
     # Stage Visibility / Destruction
@@ -168,8 +178,11 @@ class Renderer(EventDispatcher):
         stage_name: str,
     ) -> None:
         stage = self.stages.registry.require(stage_name)
+        ctx = self.stages.registry.get_context(stage_name)
 
-        self.scene.overlays.clear_viewport(stage.viewport)
+        if ctx is not None:
+            self.scene.overlays.clear_viewport(ctx.viewport)
+
         self.remove_stage_memberships(stage)
 
         if stage.name not in self.hidden:

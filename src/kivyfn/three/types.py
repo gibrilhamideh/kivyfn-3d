@@ -11,7 +11,8 @@ if TYPE_CHECKING:
     from kivyfn.three.graph.node import Node3D
     from kivyfn.three.parsers.glb.blueprint import GlbBlueprint, GlbAsset
     from kivyfn.three.parsers.obj.blueprint import ObjBlueprint, ObjAsset
-    from kivyfn.three.render.context import RenderContext, RenderPass
+    from kivyfn.three.render.context import RenderContext, RenderPass2D, RenderPassCube
+    from kivyfn.three.graphics.gl.targets import ScreenTarget, Texture2DTarget, TextureCubeTarget
 
     from kivyfn.three.lights.sources.directional import DirectionalLight
     from kivyfn.three.lights.sources.point import PointLight
@@ -26,7 +27,14 @@ LightSource: TypeAlias = "DirectionalLight | PointLight | SpotLight"
 SceneBlueprint: TypeAlias = "GlbBlueprint | ObjBlueprint"
 AssetBlueprint: TypeAlias = "GlbAsset | ObjAsset"
 
-RenderStage: TypeAlias = "RenderPass | RenderContext"
+RenderStage: TypeAlias = "RenderContext | RenderPass2D | RenderPassCube"
+StageTargets: TypeAlias = "ScreenTarget | Texture2DTarget | TextureCubeTarget"
+
+TargetMode = Literal[
+    "render",
+    "texture-2d",
+    "texture-cube",
+]
 
 SceneObject: TypeAlias = "Node3D | Object3D"
 
@@ -40,10 +48,10 @@ RenderPassOutput = Literal[
     "id",
 ]
 
-RenderPassName: TypeAlias = str
-RenderContextName: TypeAlias = str
-RenderStageName: TypeAlias = str
-LightName: TypeAlias = str
-
 
 WalkFilter = Callable[["SceneObject"], bool]
+
+
+Color = tuple[float, float, float, float]
+
+CubeFaceName = Literal["px", "nx", "py", "ny", "pz", "nz"]

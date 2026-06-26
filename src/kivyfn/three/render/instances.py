@@ -41,7 +41,7 @@ TEXTURE_SLOTS = {
 }
 
 
-from kivyfn.three.render.context import RenderContext, RenderPass
+from kivyfn.three.render.context import RenderContext, RenderPass2D, RenderPassCube
 
 if TYPE_CHECKING:
     from kivyfn.three.assets.object3d import Object3D
@@ -179,7 +179,7 @@ class RenderInstanceManager(EventDispatcher):
     def _create_pass_instance(
         self,
         object3d: Object3D,
-        stage: RenderPass,
+        stage: RenderPass2D | RenderPassCube,
         output: RenderPassOutput,
         output_uniform: str,
     ) -> BaseInstance:

@@ -12,18 +12,13 @@ from kivyfn.three.overlays.manager import OverlayManager
 from kivyfn.three.scene.base import SceneControllerBase
 from kivyfn.three.scene.registry import SceneRegistry
 from kivyfn.three.scene.tools import SceneTools
-from kivyfn.three.types import (
-        FboSizeMode,
-        ViewportMode,
-        RenderStageName,
-        RenderContextName,
-        RenderPassName
-)
+from kivyfn.three.types import ViewportMode
 
 if TYPE_CHECKING:
     from kivyfn.three.views.camera import Camera
+    from kivyfn.three.graphics.gl import Texture2D, TextureCube
     from kivyfn.three.render.binder import RenderBindingRecord
-    from kivyfn.three.render.context import RenderContext, RenderPass
+    from kivyfn.three.render.context import RenderContext, RenderPass2D, RenderPassCube
     from kivyfn.three.render.shader import Shader
 
 
@@ -97,7 +92,7 @@ class Scene(SceneControllerBase):
 
     def create_context(
         self,
-        name: RenderContextName,
+        name: str,
         shader: Shader,
         *,
         camera: Camera | None = None,
@@ -131,29 +126,24 @@ class Scene(SceneControllerBase):
     # =================================== #
     def create_pass(
         self,
-        name: RenderPassName,
+        name: str,
         shader: Shader,
         output: RenderPassOutput,
         output_uniform: str,
         *,
         camera: Camera | None = None,
         tags: set[str] | None = None,
-        color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
-        hot_reload: bool = False,
-        local_x: int = 0,
-        local_y: int  = 0,
-        local_width: int = 1024,
-        local_height: int = 1024,
-        viewport_mode: ViewportMode = "local",
-        fbo_size_mode: FboSizeMode = "fixed",
-        fbo_size: list[int] | int = 1024,
+        texture: Texture2D | None = None,
+        size: list[int] | tuple[int, int] | int = 1024,
+        push_viewport: bool = True,
+        clear_color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
+        clear_color_buffer: bool = True,
+        clear_depth_buffer: bool = True,
+        clear_stencil_buffer: bool = False,
         with_depthbuffer: bool = True,
         with_stencilbuffer: bool = False,
-        clear_color: bool = True,
-        clear_depth: bool=True,
-        clear_stencil: bool =False
-    ) -> RenderPass:
-
+        hot_reload: bool = False,
+    ) -> RenderPass2D:
         return self.renderer.create_pass(
             name=name,
             camera=camera,
@@ -162,26 +152,58 @@ class Scene(SceneControllerBase):
             hot_reload=hot_reload,
             output=output,
             output_uniform=output_uniform,
-            local_x=local_x,
-            local_y=local_y,
-            local_width=local_width,
-            local_height=local_height,
-            viewport_mode=viewport_mode,
-            fbo_size_mode=fbo_size_mode,
-            fbo_size=fbo_size,
-            fbo_color=color,
+            texture=texture,
+            size=size,
+            push_viewport=push_viewport,
+            clear_color=clear_color,
+            clear_color_buffer=clear_color_buffer,
+            clear_depth_buffer=clear_depth_buffer,
+            clear_stencil_buffer=clear_stencil_buffer,
             with_depthbuffer=with_depthbuffer,
             with_stencilbuffer=with_stencilbuffer,
-            clear_color=clear_color,
-            clear_depth=clear_depth,
-            clear_stencil=clear_stencil,
         )
 
+    def create_cube_pass(
+        self,
+        name: str,
+        shader: Shader,
+        output: RenderPassOutput,
+        output_uniform: str,
+        *,
+        texture: TextureCube | None = None,
+        tags: set[str] | None = None,
+        size: list[int] | tuple[int, int] | int = 1024,
+        push_viewport: bool = True,
+        clear_color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
+        clear_color_buffer: bool = True,
+        clear_depth_buffer: bool = True,
+        clear_stencil_buffer: bool = False,
+        with_depthbuffer: bool = True,
+        with_stencilbuffer: bool = False,
+        hot_reload: bool = False,
+    ) -> RenderPassCube:
+        return self.renderer.create_cube_pass(
+            name=name,
+            tags=tags,
+            shader=shader,
+            hot_reload=hot_reload,
+            output=output,
+            output_uniform=output_uniform,
+            texture=texture,
+            size=size,
+            push_viewport=push_viewport,
+            clear_color=clear_color,
+            clear_color_buffer=clear_color_buffer,
+            clear_depth_buffer=clear_depth_buffer,
+            clear_stencil_buffer=clear_stencil_buffer,
+            with_depthbuffer=with_depthbuffer,
+            with_stencilbuffer=with_stencilbuffer,
+        )
 
     def attach_pass(
         self,
         *,
-        name: RenderPassName,
+        name: str,
         target_name: str | None = None,
         target_tags: set[str] | None = None,
         index: int | None = None,
@@ -197,13 +219,13 @@ class Scene(SceneControllerBase):
     # =================================== #
     # Stage API
     # =================================== #
-    def hide_stage(self, name: RenderStageName) -> None:
+    def hide_stage(self, name: str) -> None:
         self.renderer.hide_stage(name)
 
-    def show_stage(self, name: RenderStageName) -> None:
+    def show_stage(self, name: str) -> None:
         self.renderer.show_stage(name)
 
-    def remove_stage(self, name: RenderStageName) -> None:
+    def remove_stage(self, name: str) -> None:
         self.renderer.remove_stage(name)
 
     # =================================== #

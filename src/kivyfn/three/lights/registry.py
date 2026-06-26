@@ -4,18 +4,14 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from kivyfn.three.types import (
-        LightName, 
-        LightSource,
-        RenderPassName,
-)
+from kivyfn.three.types import LightSource
 
 
 class LightRegistry:
 
     def __init__(self) -> None:
-        self._lights: dict[LightName, LightSource] = {}
-        self._tags: dict[str, set[LightName]] = defaultdict(set)
+        self._lights: dict[str, LightSource] = {}
+        self._tags: dict[str, set[str]] = defaultdict(set)
 
     def __len__(self) -> int:
         return len(self._lights)
@@ -26,7 +22,7 @@ class LightRegistry:
     def generate_name(
         self,
         base_name: str,
-    ) -> LightName:
+    ) -> str:
         index = 1
 
         while True:
@@ -37,18 +33,6 @@ class LightRegistry:
 
             index += 1
 
-    def shadow_pass_name(
-        self,
-        light_name: LightName,
-    ) -> RenderPassName:
-        return light_name
-
-    def point_shadow_pass_name(
-        self,
-        light_name: LightName,
-        face: str,
-    ) -> RenderPassName:
-        return f"{light_name}.{face}"
 
     # =================================== #
     # Registry API
@@ -56,7 +40,7 @@ class LightRegistry:
     def add(
         self,
         light: LightSource,
-    ) -> LightName:
+    ) -> str:
 
         base_name = light.config.base_name
         name = self.generate_name(base_name)
@@ -73,7 +57,7 @@ class LightRegistry:
 
     def remove(
         self,
-        name: LightName,
+        name: str,
     ) -> LightSource:
         light = self.require(name)
 
@@ -95,13 +79,13 @@ class LightRegistry:
 
     def get(
         self,
-        name: LightName,
+        name: str,
     ) -> LightSource | None:
         return self._lights.get(name)
 
     def require(
         self,
-        name: LightName,
+        name: str,
     ) -> LightSource:
         light = self.get(name)
 
@@ -138,7 +122,7 @@ class LightRegistry:
     def _index_light(
         self,
         *,
-        name: LightName,
+        name: str,
         light: LightSource,
     ) -> None:
         affected_tags = light.config.affected_tags
@@ -152,7 +136,7 @@ class LightRegistry:
 
     def _unindex_light(
         self,
-        name: LightName,
+        name: str,
     ) -> None:
         empty_tags: list[str] = []
 

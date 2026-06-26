@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from kivyfn.three.types import (
-    RenderStage,
-    RenderStageName,
-    RenderPassName,
-    RenderContextName,
-)
+from kivyfn.three.types import RenderStage
 
 from kivyfn.three.render.context import (
     RenderContext,
-    RenderPass,
+    RenderPass2D,
+    RenderPassCube,
 )
 
 from kivyfn.three.render.registry import RenderStageRegistry
@@ -56,7 +52,7 @@ class RenderStageManager:
 
     def remove(
         self,
-        name: RenderStageName,
+        name: str,
     ) -> RenderStage:
         self.registry.require(name)
 
@@ -77,7 +73,7 @@ class RenderStageManager:
 
     def removal_plan(
         self,
-        name: RenderStageName,
+        name: str,
     ) -> RenderBindingGraph:
         return self.bindings.graph_of(name)
 
@@ -88,7 +84,7 @@ class RenderStageManager:
 
     def create_context(
         self,
-        name: RenderContextName,
+        name: str,
         tags: set[str] | None,
         **kwargs,
     ) -> RenderContext:
@@ -108,7 +104,7 @@ class RenderStageManager:
 
     def remove_context(
         self,
-        name: RenderContextName,
+        name: str,
     ) -> RenderContext:
         stage = self.remove(name)
 
@@ -125,11 +121,11 @@ class RenderStageManager:
 
     def create_pass(
         self,
-        name: RenderPassName,
+        name: str,
         tags: set[str] | None,
         **kwargs,
-    ) -> RenderPass:
-        render_pass = RenderPass(
+    ) -> RenderPass2D:
+        render_pass = RenderPass2D(
             name=name,
             **kwargs,
         )
@@ -144,23 +140,59 @@ class RenderStageManager:
 
     def remove_pass(
         self,
-        name: RenderPassName,
-    ) -> RenderPass:
-        stage = self.remove(
-            name,
-        )
+        name: str,
+    ) -> RenderPass2D:
+        stage = self.remove(name)
 
-        if not isinstance(stage, RenderPass):
+        if not isinstance(stage, RenderPass2D):
             raise TypeError(
                 f"Render stage '{name}' is not a RenderPass."
             )
 
         return stage
 
+    # =================================== #
+    # Cube Render Pass API
+    # =================================== #
+    def create_cube_pass(
+        self,
+        name: str,
+        tags: set[str] | None,
+        **kwargs,
+    ) -> RenderPassCube:
+        cube_pass = RenderPassCube(
+            name=name,
+            **kwargs,
+        )
+
+        self.add(cube_pass)
+
+        if tags is not None:
+            for tag in tags:
+                self.registry.tag(name, tag)
+
+        return cube_pass
+
+    def remove_cube_pass(
+        self,
+        name: str,
+    ) -> RenderPassCube:
+        stage = self.remove(name)
+
+        if not isinstance(stage, RenderPassCube):
+            raise TypeError(
+                f"Render stage '{name}' is not a CubeRenderPass."
+            )
+
+        return stage
+
+    # =================================== #
+    # Pass Attachment
+    # =================================== #
     def attach_pass(
         self,
         *,
-        name: RenderPassName,
+        name: str,
         target_name: str | None = None,
         target_tags: set[str] | None = None,
         index: int | None = None,
@@ -228,7 +260,7 @@ class RenderStageManager:
 
     def graph_of(
         self,
-        name: RenderStageName,
+        name: str,
     ) -> RenderBindingGraph:
         return self.bindings.graph_of(name)
 

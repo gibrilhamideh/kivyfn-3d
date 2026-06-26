@@ -2,319 +2,240 @@
 
 from __future__ import annotations
 
-import math
-from typing import TYPE_CHECKING, Literal
+from typing import Any, Literal
 
-from kivy.graphics.opengl import glViewport
 from kivy.event import EventDispatcher
+from kivy.graphics.opengl import GL_VIEWPORT, glGetIntegerv, glViewport
 from kivy.properties import (
-        NumericProperty,
-        OptionProperty,
         AliasProperty,
+        NumericProperty,
+        ObjectProperty,
+        ReferenceListProperty,
+        OptionProperty
 )
 
-from kivyfn.three.math.vector import Vector3
-from kivyfn.three.views.view import View
-
-if TYPE_CHECKING:
-    from kivyfn.three.scene.scene import Scene
+from kivyfn.three.views.rect import ViewRect
 
 
 class Viewport(EventDispatcher):
 
-    viewport_mode: Literal["scene", "local"] = OptionProperty(
-        "scene", options=["scene", "local"]
+    x: float = NumericProperty(0.0)
+    y: float = NumericProperty(0.0)
+    width: float = NumericProperty(1.0)
+    height: float = NumericProperty(1.0)
+
+    local_viewport: LocalViewport = ObjectProperty()
+    scene_viewport: LocalViewport = ObjectProperty()
+
+    pos = ReferenceListProperty(
+        x,
+        y,
     )
 
-    scene_x: int = NumericProperty()
-    scene_y: int = NumericProperty()
-    scene_width: int = NumericProperty()
-    scene_height: int = NumericProperty()
+    size = ReferenceListProperty(
+        width,
+        height,
+    )
 
-    local_x: int = NumericProperty()
-    local_y: int = NumericProperty()
-    local_width: int = NumericProperty()
-    local_height: int = NumericProperty()
-
-
-    def _get_x(self) -> int:
-        if self.viewport_mode == "scene":
-            return self.scene_x
-
-        return self.local_x
-
-    def _get_y(self) -> int:
-        if self.viewport_mode == "scene":
-            return self.scene_y
-
-        return self.local_y
-
-    def _get_width(self) -> int:
-        if self.viewport_mode == "scene":
-            return self.scene_width
-
-        return self.local_width
-
-    def _get_height(self) -> int:
-        if self.viewport_mode == "scene":
-            return self.scene_height
-
-        return self.local_height
-
-
-    x = AliasProperty(
-        _get_x,
-        None,
-        bind=[
-            "viewport_mode",
-            "scene_x",
-            "local_x",
+    source: Literal["scene", "local"] = OptionProperty(
+        "scene",
+        options=[
+            "scene",
+            "local",
         ],
     )
-
-    y = AliasProperty(
-        _get_y,
-        None,
-        bind=[
-            "viewport_mode",
-            "scene_y",
-            "local_y",
-        ],
-    )
-
-    width = AliasProperty(
-        _get_width,
-        None,
-        bind=[
-            "viewport_mode",
-            "scene_width",
-            "local_width",
-        ],
-    )
-
-    height = AliasProperty(
-        _get_height,
-        None,
-        bind=[
-            "viewport_mode",
-            "scene_height",
-            "local_height",
-        ],
-    )
-
-
-    def _get_aspect(self) -> float:
-        width = self.width
-        height = self.height
-
-        if height <= 0:
-            return 1.0
-
-        return width / height
-
-
-    aspect = AliasProperty(
-        _get_aspect,
-        None,
-        bind=[
-            "width",
-            "height",
-        ],
-    )
-
-
 
     __events__ = (
-        "on_view_dirty",
-        "on_viewport_dirty",
+        "on_dirty",
     )
 
     def __init__(
         self,
-        scene: Scene,
-        **kwargs,
+        local_viewport: LocalViewport,
+        scene_viewport: LocalViewport,
+        *,
+        source: Literal["scene", "local"] = "scene",
+        **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
 
-        self.scene = scene
-        self.view = View()
+        self.local_viewport = local_viewport
+        self.scene_viewport = scene_viewport
+        self.source: Literal["scene", "local"] = source
 
-        self.view.bind(on_view_dirty=self.mark_view_dirty)
-
-        self.scene_x = self.scene.scene_viewport_x
-        self.scene_y = self.scene.scene_viewport_y
-        self.scene_width = self.scene.scene_viewport_width
-        self.scene_height = self.scene.scene_viewport_height
-
-        self.scene.bind(
-            scene_viewport_x=self.setter("scene_x"),
-            scene_viewport_y=self.setter("scene_y"),
-            scene_viewport_width=self.setter("scene_width"),
-            scene_viewport_height=self.setter("scene_height"),
-        )
+        self._previous_size: tuple[int, int, int, int] | None = None
 
         self.bind(
-            x=self.mark_viewport_dirty,
-            y=self.mark_viewport_dirty,
-            width=self.mark_viewport_dirty,
-            height=self.mark_viewport_dirty
+            x=self._mark_dirty,
+            y=self._mark_dirty,
+            width=self._mark_dirty,
+            height=self._mark_dirty,
+            source=self._rebind_viewport,
         )
 
+        self._rebind_viewport()
+
+    # =================================== #
+    # Bind
+    # =================================== #
+    def _rebind_viewport(self):
+
+        if self.source == "local":
+
+            self.x = self.local_viewport.x
+            self.y = self.local_viewport.y
+            self.width = self.local_viewport.width
+            self.height = self.local_viewport.height
+
+            self.local_viewport.bind(
+                x=self.setter("x"),
+                y=self.setter("y"),
+                width=self.setter("width"),
+                height=self.setter("height"),
+            )
+
+            self.scene_viewport.unbind(
+                x=self.setter("x"),
+                y=self.setter("y"),
+                width=self.setter("width"),
+                height=self.setter("height"),
+            )
+
+            return
+
+        self.x = self.scene_viewport.x
+        self.y = self.scene_viewport.y
+        self.width = self.scene_viewport.width
+        self.height = self.scene_viewport.height
+
+        self.local_viewport.unbind(
+            x=self.setter("x"),
+            y=self.setter("y"),
+            width=self.setter("width"),
+            height=self.setter("height"),
+        )
+
+        self.scene_viewport.bind(
+            x=self.setter("x"),
+            y=self.setter("y"),
+            width=self.setter("width"),
+            height=self.setter("height"),
+        )
+
+    # =================================== #
+    # Rect
+    # =================================== #
+    @property
+    def rect(self) -> ViewRect:
+        return ViewRect(
+            x=self.x,
+            y=self.y,
+            width=self.width,
+            height=self.height,
+        )
+
+    # =================================== #
+    # Aspect
+    # =================================== #
+
+    def _get_aspect(self) -> float:
+        if self.width <= 0 or self.height <= 0:
+            raise RuntimeError(
+                "Cannot calculate viewport aspect because "
+                f"viewport size is invalid: {self.width}x{self.height}."
+            )
+
+        return self.width / self.height
+
+    aspect: float = AliasProperty(
+        _get_aspect,
+        None,
+        bind=(
+            "width",
+            "height",
+        ),
+    )
+
+    # =================================== #
+    # GL
+    # =================================== #
+
+    def apply(self, *_) -> None:
+        if self.width <= 0 or self.height <= 0:
+            raise RuntimeError(
+                "Cannot apply GL viewport because "
+                f"viewport size is invalid: {self.width}x{self.height}."
+            )
+
+        previous = glGetIntegerv(GL_VIEWPORT)
+
+        self._previous_size = (
+            int(previous[0]),
+            int(previous[1]),
+            int(previous[2]),
+            int(previous[3]),
+        )
+
+        glViewport(
+            int(self.x),
+            int(self.y),
+            int(self.width),
+            int(self.height),
+        )
+
+    def restore(self, *_) -> None:
+        if self._previous_size is None:
+            return
+
+        x, y, width, height = self._previous_size
+
+        glViewport(
+            x,
+            y,
+            width,
+            height,
+        )
+
+        self._previous_size = None
 
     # =================================== #
     # Events
     # =================================== #
-    def mark_view_dirty(self, *_) -> None:
-        self.dispatch("on_view_dirty")
 
-    def mark_viewport_dirty(self, *_) -> None:
-        self.dispatch("on_viewport_dirty")
+    def _mark_dirty(
+        self,
+        *_: Any,
+    ) -> None:
+        self.dispatch("on_dirty")
 
-    def on_view_dirty(self) -> None:
+    def on_dirty(self) -> None:
         pass
 
-    def on_viewport_dirty(self) -> None:
-        pass
 
-    # =================================== #
-    # Uitlities
-    # =================================== #
-    def world_to_screen(
-        self,
-        point: Vector3,
-    ) -> tuple[float, float, float] | None:
-        view = self.view
+class LocalViewport(EventDispatcher):
+    x: float = NumericProperty(0.0)
+    y: float = NumericProperty(0.0)
+    width: float = NumericProperty(1.0)
+    height: float = NumericProperty(1.0)
 
-        projection = view.get_projection_matrix(self.aspect)
-        view_matrix = view.get_view_matrix()
+    origin_x: float = NumericProperty(0.0)
+    origin_y: float = NumericProperty(0.0)
 
-        ndc = (projection @ view_matrix).transform_point(point)
+    local_viewport = ObjectProperty()
+    scene_viewport = ObjectProperty()
 
-        if ndc.z < -1.0 or ndc.z > 1.0:
-            return None
+    pos = ReferenceListProperty(
+        x,
+        y,
+    )
 
-        x = self.x + ((ndc.x + 1.0) * 0.5 * self.width)
-        y = self.y + ((ndc.y + 1.0) * 0.5 * self.height)
+    size = ReferenceListProperty(
+        width,
+        height,
+    )
 
-        return x, y, ndc.z
-
-    def screen_to_ndc(
-        self,
-        x: float,
-        y: float,
-    ) -> tuple[float, float]:
-        local_x = x - self.x
-        local_y = y - self.y
-
-        ndc_x = (2.0 * local_x / self.width) - 1.0
-        ndc_y = (2.0 * local_y / self.height) - 1.0
-
-        return ndc_x, ndc_y
-
-    def screen_to_ray(
-        self,
-        x: float,
-        y: float,
-    ) -> tuple[Vector3, Vector3]:
-        if self.view.projection == "orthographic":
-            return self._screen_to_orthographic_ray(x, y)
-
-        return self._screen_to_perspective_ray(x, y)
-
-    def _screen_to_perspective_ray(
-        self,
-        x: float,
-        y: float,
-    ) -> tuple[Vector3, Vector3]:
-        view = self.view
-        ndc_x, ndc_y = self.screen_to_ndc(x, y)
-
-        top = view.near * math.tan(
-            math.radians(view.fov) / 2.0
-        )
-        right = top * self.aspect
-
-        camera_point = Vector3(
-            ndc_x * right,
-            ndc_y * top,
-            -view.near,
-        )
-
-        inverse_view = view.get_view_matrix().inverse()
-
-        origin = inverse_view.transform_point(Vector3.zero())
-        target = inverse_view.transform_point(camera_point)
-
-        direction = (target - origin).normalize()
-
-        return origin, direction
-
-    def _screen_to_orthographic_ray(
-        self,
-        x: float,
-        y: float,
-    ) -> tuple[Vector3, Vector3]:
-        view = self.view
-        ndc_x, ndc_y = self.screen_to_ndc(x, y)
-
-        right = view.ortho_size / 2.0
-        top = right / self.aspect
-
-        origin_camera = Vector3(
-            ndc_x * right,
-            ndc_y * top,
-            0.0,
-        )
-
-        target_camera = Vector3(
-            ndc_x * right,
-            ndc_y * top,
-            -1.0,
-        )
-
-        inverse_view = view.get_view_matrix().inverse()
-
-        origin = inverse_view.transform_point(origin_camera)
-        target = inverse_view.transform_point(target_camera)
-
-        direction = (target - origin).normalize()
-
-        return origin, direction
-
-    # =================================== #
-    # Helpers
-    # =================================== #
-    def apply(self, *_) -> None:
-        glViewport(
-            self.x,
-            self.y,
-            self.width,
-            self.height,
-        )
-
-    def get_projection_matrix(self, *, uniform: bool = False):
-        matrix = self.view.get_projection_matrix(self.aspect)
-
-        if uniform:
-            return matrix.to_uniform()
-
-        return matrix
-
-    def get_view_matrix(self, *, uniform: bool = False):
-        matrix = self.view.get_view_matrix()
-
-        if uniform:
-            return matrix.to_uniform()
-
-        return matrix
-
-    def get_camera_position(self) -> list[float]:
-        position = self.view.position
-
-        return [
-            position.x,
-            position.y,
-            position.z,
-        ]
-
+    origin = ReferenceListProperty(
+        origin_x,
+        origin_y,
+    )
 
