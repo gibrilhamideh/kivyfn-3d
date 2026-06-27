@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal, overload
 from pathlib import Path
 from pprint import pformat
+import weakref
 
 from kivy.event import EventDispatcher
 from kivy.graphics import Instruction
@@ -18,6 +19,7 @@ from kivyfn.three.views.view import View
 from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.render.config import RenderInstanceConfig
 from kivyfn.three.render.shader import Shader
+from kivyfn.three.graphics.gl.utils import normalize_size
 from kivyfn.three.graphics.gl import (
     BindTexture,
     Texture2D,
@@ -58,7 +60,8 @@ class RenderStage(EventDispatcher):
 
     __events__ = (
         "on_view_dirty",
-        "on_viewport_dirty"
+        "on_viewport_dirty",
+        "on_size_dirty"
     )
 
     def __init__(
@@ -87,6 +90,8 @@ class RenderStage(EventDispatcher):
             use_render_id=use_render_id,
         )
 
+        self._size = self.target.size
+        self._size_ref: weakref.ReferenceType[RenderStage] | None = None
         self._bind_events()
         self.sync_shader()
 
@@ -238,6 +243,83 @@ class RenderStage(EventDispatcher):
         self.target.delete()
 
     # =================================== #
+    # Sizing
+    # =================================== #
+    def sync_size(
+        self,
+    ) -> None:
+        size = self.target.size
+
+        if self._size == size:
+            return
+
+        self._size = size
+        self.dispatch("on_size_dirty", size)
+
+
+    def resize(
+        self,
+        size: int | tuple[int, int],
+    ) -> None:
+        size = normalize_size(size)
+
+        if self._size == size:
+            return
+
+        self.target.resize(size)
+        self.sync_size()
+
+
+    def resize_to(
+        self,
+        stage: RenderStage,
+        *,
+        bind: bool = True,
+    ) -> None:
+        if stage is self:
+            raise ValueError(
+                f"Render stage {self.name!r} cannot resize_to() itself."
+            )
+
+        self.unlink_size()
+        self.resize(stage.size)
+
+        if not bind:
+            return
+
+        self._size_ref = weakref.ref(stage)
+        stage.bind(
+            on_size_dirty=self._on_size_ref_dirty,
+        )
+
+    def unlink_size(
+        self,
+    ) -> None:
+        if self._size_ref is None:
+            return
+
+        stage = self._size_ref()
+        if stage is not None:
+            stage.unbind(
+                on_size_dirty=self._on_size_ref_dirty,
+            )
+
+        self._size_ref = None
+
+    @property
+    def size(
+        self,
+    ) -> tuple[int, int]:
+        return self._size
+
+    def _on_size_ref_dirty(
+        self,
+        stage: RenderStage,
+        size: tuple[int, int],
+    ) -> None:
+        self.resize(size)
+
+    # =================================== #
     # Depth test
     # =================================== #
     @property
@@ -256,7 +338,9 @@ class RenderStage(EventDispatcher):
         self.dispatch("on_view_dirty", view)
 
     def mark_viewport_dirty(self, viewport: Viewport):
+        self.sync_size()
         self.dispatch("on_viewport_dirty", viewport)
+
 
     # =================================== #
     # Events
@@ -265,6 +349,9 @@ class RenderStage(EventDispatcher):
         pass
 
     def on_viewport_dirty(self, viewport: Viewport):
+        pass
+
+    def on_size_dirty(self, size: tuple[int, int]):
         pass
 
 

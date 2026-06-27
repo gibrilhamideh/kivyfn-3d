@@ -7,9 +7,15 @@ from kivyfn.three.graphics.gl.texture import (
     TextureCube,
 )
 
-from kivyfn.three.graphics.gl.bind import (
+from kivyfn.three.graphics.gl.context import (
     BindTexture,
+    BindGeometry,
+    BindMaterial,
+    BindObjectId,
+    BindTransform,
+    BindUniform
 )
+
 
 from kivyfn.three.graphics.gl.targets import (
     ScreenTarget,
@@ -28,13 +34,19 @@ __all__ = (
     # Utils
     "normalize_size",
 
+    # Bind
+    "BindTexture",
+    "BindTransform",
+    "BindObjectId",
+    "BindObjectId",
+    "BindMaterial",
+    "BindGeometry",
+    "BindUniform",
+
     # Textures
     "Rgba",
     "Texture2D",
     "TextureCube",
-
-    # Bind
-    "BindTexture",
 
     # Targets
     "ScreenTarget",

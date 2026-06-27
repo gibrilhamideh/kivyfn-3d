@@ -12,7 +12,7 @@ from kivy.graphics import RenderContext as KivyRenderContext
 from kivyfn.three.views.view import View
 from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.graphics.gl.core import GL
-from kivyfn.three.graphics.gl.bind import BindTexture
+from kivyfn.three.graphics.gl.context import BindTexture
 from kivyfn.three.graphics.gl.texture import Texture2D, TextureCube
 
 if TYPE_CHECKING:
@@ -189,18 +189,12 @@ class BaseTargetContext(KivyRenderContext):
         slot: int,
     ) -> BindTexture:
         instruction = BindTexture(
-            stage=self,
             uniform=uniform,
             texture=texture,
             slot=slot,
         )
 
         self.texture_group.add(instruction)
-
-        self.apply_uniform(
-            uniform,
-            slot,
-        )
 
         return instruction
 
@@ -249,5 +243,19 @@ class BaseTargetContext(KivyRenderContext):
             )
 
         return cast("TextureCubeTarget", self)
+
+
+    # =================================== #
+    # Sizing
+    # =================================== #
+    def resize(
+        self,
+        size: tuple[int, int],
+    ) -> None:
+        raise NotImplementedError(
+            f"{type(self).__name__}.resize() must be implemented by the concrete "
+            "target context because resize semantics depend on the target type."
+        )
+
 
 

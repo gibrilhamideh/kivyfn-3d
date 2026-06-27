@@ -279,14 +279,14 @@ class Texture2DTarget(BaseTargetContext):
 
     def resize(
         self,
-        size: int | tuple[int, int],
+        size: tuple[int, int],
     ) -> None:
-        width, height = normalize_size(size)
+        width, height = size
 
         if self.size == (width, height):
             return
 
-        self.texture.resize(
+        self.texture.set_size(
             (width, height),
         )
 

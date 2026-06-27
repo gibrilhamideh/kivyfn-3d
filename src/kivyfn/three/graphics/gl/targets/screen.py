@@ -9,7 +9,6 @@ from kivyfn.three.graphics.gl.targets.base import BaseTargetContext, RenderFrame
 from kivyfn.three.views.viewport import Viewport
 from kivyfn.three.views.view import View
 
-
 class ScreenTarget(BaseTargetContext):
 
     def __init__(
@@ -78,5 +77,38 @@ class ScreenTarget(BaseTargetContext):
         self.apply_uniform("camera_position", camera_position)
 
         self.ask_update()
+
+    # =================================== #
+    # Resize
+    # =================================== #
+    def resize(
+        self,
+        size: tuple[int, int],
+    ) -> None:
+        width, height = size
+
+        if width <= 0 or height <= 0:
+            return
+
+        if self.viewport.source != "local":
+            raise RuntimeError(
+                f"Cannot resize {type(self).__name__} because its viewport source "
+                f"is {self.viewport.source!r}. Screen targets using source='scene' "
+                "are sized by the scene viewport."
+            )
+
+        self.viewport.local_viewport.width = width
+        self.viewport.local_viewport.height = height
+
+        self.sync_view()
+        self.ask_update()
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return (
+            int(self.viewport.width),
+            int(self.viewport.height),
+        )
+
 
 

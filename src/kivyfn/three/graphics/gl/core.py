@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+from array import array
 
 from kivy.graphics.opengl import (
 
@@ -243,13 +244,17 @@ class GL:
     def gen_texture(cls) -> int:
         return cls.gen_one(glGenTextures)
 
+
     @classmethod
     def delete_texture(
         cls,
         id: int,
     ) -> None:
         if id:
-            glDeleteTextures(1, id)
+            glDeleteTextures(
+                1,
+                cls.normalize_id(id),
+            )
 
     @classmethod
     def bind_texture(
@@ -407,7 +412,10 @@ class GL:
         framebuffer_id: int,
     ) -> None:
         if framebuffer_id:
-            glDeleteFramebuffers(1, framebuffer_id)
+            glDeleteFramebuffers(
+                1,
+                cls.normalize_id(framebuffer_id),
+            )
 
     @classmethod
     def bind_framebuffer(
@@ -475,7 +483,10 @@ class GL:
         renderbuffer_id: int,
     ) -> None:
         if renderbuffer_id:
-            glDeleteRenderbuffers(1, renderbuffer_id)
+            glDeleteRenderbuffers(
+                1,
+                cls.normalize_id(renderbuffer_id),
+            )
 
     @classmethod
     def bind_renderbuffer(
@@ -600,3 +611,8 @@ class GL:
     # =================================== #
     # depth test
     # =================================== #
+    @staticmethod
+    def normalize_id(
+        id: int,
+    ) -> bytes:
+        return array("I", [int(id)]).tobytes()
