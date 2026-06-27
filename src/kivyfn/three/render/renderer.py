@@ -180,6 +180,8 @@ class Renderer(EventDispatcher):
     ) -> None:
         stage = self.stages.registry.require(stage_name)
 
+        self.scene.overlays.clear_stage(stage.name)
+
         self.remove_stage_memberships(stage)
 
         if stage.name not in self.hidden:

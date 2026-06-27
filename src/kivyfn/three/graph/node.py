@@ -35,7 +35,6 @@ if TYPE_CHECKING:
     from kivyfn.three.controls.interaction import InteractionEvent
     from kivyfn.three.behaviors.behavior import Behavior
     from kivyfn.three.overlays.overlay import Overlay
-    from kivyfn.three.views.viewport import Viewport
 
 
 
@@ -276,7 +275,7 @@ class Node3D(EventDispatcher):
         widget: Widget,
         *,
         name: str,
-        viewport: Viewport,
+        stage: str,
         offset: Vector2 | None = None,
         world_offset: Vector3 | None = None,
         hide_when_offscreen: bool = True,
@@ -291,7 +290,7 @@ class Node3D(EventDispatcher):
             anchor=self,
             widget=widget,
             name=name,
-            viewport=viewport,
+            stage=stage,
             offset=offset,
             world_offset=world_offset,
             hide_when_offscreen=hide_when_offscreen,

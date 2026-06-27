@@ -236,8 +236,6 @@ class RenderIdPicker(BasePicker):
         )
 
         render_id = (r << 16) | (g << 8) | b
-        print(render_id)
-
         if render_id == 0:
             return None
 

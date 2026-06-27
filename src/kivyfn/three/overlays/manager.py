@@ -10,8 +10,8 @@ from kivyfn.three.overlays.overlay import Overlay
 
 if TYPE_CHECKING:
     from kivyfn.three.graph.node import Node3D
+    from kivyfn.three.render.stage import RenderStage
     from kivyfn.three.scene.scene import Scene
-    from kivyfn.three.views.viewport import Viewport
 
 
 class OverlayManager:
@@ -21,9 +21,12 @@ class OverlayManager:
     ) -> None:
         self.scene = scene
 
-        self._by_anchor: dict[Node3D, dict[str, Overlay]] = {}
-        self._by_viewport: dict[Viewport, set[Overlay]] = {}
-        self._queued: dict[int, Overlay] = {}
+        self._by_id: dict[int, Overlay] = {}
+
+        self._by_anchor: dict[Node3D, dict[str, int]] = {}
+        self._by_stage: dict[str, set[int]] = {}
+
+        self._queued: set[int] = set()
 
         self._flush = Clock.create_trigger(self.flush, -1)
 
@@ -40,7 +43,7 @@ class OverlayManager:
         self,
         *,
         anchor: Node3D,
-        viewport: None = None,
+        stage: None = None,
     ) -> dict[str, Overlay]:
         ...
 
@@ -49,7 +52,7 @@ class OverlayManager:
         self,
         *,
         anchor: None = None,
-        viewport: Viewport,
+        stage: str,
     ) -> set[Overlay]:
         ...
 
@@ -57,29 +60,37 @@ class OverlayManager:
         self,
         *,
         anchor: Node3D | None = None,
-        viewport: Viewport | None = None,
+        stage: str | None = None,
     ) -> dict[str, Overlay] | set[Overlay]:
-        if anchor is None and viewport is None:
+        if anchor is None and stage is None:
             raise ValueError(
-                "overlays_of() requires either 'anchor' or 'viewport'."
+                "overlays_of() requires either 'anchor' or 'stage'."
             )
 
-        if anchor is not None and viewport is not None:
+        if anchor is not None and stage is not None:
             raise ValueError(
-                "overlays_of() accepts either 'anchor' or 'viewport', not both."
+                "overlays_of() accepts either 'anchor' or 'stage', not both."
             )
 
         if anchor is not None:
-            return self._by_anchor.get(anchor, {})
+            return {
+                name: self._by_id[overlay_id]
+                for name, overlay_id in self._by_anchor.get(anchor, {}).items()
+                if overlay_id in self._by_id
+            }
 
-        assert viewport is not None
-        return self._by_viewport.get(viewport, set())
+        assert stage is not None
+        return {
+            self._by_id[overlay_id]
+            for overlay_id in self._by_stage.get(stage, set())
+            if overlay_id in self._by_id
+        }
 
-    def has_viewport(
+    def has_stage(
         self,
-        viewport: Viewport,
+        stage: str,
     ) -> bool:
-        return viewport in self._by_viewport
+        return stage in self._by_stage
 
     def has_anchor(
         self,
@@ -92,21 +103,13 @@ class OverlayManager:
         anchor: Node3D,
         name: str,
     ) -> Overlay | None:
-        return self.overlays_of(anchor=anchor).get(name)
+        overlay_id = self._by_anchor.get(anchor, {}).get(name)
 
-    def require(
-        self,
-        anchor: Node3D,
-        name: str,
-    ) -> Overlay:
-        overlay = self.get(anchor, name)
+        if overlay_id is None:
+            return None
 
-        if overlay is None:
-            raise ValueError(
-                f"Overlay {name!r} not found on node {anchor.name!r}."
-            )
+        return self._by_id.get(overlay_id)
 
-        return overlay
 
     # =================================== #
     # Attachments
@@ -117,25 +120,32 @@ class OverlayManager:
         widget: Widget,
         *,
         name: str,
-        viewport: Viewport,
+        stage: str,
         offset: Vector2 | None = None,
         world_offset: Vector3 | None = None,
         hide_when_offscreen: bool = True,
     ) -> Overlay:
 
-        is_new_anchor = not self.has_anchor(anchor)
-        is_new_viewport = not self.has_viewport(viewport)
+        self.scene.stages.registry.require(stage)
 
-        by_anchor = self._by_anchor.setdefault(anchor, {})
-        by_viewport = self._by_viewport.setdefault(viewport, set())
+        by_anchor = self._by_anchor.get(anchor)
 
-        if name in by_anchor:
+        if by_anchor is not None and name in by_anchor:
             raise ValueError(
                 f"Overlay {name!r} already exists on node {anchor.name!r}."
             )
 
-        if is_new_viewport:
-            self.bind_viewport(viewport)
+        is_new_anchor = by_anchor is None
+        is_new_stage = not self.has_stage(stage)
+
+        if by_anchor is None:
+            by_anchor = {}
+            self._by_anchor[anchor] = by_anchor
+
+        by_stage = self._by_stage.setdefault(stage, set())
+
+        if is_new_stage:
+            self.bind_stage(stage)
 
         if is_new_anchor:
             self.bind_anchor(anchor)
@@ -144,13 +154,13 @@ class OverlayManager:
             name=name,
             anchor=anchor,
             widget=widget,
-            viewport=viewport,
+            stage=stage,
             offset=offset or Vector2.zero(),
             world_offset=world_offset or Vector3.zero(),
             hide_when_offscreen=hide_when_offscreen,
         )
 
-        self._add(overlay, by_anchor, by_viewport)
+        self._add(overlay, by_anchor, by_stage)
         return overlay
 
     def detach(
@@ -159,15 +169,14 @@ class OverlayManager:
         name: str,
     ) -> None:
 
-        by_anchor = self.overlays_of(anchor=anchor)
-        if name not in by_anchor:
+        by_anchor = self._by_anchor.get(anchor)
+
+        if by_anchor is None or name not in by_anchor:
             raise ValueError(
                 f"Overlay {name!r} does not exist on node {anchor.name!r}."
             )
 
         self._remove(name, by_anchor)
-
-
 
     def remove(self) -> None:
         for anchor in list(self._by_anchor):
@@ -179,14 +188,19 @@ class OverlayManager:
         self,
         anchor: Node3D,
     ) -> None:
-        for name in list(self.overlays_of(anchor=anchor)):
+        for name in list(self._by_anchor.get(anchor, {})):
             self.detach(anchor, name)
 
-    def clear_viewport(
+    def clear_stage(
         self,
-        viewport: Viewport,
+        stage: str,
     ) -> None:
-        for overlay in list(self.overlays_of(viewport=viewport)):
+        for overlay_id in list(self._by_stage.get(stage, set())):
+            overlay = self._by_id.get(overlay_id)
+
+            if overlay is None:
+                continue
+
             self.detach(
                 overlay.anchor,
                 overlay.name,
@@ -195,16 +209,25 @@ class OverlayManager:
     # =================================== #
     # Binders
     # =================================== #
-    def bind_viewport(self, viewport: Viewport) -> None:
-        viewport.bind(
-            on_view_dirty=self._on_viewport_dirty,
-            on_viewport_dirty=self._on_viewport_dirty,
+    def bind_stage(self, stage: str) -> None:
+        render_stage = self.scene.stages.registry.require(stage)
+
+        render_stage.bind(
+            on_view_dirty=self._on_stage_dirty,
+            on_viewport_dirty=self._on_stage_dirty,
+            on_size_dirty=self._on_stage_dirty,
         )
 
-    def unbind_viewport(self, viewport: Viewport) -> None:
-        viewport.unbind(
-            on_view_dirty=self._on_viewport_dirty,
-            on_viewport_dirty=self._on_viewport_dirty,
+    def unbind_stage(self, stage: str) -> None:
+        try:
+            render_stage = self.scene.stages.registry.require(stage)
+        except (KeyError, ValueError):
+            return
+
+        render_stage.unbind(
+            on_view_dirty=self._on_stage_dirty,
+            on_viewport_dirty=self._on_stage_dirty,
+            on_size_dirty=self._on_stage_dirty,
         )
 
     def bind_anchor(self, anchor: Node3D) -> None:
@@ -219,7 +242,6 @@ class OverlayManager:
             on_visibility_dirty=self._on_anchor_dirty,
         )
 
-
     # =================================== #
     # Updates
     # =================================== #
@@ -227,33 +249,57 @@ class OverlayManager:
         self,
         overlay: Overlay,
     ) -> None:
-        self._queued[id(overlay)] = overlay
+        overlay_id = id(overlay)
+
+        if overlay_id not in self._by_id:
+            return
+
+        self._queued.add(overlay_id)
         self._flush()
 
-
     def flush(self, *_) -> None:
-        queued = list(self._queued.values())
+        queued = list(self._queued)
         self._queued.clear()
 
-        for overlay in queued:
-            overlay.update()
+        for overlay_id in queued:
+            overlay = self._by_id.get(overlay_id)
+
+            if overlay is None:
+                continue
+
+            stage = self.scene.stages.registry.get(overlay.stage)
+
+            if stage is None:
+                overlay.hide()
+                continue
+
+            overlay.update(stage)
 
     # =================================== #
     # Dirty Flags
     # =================================== #
 
-    def mark_anchor_dirty(self, anchor: Node3D):
-        for overlay in self.overlays_of(anchor=anchor).values():
+    def mark_anchor_dirty(self, anchor: Node3D) -> None:
+        for overlay_id in self._by_anchor.get(anchor, {}).values():
+            overlay = self._by_id.get(overlay_id)
+
+            if overlay is None:
+                continue
+
             self.queue(overlay)
 
-    def mark_viewport_dirty(self, viewport: Viewport) -> None:
-        for overlay in self.overlays_of(viewport=viewport):
+    def mark_stage_dirty(self, stage: str) -> None:
+        for overlay_id in self._by_stage.get(stage, set()):
+            overlay = self._by_id.get(overlay_id)
+
+            if overlay is None:
+                continue
+
             self.queue(overlay)
 
     def mark_scene_dirty(self) -> None:
-        for overlays in self._by_anchor.values():
-            for overlay in overlays.values():
-                self.queue(overlay)
+        for overlay in list(self._by_id.values()):
+            self.queue(overlay)
 
     # =================================== #
     # Dirty events
@@ -264,12 +310,18 @@ class OverlayManager:
     ) -> None:
         self.mark_anchor_dirty(anchor)
 
-    def _on_viewport_dirty(
+    def _on_stage_dirty(
         self,
-        viewport: Viewport,
+        stage: RenderStage,
+        *_,
     ) -> None:
-        self.mark_viewport_dirty(viewport)
+        self.mark_stage_dirty(stage.name)
 
+    def _on_overlay_dirty(
+        self,
+        overlay: Overlay,
+    ) -> None:
+        self.queue(overlay)
 
     def _on_scene_dirty(
         self,
@@ -289,36 +341,49 @@ class OverlayManager:
     def _add(
         self,
         overlay: Overlay,
-        by_anchor: dict[str, Overlay],
-        by_viewport: set,
+        by_anchor: dict[str, int],
+        by_stage: set[int],
     ) -> None:
-        name = overlay.name
-        widget = overlay.widget
+        overlay_id = id(overlay)
 
-        by_anchor[name] = overlay
-        by_viewport.add(overlay)
+        self._by_id[overlay_id] = overlay
 
-        self._add_widget(widget)
+        by_anchor[overlay.name] = overlay_id
+        by_stage.add(overlay_id)
+
+        overlay.bind(
+            on_dirty=self._on_overlay_dirty,
+        )
+
+        self._add_widget(overlay.widget)
         self.queue(overlay)
 
     def _remove(
         self,
         name: str,
-        by_anchor: dict[str, Overlay]
+        by_anchor: dict[str, int],
     ) -> None:
 
-        overlay = by_anchor.pop(name)
-        by_viewport = self.overlays_of(viewport=overlay.viewport)
+        overlay_id = by_anchor.pop(name)
+        overlay = self._by_id.pop(overlay_id)
 
-        by_viewport.discard(overlay)
-        if not by_viewport:
-            self.unbind_viewport(overlay.viewport)
-            self._by_viewport.pop(overlay.viewport)
+        by_stage = self._by_stage.get(overlay.stage)
+
+        if by_stage is not None:
+            by_stage.discard(overlay_id)
+
+            if not by_stage:
+                self.unbind_stage(overlay.stage)
+                self._by_stage.pop(overlay.stage, None)
 
         if not by_anchor:
             self.unbind_anchor(overlay.anchor)
-            self._by_anchor.pop(overlay.anchor)
+            self._by_anchor.pop(overlay.anchor, None)
 
-        self._queued.pop(id(overlay), None)
+        overlay.unbind(
+            on_dirty=self._on_overlay_dirty,
+        )
+
+        self._queued.discard(overlay_id)
         self._remove_widget(overlay.widget)
 

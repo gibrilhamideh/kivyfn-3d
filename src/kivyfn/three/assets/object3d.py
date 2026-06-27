@@ -25,8 +25,6 @@ class Object3D(Node3D):
     material: Material = ObjectProperty()
 
     pickable: bool = BooleanProperty(False)
-    grabable: bool = BooleanProperty(False)
-    cast_shadow: bool = BooleanProperty(False)
 
     def __repr__(self) -> str:
         geometry_name = (
