@@ -286,18 +286,34 @@ class TextureUtility:
         )
 
 
-@dataclass(slots=True)
 class Texture2D:
-    id: int
-    size: tuple[int, int]
-    target: int = GL.TEXTURE_2D
-    resizable: bool = False
-    format: int = GL.RGBA
-    type: int = GL.UNSIGNED_BYTE
-    mipmap: bool = False
-    wrap: TextureWrap = "clamp_to_edge"
-    min_filter: TextureMinFilter = "linear"
-    mag_filter: TextureMagFilter = "linear"
+    def __init__(
+        self,
+        *,
+        id: int,
+        size: tuple[int, int],
+        resizable: bool = False,
+        mipmap: bool = False,
+        wrap: TextureWrap = "clamp_to_edge",
+        min_filter: TextureMinFilter = "linear",
+        mag_filter: TextureMagFilter = "linear",
+    ) -> None:
+        self._id: int = id
+        self._size: tuple[int, int] = size
+        self._target: int = GL.TEXTURE_2D
+
+        self._resizable: bool = resizable
+        self._format: int = GL.RGBA
+        self._type: int = GL.UNSIGNED_BYTE
+
+        self._mipmap: bool = mipmap
+        self._wrap: TextureWrap = wrap
+        self._min_filter: TextureMinFilter = min_filter
+        self._mag_filter: TextureMagFilter = mag_filter
+
+    # =================================== #
+    # Constructors
+    # =================================== #
 
     @classmethod
     def from_source(
@@ -328,17 +344,12 @@ class Texture2D:
         cls,
         data: bytes,
         *,
-        ext: str = "png",
         flip_vertical: bool = False,
         mipmap: bool = False,
         wrap: TextureWrap = "clamp_to_edge",
         min_filter: TextureMinFilter | None = None,
         mag_filter: TextureMagFilter = "linear",
     ) -> Self:
-        # Pillow usually detects the image format from encoded bytes.
-        # Keep ext in the API for compatibility with the old Kivy-style path.
-        _ = ext
-
         image = ImageLoader.from_bytes(
             data,
             flip_vertical=flip_vertical,
@@ -368,11 +379,8 @@ class Texture2D:
             )
 
         return cls.from_pixels(
-            width=image.width,
-            height=image.height,
             pixels=image.pixels,
-            format=GL.RGBA,
-            type=GL.UNSIGNED_BYTE,
+            size=image.size,
             mipmap=mipmap,
             wrap=wrap,
             min_filter=min_filter,
@@ -383,21 +391,26 @@ class Texture2D:
     def from_pixels(
         cls,
         *,
-        width: int,
-        height: int,
         pixels: bytes | memoryview,
-        format: int = GL.RGBA,
-        type: int = GL.UNSIGNED_BYTE,
+        size: int | tuple[int, int],
         mipmap: bool = False,
         wrap: TextureWrap = "clamp_to_edge",
         min_filter: TextureMinFilter | None = None,
         mag_filter: TextureMagFilter = "linear",
     ) -> Self:
+        width, height = normalize_size(size)
+
         TextureUtility.validate_raw_options(
             width=width,
             height=height,
             mipmap=mipmap,
             wrap=wrap,
+        )
+
+        cls._validate_pixel_size(
+            pixels=pixels,
+            width=width,
+            height=height,
         )
 
         resolved_min_filter = TextureUtility.resolve_min_filter(
@@ -415,8 +428,8 @@ class Texture2D:
                 width=width,
                 height=height,
                 pixels=pixels,
-                format=format,
-                type=type,
+                format=GL.RGBA,
+                type=GL.UNSIGNED_BYTE,
             )
 
             TextureUtility.configure_2d(
@@ -447,8 +460,6 @@ class Texture2D:
             id=texture_id,
             size=(width, height),
             resizable=False,
-            format=format,
-            type=type,
             mipmap=mipmap,
             wrap=wrap,
             min_filter=resolved_min_filter,
@@ -506,8 +517,6 @@ class Texture2D:
             id=texture_id,
             size=(1, 1),
             resizable=False,
-            format=GL.RGBA,
-            type=GL.UNSIGNED_BYTE,
             mipmap=False,
             wrap=wrap,
             min_filter=min_filter,
@@ -520,8 +529,6 @@ class Texture2D:
         size: int | tuple[int, int],
         *,
         resizable: bool = True,
-        format: int = GL.RGBA,
-        type: int = GL.UNSIGNED_BYTE,
         wrap: TextureWrap = "clamp_to_edge",
         min_filter: TextureMinFilter = "linear",
         mag_filter: TextureMagFilter = "linear",
@@ -547,11 +554,11 @@ class Texture2D:
                 pixels=TextureUtility.create_empty_pixels(
                     width=width,
                     height=height,
-                    format=format,
-                    type=type,
+                    format=GL.RGBA,
+                    type=GL.UNSIGNED_BYTE,
                 ),
-                format=format,
-                type=type,
+                format=GL.RGBA,
+                type=GL.UNSIGNED_BYTE,
             )
 
             TextureUtility.configure_2d(
@@ -577,25 +584,99 @@ class Texture2D:
             id=texture_id,
             size=(width, height),
             resizable=resizable,
-            format=format,
-            type=type,
             mipmap=False,
             wrap=wrap,
             min_filter=min_filter,
             mag_filter=mag_filter,
         )
 
+    # =================================== #
+    # Properties
+    # =================================== #
 
-    def resize(
+    @property
+    def id(
+        self,
+    ) -> int:
+        return self._id
+
+    @property
+    def target(
+        self,
+    ) -> int:
+        return self._target
+
+    @property
+    def size(
+        self,
+    ) -> tuple[int, int]:
+        return self._size
+
+    @property
+    def width(
+        self,
+    ) -> int:
+        return self._size[0]
+
+    @property
+    def height(
+        self,
+    ) -> int:
+        return self._size[1]
+
+    @property
+    def resizable(
+        self,
+    ) -> bool:
+        return self._resizable
+
+    @property
+    def format(
+        self,
+    ) -> int:
+        return self._format
+
+    @property
+    def type(
+        self,
+    ) -> int:
+        return self._type
+
+    @property
+    def mipmap(
+        self,
+    ) -> bool:
+        return self._mipmap
+
+    @property
+    def wrap(
+        self,
+    ) -> TextureWrap:
+        return self._wrap
+
+    @property
+    def min_filter(
+        self,
+    ) -> TextureMinFilter:
+        return self._min_filter
+
+    @property
+    def mag_filter(
+        self,
+    ) -> TextureMagFilter:
+        return self._mag_filter
+
+    # =================================== #
+    # Mutators
+    # =================================== #
+
+    def set_size(
         self,
         size: int | tuple[int, int],
-        *,
-        format: int | None = None,
-        type: int | None = None,
     ) -> None:
         self.require_alive()
 
-        if not self.resizable:
+        if not self._resizable:
             raise RuntimeError(
                 "Texture2D is not resizable."
             )
@@ -604,63 +685,300 @@ class Texture2D:
             size,
         )
 
-        if self.size == (width, height):
+        if self._size == (width, height):
             return
 
-        format = self.format if format is None else format
-        type = self.type if type is None else type
-
-        GL.bind_texture(
-            self.target,
-            self.id,
-        )
-
-        TextureUtility.upload_tex_image_2d(
-            target=self.target,
+        TextureUtility.validate_raw_options(
             width=width,
             height=height,
-            pixels=TextureUtility.create_empty_pixels(
+            mipmap=self._mipmap,
+            wrap=self._wrap,
+        )
+
+        GL.bind_texture(
+            self._target,
+            self._id,
+        )
+
+        try:
+            TextureUtility.upload_tex_image_2d(
+                target=self._target,
                 width=width,
                 height=height,
-                format=format,
-                type=type,
-            ),
-            format=format,
-            type=type,
+                pixels=TextureUtility.create_empty_pixels(
+                    width=width,
+                    height=height,
+                    format=GL.RGBA,
+                    type=GL.UNSIGNED_BYTE,
+                ),
+                format=GL.RGBA,
+                type=GL.UNSIGNED_BYTE,
+            )
+
+            TextureUtility.configure_2d(
+                wrap=self._wrap,
+                min_filter=self._min_filter,
+                mag_filter=self._mag_filter,
+            )
+
+            if self._mipmap:
+                GL.generate_mipmap(
+                    self._target,
+                )
+
+        finally:
+            GL.unbind_texture(
+                self._target,
+            )
+
+        self._size = (width, height)
+
+    def set_pixels(
+        self,
+        pixels: bytes | memoryview,
+        *,
+        size: int | tuple[int, int] | None = None,
+    ) -> None:
+        self.require_alive()
+
+        width, height = (
+            self._size
+            if size is None
+            else normalize_size(size)
         )
 
-        TextureUtility.configure_2d(
-            wrap=self.wrap,
-            min_filter=self.min_filter,
-            mag_filter=self.mag_filter,
+        if size is not None and not self._resizable:
+            if self._size != (width, height):
+                raise RuntimeError(
+                    "Texture2D is not resizable."
+                )
+
+        TextureUtility.validate_raw_options(
+            width=width,
+            height=height,
+            mipmap=self._mipmap,
+            wrap=self._wrap,
         )
 
-        GL.unbind_texture(
-            self.target,
+        self._validate_pixel_size(
+            pixels=pixels,
+            width=width,
+            height=height,
         )
 
-        self.size = (width, height)
-        self.format = format
-        self.type = type
+        GL.bind_texture(
+            self._target,
+            self._id,
+        )
+
+        try:
+            TextureUtility.upload_tex_image_2d(
+                target=self._target,
+                width=width,
+                height=height,
+                pixels=pixels,
+                format=GL.RGBA,
+                type=GL.UNSIGNED_BYTE,
+            )
+
+            TextureUtility.configure_2d(
+                wrap=self._wrap,
+                min_filter=self._min_filter,
+                mag_filter=self._mag_filter,
+            )
+
+            if self._mipmap:
+                GL.generate_mipmap(
+                    self._target,
+                )
+
+        finally:
+            GL.unbind_texture(
+                self._target,
+            )
+
+        self._size = (width, height)
+
+    def set_image(
+        self,
+        image: Image,
+    ) -> None:
+        if image.channels != 4:
+            raise ValueError(
+                f"Texture2D.set_image() expects 4 channels, got {image.channels}."
+            )
+
+        self.set_pixels(
+            image.pixels,
+            size=image.size,
+        )
+
+    def set_wrap(
+        self,
+        wrap: TextureWrap,
+    ) -> None:
+        self.require_alive()
+
+        width, height = self._size
+
+        TextureUtility.validate_raw_options(
+            width=width,
+            height=height,
+            mipmap=self._mipmap,
+            wrap=wrap,
+        )
+
+        GL.bind_texture(
+            self._target,
+            self._id,
+        )
+
+        try:
+            wrap_value = WRAP_MODES[wrap]
+
+            GL.tex_parameteri(
+                self._target,
+                GL.TEXTURE_WRAP_S,
+                wrap_value,
+            )
+            GL.tex_parameteri(
+                self._target,
+                GL.TEXTURE_WRAP_T,
+                wrap_value,
+            )
+
+        finally:
+            GL.unbind_texture(
+                self._target,
+            )
+
+        self._wrap = wrap
+
+    def set_filter(
+        self,
+        *,
+        min_filter: TextureMinFilter | None = None,
+        mag_filter: TextureMagFilter | None = None,
+    ) -> None:
+        self.require_alive()
+
+        resolved_min_filter = (
+            self._min_filter
+            if min_filter is None
+            else min_filter
+        )
+
+        resolved_mag_filter = (
+            self._mag_filter
+            if mag_filter is None
+            else mag_filter
+        )
+
+        if resolved_min_filter in MIPMAP_FILTERS and not self._mipmap:
+            raise ValueError(
+                f"min_filter={resolved_min_filter!r} requires mipmap=True."
+            )
+
+        GL.bind_texture(
+            self._target,
+            self._id,
+        )
+
+        try:
+            GL.tex_parameteri(
+                self._target,
+                GL.TEXTURE_MIN_FILTER,
+                FILTER_MODES[resolved_min_filter],
+            )
+            GL.tex_parameteri(
+                self._target,
+                GL.TEXTURE_MAG_FILTER,
+                FILTER_MODES[resolved_mag_filter],
+            )
+
+        finally:
+            GL.unbind_texture(
+                self._target,
+            )
+
+        self._min_filter = resolved_min_filter
+        self._mag_filter = resolved_mag_filter
+
+    def set_mipmap(
+        self,
+        enabled: bool,
+    ) -> None:
+        self.require_alive()
+
+        if self._mipmap == enabled:
+            return
+
+        if enabled:
+            width, height = self._size
+
+            TextureUtility.validate_raw_options(
+                width=width,
+                height=height,
+                mipmap=True,
+                wrap=self._wrap,
+            )
+
+            GL.bind_texture(
+                self._target,
+                self._id,
+            )
+
+            try:
+                GL.generate_mipmap(
+                    self._target,
+                )
+            finally:
+                GL.unbind_texture(
+                    self._target,
+                )
+
+            self._mipmap = True
+
+            if self._min_filter not in MIPMAP_FILTERS:
+                self.set_filter(
+                    min_filter="linear_mipmap_linear",
+                )
+
+            return
+
+        if self._min_filter in MIPMAP_FILTERS:
+            self.set_filter(
+                min_filter="linear",
+            )
+
+        self._mipmap = False
+
+    # =================================== #
+    # Delete
+    # =================================== #
 
     def delete(
         self,
     ) -> None:
-        if self.id == 0:
+        if self._id == 0:
             return
 
         GL.delete_texture(
-            self.id,
+            self._id,
         )
-        self.id = 0
+        self._id = 0
 
     def require_alive(
         self,
     ) -> None:
-        if self.id == 0:
+        if self._id == 0:
             raise RuntimeError(
                 f"{type(self).__name__} has been deleted."
             )
+
+    # =================================== #
+    # Bind
+    # =================================== #
 
     def bind(
         self,
@@ -668,15 +986,15 @@ class Texture2D:
         self.require_alive()
 
         GL.bind_texture(
-            self.target,
-            self.id,
+            self._target,
+            self._id,
         )
 
     def unbind(
         self,
     ) -> None:
         GL.unbind_texture(
-            self.target,
+            self._target,
         )
 
     def bind_to(
@@ -701,19 +1019,55 @@ class Texture2D:
 
         self.unbind()
 
+    # =================================== #
+    # Utility
+    # =================================== #
 
-@dataclass(slots=True)
+    @staticmethod
+    def _validate_pixel_size(
+        *,
+        pixels: bytes | memoryview,
+        width: int,
+        height: int,
+    ) -> None:
+        expected = width * height * 4
+        actual = len(pixels)
+
+        if actual != expected:
+            raise ValueError(
+                f"Pixel data size mismatch. Expected {expected} bytes "
+                f"for RGBA texture size {(width, height)!r}, got {actual} bytes."
+            )
+
+
 class TextureCube:
-    id: int
-    size: tuple[int, int]
-    target: int = GL.TEXTURE_CUBE
-    resizable: bool = False
-    format: int = GL.RGBA
-    type: int = GL.UNSIGNED_BYTE
-    mipmap: bool = False
-    wrap: TextureWrap = "clamp_to_edge"
-    min_filter: TextureMinFilter = "linear"
-    mag_filter: TextureMagFilter = "linear"
+    def __init__(
+        self,
+        *,
+        id: int,
+        size: tuple[int, int],
+        resizable: bool = False,
+        mipmap: bool = False,
+        wrap: TextureWrap = "clamp_to_edge",
+        min_filter: TextureMinFilter = "linear",
+        mag_filter: TextureMagFilter = "linear",
+    ) -> None:
+        self._id: int = id
+        self._size: tuple[int, int] = size
+        self._target: int = GL.TEXTURE_CUBE
+
+        self._resizable: bool = resizable
+        self._format: int = GL.RGBA
+        self._type: int = GL.UNSIGNED_BYTE
+
+        self._mipmap: bool = mipmap
+        self._wrap: TextureWrap = wrap
+        self._min_filter: TextureMinFilter = min_filter
+        self._mag_filter: TextureMagFilter = mag_filter
+
+    # =================================== #
+    # Constructors
+    # =================================== #
 
     @classmethod
     def from_source(
@@ -731,64 +1085,31 @@ class TextureCube:
         min_filter: TextureMinFilter | None = None,
         mag_filter: TextureMagFilter = "linear",
     ) -> Self:
-        faces = (
-            (
-                GL.CUBE_POSITIVE_X,
-                ImageLoader.from_source(
-                    right,
-                    flip_vertical=flip_vertical,
-                ),
-                right,
-            ),
-            (
-                GL.CUBE_NEGATIVE_X,
-                ImageLoader.from_source(
-                    left,
-                    flip_vertical=flip_vertical,
-                ),
-                left,
-            ),
-            (
-                GL.CUBE_POSITIVE_Y,
-                ImageLoader.from_source(
-                    top,
-                    flip_vertical=flip_vertical,
-                ),
-                top,
-            ),
-            (
-                GL.CUBE_NEGATIVE_Y,
-                ImageLoader.from_source(
-                    bottom,
-                    flip_vertical=flip_vertical,
-                ),
-                bottom,
-            ),
-            (
-                GL.CUBE_POSITIVE_Z,
-                ImageLoader.from_source(
-                    front,
-                    flip_vertical=flip_vertical,
-                ),
-                front,
-            ),
-            (
-                GL.CUBE_NEGATIVE_Z,
-                ImageLoader.from_source(
-                    back,
-                    flip_vertical=flip_vertical,
-                ),
-                back,
-            ),
-        )
-
         return cls.from_images(
-            right=faces[0][1],
-            left=faces[1][1],
-            top=faces[2][1],
-            bottom=faces[3][1],
-            front=faces[4][1],
-            back=faces[5][1],
+            right=ImageLoader.from_source(
+                right,
+                flip_vertical=flip_vertical,
+            ),
+            left=ImageLoader.from_source(
+                left,
+                flip_vertical=flip_vertical,
+            ),
+            top=ImageLoader.from_source(
+                top,
+                flip_vertical=flip_vertical,
+            ),
+            bottom=ImageLoader.from_source(
+                bottom,
+                flip_vertical=flip_vertical,
+            ),
+            front=ImageLoader.from_source(
+                front,
+                flip_vertical=flip_vertical,
+            ),
+            back=ImageLoader.from_source(
+                back,
+                flip_vertical=flip_vertical,
+            ),
             labels=(
                 right,
                 left,
@@ -842,51 +1163,23 @@ class TextureCube:
             min_filter=min_filter,
         )
 
+        expected_size = cls._validate_images(
+            faces=faces,
+            labels=face_labels,
+            mipmap=mipmap,
+            wrap=wrap,
+        )
+
         texture_id = GL.create_texture(
             GL.TEXTURE_CUBE,
         )
 
-        expected_size: tuple[int, int] | None = None
-
         try:
-            for index, (target, image) in enumerate(faces):
-                label = face_labels[index]
-
-                if image.channels != 4:
-                    raise ValueError(
-                        f"Cubemap face {label!r} expects 4 channels, "
-                        f"got {image.channels}."
-                    )
-
-                width = image.width
-                height = image.height
-
-                if width != height:
-                    raise ValueError(
-                        f"Cubemap face must be square: "
-                        f"{label!r} has size {width}x{height}."
-                    )
-
-                TextureUtility.validate_raw_options(
-                    width=width,
-                    height=height,
-                    mipmap=mipmap,
-                    wrap=wrap,
-                )
-
-                if expected_size is None:
-                    expected_size = image.size
-                elif image.size != expected_size:
-                    raise ValueError(
-                        "All cubemap faces must have the same size. "
-                        f"Expected {expected_size}, "
-                        f"got {image.size} for {label!r}."
-                    )
-
+            for target, image in faces:
                 TextureUtility.upload_tex_image_2d(
                     target=target,
-                    width=width,
-                    height=height,
+                    width=image.width,
+                    height=image.height,
                     pixels=image.pixels,
                     format=GL.RGBA,
                     type=GL.UNSIGNED_BYTE,
@@ -916,17 +1209,10 @@ class TextureCube:
             )
             raise
 
-        if expected_size is None:
-            raise RuntimeError(
-                "Cubemap creation failed: no faces were uploaded."
-            )
-
         return cls(
             id=texture_id,
             size=expected_size,
             resizable=False,
-            format=GL.RGBA,
-            type=GL.UNSIGNED_BYTE,
             mipmap=mipmap,
             wrap=wrap,
             min_filter=resolved_min_filter,
@@ -999,8 +1285,6 @@ class TextureCube:
             id=texture_id,
             size=(1, 1),
             resizable=False,
-            format=GL.RGBA,
-            type=GL.UNSIGNED_BYTE,
             mipmap=False,
             wrap=wrap,
             min_filter=min_filter,
@@ -1013,8 +1297,6 @@ class TextureCube:
         size: int | tuple[int, int],
         *,
         resizable: bool = True,
-        format: int = GL.RGBA,
-        type: int = GL.UNSIGNED_BYTE,
         wrap: TextureWrap = "clamp_to_edge",
         min_filter: TextureMinFilter = "linear",
         mag_filter: TextureMagFilter = "linear",
@@ -1040,8 +1322,8 @@ class TextureCube:
         pixels = TextureUtility.create_empty_pixels(
             width=width,
             height=height,
-            format=format,
-            type=type,
+            format=GL.RGBA,
+            type=GL.UNSIGNED_BYTE,
         )
 
         try:
@@ -1051,8 +1333,8 @@ class TextureCube:
                     width=width,
                     height=height,
                     pixels=pixels,
-                    format=format,
-                    type=type,
+                    format=GL.RGBA,
+                    type=GL.UNSIGNED_BYTE,
                 )
 
             TextureUtility.configure_cube(
@@ -1078,24 +1360,99 @@ class TextureCube:
             id=texture_id,
             size=(width, height),
             resizable=resizable,
-            format=format,
-            type=type,
             mipmap=False,
             wrap=wrap,
             min_filter=min_filter,
             mag_filter=mag_filter,
         )
 
-    def resize(
+    # =================================== #
+    # Properties
+    # =================================== #
+
+    @property
+    def id(
+        self,
+    ) -> int:
+        return self._id
+
+    @property
+    def target(
+        self,
+    ) -> int:
+        return self._target
+
+    @property
+    def size(
+        self,
+    ) -> tuple[int, int]:
+        return self._size
+
+    @property
+    def width(
+        self,
+    ) -> int:
+        return self._size[0]
+
+    @property
+    def height(
+        self,
+    ) -> int:
+        return self._size[1]
+
+    @property
+    def resizable(
+        self,
+    ) -> bool:
+        return self._resizable
+
+    @property
+    def format(
+        self,
+    ) -> int:
+        return self._format
+
+    @property
+    def type(
+        self,
+    ) -> int:
+        return self._type
+
+    @property
+    def mipmap(
+        self,
+    ) -> bool:
+        return self._mipmap
+
+    @property
+    def wrap(
+        self,
+    ) -> TextureWrap:
+        return self._wrap
+
+    @property
+    def min_filter(
+        self,
+    ) -> TextureMinFilter:
+        return self._min_filter
+
+    @property
+    def mag_filter(
+        self,
+    ) -> TextureMagFilter:
+        return self._mag_filter
+
+    # =================================== #
+    # Mutators
+    # =================================== #
+
+    def set_size(
         self,
         size: int | tuple[int, int],
-        *,
-        format: int | None = None,
-        type: int | None = None,
     ) -> None:
         self.require_alive()
 
-        if not self.resizable:
+        if not self._resizable:
             raise RuntimeError(
                 "TextureCube is not resizable."
             )
@@ -1109,66 +1466,387 @@ class TextureCube:
                 f"TextureCube size must be square, got {width}x{height}."
             )
 
-        if self.size == (width, height):
+        if self._size == (width, height):
             return
 
-        format = self.format if format is None else format
-        type = self.type if type is None else type
-
-        GL.bind_texture(
-            self.target,
-            self.id,
-        )
-
-        pixels = TextureUtility.create_empty_pixels(
+        TextureUtility.validate_raw_options(
             width=width,
             height=height,
-            format=format,
-            type=type,
+            mipmap=self._mipmap,
+            wrap=self._wrap,
         )
 
-        for target in CUBE_FACE_TARGETS:
-            TextureUtility.upload_tex_image_2d(
-                target=target,
+        GL.bind_texture(
+            self._target,
+            self._id,
+        )
+
+        try:
+            pixels = TextureUtility.create_empty_pixels(
                 width=width,
                 height=height,
-                pixels=pixels,
-                format=format,
-                type=type,
+                format=GL.RGBA,
+                type=GL.UNSIGNED_BYTE,
             )
 
-        TextureUtility.configure_cube(
-            wrap=self.wrap,
-            min_filter=self.min_filter,
-            mag_filter=self.mag_filter,
+            for target in CUBE_FACE_TARGETS:
+                TextureUtility.upload_tex_image_2d(
+                    target=target,
+                    width=width,
+                    height=height,
+                    pixels=pixels,
+                    format=GL.RGBA,
+                    type=GL.UNSIGNED_BYTE,
+                )
+
+            TextureUtility.configure_cube(
+                wrap=self._wrap,
+                min_filter=self._min_filter,
+                mag_filter=self._mag_filter,
+            )
+
+            if self._mipmap:
+                GL.generate_mipmap(
+                    self._target,
+                )
+
+        finally:
+            GL.unbind_texture(
+                self._target,
+            )
+
+        self._size = (width, height)
+
+    def set_images(
+        self,
+        *,
+        right: Image,
+        left: Image,
+        top: Image,
+        bottom: Image,
+        front: Image,
+        back: Image,
+        labels: tuple[object, object, object, object, object, object] | None = None,
+    ) -> None:
+        faces = (
+            (GL.CUBE_POSITIVE_X, right),
+            (GL.CUBE_NEGATIVE_X, left),
+            (GL.CUBE_POSITIVE_Y, top),
+            (GL.CUBE_NEGATIVE_Y, bottom),
+            (GL.CUBE_POSITIVE_Z, front),
+            (GL.CUBE_NEGATIVE_Z, back),
         )
 
-        GL.unbind_texture(
-            self.target,
+        face_labels = labels or (
+            "right",
+            "left",
+            "top",
+            "bottom",
+            "front",
+            "back",
         )
 
-        self.size = (width, height)
-        self.format = format
-        self.type = type
+        size = self._validate_images(
+            faces=faces,
+            labels=face_labels,
+            mipmap=self._mipmap,
+            wrap=self._wrap,
+        )
+
+        if size != self._size and not self._resizable:
+            raise RuntimeError(
+                "TextureCube is not resizable."
+            )
+
+        GL.bind_texture(
+            self._target,
+            self._id,
+        )
+
+        try:
+            for target, image in faces:
+                TextureUtility.upload_tex_image_2d(
+                    target=target,
+                    width=image.width,
+                    height=image.height,
+                    pixels=image.pixels,
+                    format=GL.RGBA,
+                    type=GL.UNSIGNED_BYTE,
+                )
+
+            TextureUtility.configure_cube(
+                wrap=self._wrap,
+                min_filter=self._min_filter,
+                mag_filter=self._mag_filter,
+            )
+
+            if self._mipmap:
+                GL.generate_mipmap(
+                    self._target,
+                )
+
+        finally:
+            GL.unbind_texture(
+                self._target,
+            )
+
+        self._size = size
+
+    def set_pixels(
+        self,
+        *,
+        right: bytes | memoryview,
+        left: bytes | memoryview,
+        top: bytes | memoryview,
+        bottom: bytes | memoryview,
+        front: bytes | memoryview,
+        back: bytes | memoryview,
+        size: int | tuple[int, int] | None = None,
+    ) -> None:
+        width, height = (
+            self._size
+            if size is None
+            else normalize_size(size)
+        )
+
+        if width != height:
+            raise ValueError(
+                f"TextureCube size must be square, got {width}x{height}."
+            )
+
+        if (width, height) != self._size and not self._resizable:
+            raise RuntimeError(
+                "TextureCube is not resizable."
+            )
+
+        TextureUtility.validate_raw_options(
+            width=width,
+            height=height,
+            mipmap=self._mipmap,
+            wrap=self._wrap,
+        )
+
+        faces = (
+            (GL.CUBE_POSITIVE_X, right),
+            (GL.CUBE_NEGATIVE_X, left),
+            (GL.CUBE_POSITIVE_Y, top),
+            (GL.CUBE_NEGATIVE_Y, bottom),
+            (GL.CUBE_POSITIVE_Z, front),
+            (GL.CUBE_NEGATIVE_Z, back),
+        )
+
+        for _, pixels in faces:
+            self._validate_pixel_size(
+                pixels=pixels,
+                width=width,
+                height=height,
+            )
+
+        GL.bind_texture(
+            self._target,
+            self._id,
+        )
+
+        try:
+            for target, pixels in faces:
+                TextureUtility.upload_tex_image_2d(
+                    target=target,
+                    width=width,
+                    height=height,
+                    pixels=pixels,
+                    format=GL.RGBA,
+                    type=GL.UNSIGNED_BYTE,
+                )
+
+            TextureUtility.configure_cube(
+                wrap=self._wrap,
+                min_filter=self._min_filter,
+                mag_filter=self._mag_filter,
+            )
+
+            if self._mipmap:
+                GL.generate_mipmap(
+                    self._target,
+                )
+
+        finally:
+            GL.unbind_texture(
+                self._target,
+            )
+
+        self._size = (width, height)
+
+    def set_wrap(
+        self,
+        wrap: TextureWrap,
+    ) -> None:
+        self.require_alive()
+
+        width, height = self._size
+
+        TextureUtility.validate_raw_options(
+            width=width,
+            height=height,
+            mipmap=self._mipmap,
+            wrap=wrap,
+        )
+
+        GL.bind_texture(
+            self._target,
+            self._id,
+        )
+
+        try:
+            wrap_value = WRAP_MODES[wrap]
+
+            GL.tex_parameteri(
+                self._target,
+                GL.TEXTURE_WRAP_S,
+                wrap_value,
+            )
+            GL.tex_parameteri(
+                self._target,
+                GL.TEXTURE_WRAP_T,
+                wrap_value,
+            )
+            GL.tex_parameteri(
+                self._target,
+                GL.TEXTURE_WRAP_R,
+                wrap_value,
+            )
+
+        finally:
+            GL.unbind_texture(
+                self._target,
+            )
+
+        self._wrap = wrap
+
+    def set_filter(
+        self,
+        *,
+        min_filter: TextureMinFilter | None = None,
+        mag_filter: TextureMagFilter | None = None,
+    ) -> None:
+        self.require_alive()
+
+        resolved_min_filter: TextureMinFilter = (
+            self._min_filter
+            if min_filter is None
+            else min_filter
+        )
+
+        resolved_mag_filter: TextureMagFilter = (
+            self._mag_filter
+            if mag_filter is None
+            else mag_filter
+        )
+
+        if resolved_min_filter in MIPMAP_FILTERS and not self._mipmap:
+            raise ValueError(
+                f"min_filter={resolved_min_filter!r} requires mipmap=True."
+            )
+
+        GL.bind_texture(
+            self._target,
+            self._id,
+        )
+
+        try:
+            GL.tex_parameteri(
+                self._target,
+                GL.TEXTURE_MIN_FILTER,
+                FILTER_MODES[resolved_min_filter],
+            )
+            GL.tex_parameteri(
+                self._target,
+                GL.TEXTURE_MAG_FILTER,
+                FILTER_MODES[resolved_mag_filter],
+            )
+
+        finally:
+            GL.unbind_texture(
+                self._target,
+            )
+
+        self._min_filter = resolved_min_filter
+        self._mag_filter = resolved_mag_filter
+
+    def set_mipmap(
+        self,
+        enabled: bool,
+    ) -> None:
+        self.require_alive()
+
+        if self._mipmap == enabled:
+            return
+
+        if enabled:
+            width, height = self._size
+
+            TextureUtility.validate_raw_options(
+                width=width,
+                height=height,
+                mipmap=True,
+                wrap=self._wrap,
+            )
+
+            GL.bind_texture(
+                self._target,
+                self._id,
+            )
+
+            try:
+                GL.generate_mipmap(
+                    self._target,
+                )
+            finally:
+                GL.unbind_texture(
+                    self._target,
+                )
+
+            self._mipmap = True
+
+            if self._min_filter not in MIPMAP_FILTERS:
+                self.set_filter(
+                    min_filter="linear_mipmap_linear",
+                )
+
+            return
+
+        if self._min_filter in MIPMAP_FILTERS:
+            self.set_filter(
+                min_filter="linear",
+            )
+
+        self._mipmap = False
+
+    # =================================== #
+    # Delete
+    # =================================== #
 
     def delete(
         self,
     ) -> None:
-        if self.id == 0:
+        if self._id == 0:
             return
 
         GL.delete_texture(
-            self.id,
+            self._id,
         )
-        self.id = 0
+        self._id = 0
 
     def require_alive(
         self,
     ) -> None:
-        if self.id == 0:
+        if self._id == 0:
             raise RuntimeError(
                 f"{type(self).__name__} has been deleted."
             )
+
+    # =================================== #
+    # Bind
+    # =================================== #
 
     def bind(
         self,
@@ -1176,15 +1854,15 @@ class TextureCube:
         self.require_alive()
 
         GL.bind_texture(
-            self.target,
-            self.id,
+            self._target,
+            self._id,
         )
 
     def unbind(
         self,
     ) -> None:
         GL.unbind_texture(
-            self.target,
+            self._target,
         )
 
     def bind_to(
@@ -1208,3 +1886,83 @@ class TextureCube:
         )
 
         self.unbind()
+
+    # =================================== #
+    # Utility
+    # =================================== #
+
+    @staticmethod
+    def _validate_images(
+        *,
+        faces: tuple[
+            tuple[int, Image],
+            tuple[int, Image],
+            tuple[int, Image],
+            tuple[int, Image],
+            tuple[int, Image],
+            tuple[int, Image],
+        ],
+        labels: tuple[object, object, object, object, object, object],
+        mipmap: bool,
+        wrap: TextureWrap,
+    ) -> tuple[int, int]:
+        expected_size: tuple[int, int] | None = None
+
+        for index, (_, image) in enumerate(faces):
+            label = labels[index]
+
+            if image.channels != 4:
+                raise ValueError(
+                    f"Cubemap face {label!r} expects 4 channels, "
+                    f"got {image.channels}."
+                )
+
+            width = image.width
+            height = image.height
+
+            if width != height:
+                raise ValueError(
+                    f"Cubemap face must be square: "
+                    f"{label!r} has size {width}x{height}."
+                )
+
+            TextureUtility.validate_raw_options(
+                width=width,
+                height=height,
+                mipmap=mipmap,
+                wrap=wrap,
+            )
+
+            if expected_size is None:
+                expected_size = image.size
+                continue
+
+            if image.size != expected_size:
+                raise ValueError(
+                    "All cubemap faces must have the same size. "
+                    f"Expected {expected_size}, "
+                    f"got {image.size} for {label!r}."
+                )
+
+        if expected_size is None:
+            raise RuntimeError(
+                "Cubemap validation failed: no faces were provided."
+            )
+
+        return expected_size
+
+    @staticmethod
+    def _validate_pixel_size(
+        *,
+        pixels: bytes | memoryview,
+        width: int,
+        height: int,
+    ) -> None:
+        expected = width * height * 4
+        actual = len(pixels)
+
+        if actual != expected:
+            raise ValueError(
+                f"Pixel data size mismatch. Expected {expected} bytes "
+                f"for RGBA cubemap face size {(width, height)!r}, got {actual} bytes."
+            )

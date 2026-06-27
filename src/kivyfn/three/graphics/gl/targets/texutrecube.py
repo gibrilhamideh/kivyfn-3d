@@ -84,12 +84,16 @@ class TextureCubeTarget(BaseTargetContext):
                 f"TextureCubeTarget size {(width, height)!r}."
             )
 
-        self.texture = texture
-        self.attach_as = attach_as
+        self._texture = texture
+        self._attach_as = attach_as
 
-        self.size = (width, height)
-        self.width = width
-        self.height = height
+        self._size = (width, height)
+        self._width = width
+        self._height = height
+
+
+        self._with_depthbuffer = with_depthbuffer
+        self._with_stencilbuffer = with_stencilbuffer
 
         self.clear_color = clear_color
         self.clear_color_buffer = clear_color_buffer
@@ -98,8 +102,6 @@ class TextureCubeTarget(BaseTargetContext):
 
         self.depth_test = depth_test
         self.push_viewport = push_viewport
-        self.with_depthbuffer = with_depthbuffer
-        self.with_stencilbuffer = with_stencilbuffer
 
         self._faces: dict[CubeFaceName, TextureCubeFace] = {}
 
@@ -301,7 +303,6 @@ class TextureCubeTarget(BaseTargetContext):
     # =================================== #
     # Read
     # =================================== #
-
     def read_face_pixels(
         self,
         face_name: CubeFaceName,
@@ -313,16 +314,18 @@ class TextureCubeTarget(BaseTargetContext):
         format: int = GL.RGBA,
         type: int = GL.UNSIGNED_BYTE,
     ) -> Any:
-        should_release = False
-
-        if self._bound_face is None:
-            self.bind_face(face_name)
-            should_release = True
-        elif self._bound_face != face_name:
+        if self._bound_face is not None and self._bound_face != face_name:
             raise RuntimeError(
                 f"Cannot read face {face_name!r}; "
                 f"currently bound face is {self._bound_face!r}."
             )
+
+        face = self._faces[face_name]
+
+        previous_framebuffer = GL.get_int(GL.FRAMEBUFFER_BINDING)
+        previous_renderbuffer = GL.get_int(GL.RENDERBUFFER_BINDING)
+
+        GL.bind_framebuffer(face.framebuffer_id)
 
         try:
             return GL.read_pixels(
@@ -334,8 +337,8 @@ class TextureCubeTarget(BaseTargetContext):
                 type=type,
             )
         finally:
-            if should_release:
-                self.release_face(face_name)
+            GL.bind_renderbuffer(previous_renderbuffer)
+            GL.bind_framebuffer(previous_framebuffer)
 
     # =================================== #
     # Resize
@@ -361,9 +364,9 @@ class TextureCubeTarget(BaseTargetContext):
 
         self.delete_resources()
 
-        self.size = (width, height)
-        self.width = width
-        self.height = height
+        self._size = (width, height)
+        self._width = width
+        self._height = height
 
         self.create_framebuffers()
         self.build(self.create_render_frames())
@@ -427,5 +430,34 @@ class TextureCubeTarget(BaseTargetContext):
 
         view_mat = view.get_view_matrix(mode="cube", face=face).to_uniform()
         self.apply_uniform("view_mat", view_mat)
+
+
+    @property
+    def texture(self) -> TextureCube:
+        return self._texture
+
+    @property
+    def attach_as(self) -> str:
+        return self._attach_as
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return self._size
+
+    @property
+    def width(self) -> int:
+        return self._width
+
+    @property
+    def height(self) -> int:
+        return self._height
+
+    @property
+    def with_depthbuffer(self) -> bool:
+        return self._with_depthbuffer
+
+    @property
+    def with_stencilbuffer(self) -> bool:
+        return self._with_stencilbuffer
 
 

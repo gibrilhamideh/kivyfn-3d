@@ -45,23 +45,25 @@ class Texture2DTarget(BaseTargetContext):
                 f"Fbo2D size {(width, height)!r}."
             )
 
-        self.texture = texture
-        self.attach_as = attach_as
+        self._texture = texture
+        self._attach_as = attach_as
 
-        self.size = (width, height)
-        self.width = width
-        self.height = height
+        self._size = (width, height)
+        self._width = width
+        self._height = height
+
+
+        self._with_depthbuffer = with_depthbuffer
+        self._with_stencilbuffer = with_stencilbuffer
 
         self.clear_color = clear_color
         self.clear_color_buffer = clear_color_buffer
         self.clear_depth_buffer = clear_depth_buffer
         self.clear_stencil_buffer = clear_stencil_buffer
 
-        self.push_viewport = push_viewport
-        self.with_depthbuffer = with_depthbuffer
-        self.with_stencilbuffer = with_stencilbuffer
-
         self.depth_test = depth_test
+        self.push_viewport = push_viewport
+
         self.framebuffer_id = 0
         self.depthbuffer_id = 0
         self.stencilbuffer_id = 0
@@ -236,11 +238,10 @@ class Texture2DTarget(BaseTargetContext):
         format: int = GL.RGBA,
         type: int = GL.UNSIGNED_BYTE,
     ) -> Any:
-        should_release = False
+        previous_framebuffer = GL.get_int(GL.FRAMEBUFFER_BINDING)
+        previous_renderbuffer = GL.get_int(GL.RENDERBUFFER_BINDING)
 
-        if not self._bound:
-            self.bind()
-            should_release = True
+        GL.bind_framebuffer(self.framebuffer_id)
 
         try:
             return GL.read_pixels(
@@ -252,8 +253,8 @@ class Texture2DTarget(BaseTargetContext):
                 type=type,
             )
         finally:
-            if should_release:
-                self.release()
+            GL.bind_renderbuffer(previous_renderbuffer)
+            GL.bind_framebuffer(previous_framebuffer)
 
     def get_pixel_color(
         self,
@@ -291,9 +292,9 @@ class Texture2DTarget(BaseTargetContext):
 
         self.delete_resources()
 
-        self.size = (width, height)
-        self.width = width
-        self.height = height
+        self._size = (width, height)
+        self._width = width
+        self._height = height
 
         self.create_framebuffer()
         self.ask_update()
@@ -343,6 +344,36 @@ class Texture2DTarget(BaseTargetContext):
         self.apply_uniform("camera_position", camera_position)
 
         self.ask_update()
+
+
+    @property
+    def texture(self) -> Texture2D:
+        return self._texture
+
+    @property
+    def attach_as(self) -> str:
+        return self._attach_as
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return self._size
+
+    @property
+    def width(self) -> int:
+        return self._width
+
+    @property
+    def height(self) -> int:
+        return self._height
+
+    @property
+    def with_depthbuffer(self) -> bool:
+        return self._with_depthbuffer
+
+    @property
+    def with_stencilbuffer(self) -> bool:
+        return self._with_stencilbuffer
+
 
 
 

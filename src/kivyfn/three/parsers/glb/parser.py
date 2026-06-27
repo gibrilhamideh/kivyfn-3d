@@ -7,13 +7,12 @@ import os
 import xxhash
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
 import numpy as np
 from pygltflib import GLTF2
 
 from kivyfn.three.parsers.glb.blueprint import GlbBlueprint, GlbAsset
-from kivyfn.three.graphics.gl.texture import Texture2D
 from kivyfn.three.math.matrix import Matrix3
 from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.quaternion import Quaternion
@@ -21,6 +20,12 @@ from kivyfn.three.math.transform import Transform
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.assets.geometry import Geometry, GeometryBounds
 from kivyfn.three.assets.material import Material
+from kivyfn.three.graphics.gl.texture import (
+    Texture2D,
+    TextureWrap,
+    TextureMinFilter,
+    TextureMagFilter,
+)
 
 @dataclass(slots=True)
 class GlbNode:
@@ -149,7 +154,7 @@ class GlbParser:
         "MAT4": 16,
     }
 
-    _SAMPLER_MIN_FILTER_MAP: ClassVar[dict[int, str]] = {
+    _SAMPLER_MIN_FILTER_MAP: ClassVar[dict[int, TextureMinFilter]] = {
         9728: "nearest",
         9729: "linear",
         9984: "nearest_mipmap_nearest",
@@ -158,12 +163,12 @@ class GlbParser:
         9987: "linear_mipmap_linear",
     }
 
-    _SAMPLER_MAG_FILTER_MAP: ClassVar[dict[int, str]] = {
+    _SAMPLER_MAG_FILTER_MAP: ClassVar[dict[int, TextureMagFilter]] = {
         9728: "nearest",
         9729: "linear",
     }
 
-    _SAMPLER_WRAP_MAP: ClassVar[dict[int, str]] = {
+    _SAMPLER_WRAP_MAP: ClassVar[dict[int, TextureWrap]] = {
         33071: "clamp_to_edge",
         33648: "mirrored_repeat",
         10497: "repeat",
@@ -689,16 +694,11 @@ class GlbParser:
 
         texture = Texture2D.from_bytes(
             image_bytes,
-            ext=extension,
             mipmap=True,
             wrap="repeat",
             min_filter="linear_mipmap_linear",
             mag_filter="linear",
         )
-
-        texture.min_filter = "linear_mipmap_linear"
-        texture.mag_filter = "linear"
-        texture.wrap = "repeat"
 
         self._image_texture_cache[key] = texture
 
@@ -794,43 +794,68 @@ class GlbParser:
         sampler = self._gltf.samplers[sampler_index]
 
         min_filter = self._sampler_min_filter_to_kivy(
-            getattr(sampler, "minFilter", None)
+            getattr(
+                sampler,
+                "minFilter",
+                None,
+            )
         )
 
         mag_filter = self._sampler_mag_filter_to_kivy(
-            getattr(sampler, "magFilter", None)
+            getattr(
+                sampler,
+                "magFilter",
+                None,
+            )
         )
 
         wrap_s = self._sampler_wrap_to_kivy(
-            getattr(sampler, "wrapS", None)
+            getattr(
+                sampler,
+                "wrapS",
+                None,
+            )
         )
 
         wrap_t = self._sampler_wrap_to_kivy(
-            getattr(sampler, "wrapT", None)
+            getattr(
+                sampler,
+                "wrapT",
+                None,
+            )
         )
 
-        texture_options = cast(Any, texture)
-
-        if min_filter is not None:
-            texture_options.min_filter = min_filter
-
-        if mag_filter is not None:
-            texture_options.mag_filter = mag_filter
+        if min_filter is not None or mag_filter is not None:
+            texture.set_filter(
+                min_filter=min_filter,
+                mag_filter=mag_filter,
+            )
 
         if wrap_s is not None and wrap_t is not None:
             if wrap_s == wrap_t:
-                texture_options.wrap = wrap_s
+                texture.set_wrap(
+                    wrap_s,
+                )
+
+            else:
+                texture.set_wrap(
+                    wrap_s,
+                )
 
         elif wrap_s is not None:
-            texture_options.wrap = wrap_s
+            texture.set_wrap(
+                wrap_s,
+            )
 
         elif wrap_t is not None:
-            texture_options.wrap = wrap_t
+            texture.set_wrap(
+                wrap_t,
+            )
 
     def _sampler_min_filter_to_kivy(
         self,
         value: int | None,
-    ) -> str | None:
+    ) -> TextureMinFilter | None:
         if value is None:
             return None
 
@@ -839,7 +864,7 @@ class GlbParser:
     def _sampler_mag_filter_to_kivy(
         self,
         value: int | None,
-    ) -> str | None:
+    ) -> TextureMagFilter | None:
         if value is None:
             return None
 
@@ -848,7 +873,7 @@ class GlbParser:
     def _sampler_wrap_to_kivy(
         self,
         value: int | None,
-    ) -> str | None:
+    ) -> TextureWrap | None:
         if value is None:
             return None
 
