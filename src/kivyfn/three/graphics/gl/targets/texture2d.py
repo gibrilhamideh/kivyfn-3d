@@ -97,6 +97,14 @@ class Texture2DTarget(BaseTargetContext):
         GL.bind_framebuffer(self.framebuffer_id)
 
         if self.push_viewport:
+            self.viewport.override(
+                x=0,
+                y=0,
+                width=self.width,
+                height=self.height
+            )
+
+        else:
             self.viewport.apply()
 
         if self.depth_test:
@@ -115,8 +123,7 @@ class Texture2DTarget(BaseTargetContext):
         if self.depth_test:
             self.disable_depthtest()
 
-        if self.push_viewport:
-            self.viewport.restore()
+        self.viewport.restore()
 
         GL.bind_framebuffer(self._previous_framebuffer)
         GL.bind_renderbuffer(self._previous_renderbuffer)

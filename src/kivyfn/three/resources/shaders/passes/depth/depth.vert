@@ -1,3 +1,4 @@
+// kivyfn/three/resources/3d/shaders/passes/depth/depth.vert
 #ifdef GL_ES
 precision highp float;
 #endif

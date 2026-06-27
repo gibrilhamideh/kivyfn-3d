@@ -18,6 +18,10 @@ from kivyfn.three.views.rect import ViewRect
 
 
 class ViewportBase(EventDispatcher):
+    __events__ = (
+        "on_dirty",
+    )
+
     x: float = NumericProperty(0.0)
     y: float = NumericProperty(0.0)
     width: float = NumericProperty(1.0)
@@ -32,6 +36,19 @@ class ViewportBase(EventDispatcher):
         width,
         height,
     )
+
+    def __init__(
+        self,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+
+        self.bind(
+            x=self._mark_dirty,
+            y=self._mark_dirty,
+            width=self._mark_dirty,
+            height=self._mark_dirty,
+        )
 
     @property
     def rect(self) -> ViewRect:
@@ -54,6 +71,17 @@ class ViewportBase(EventDispatcher):
         ),
     )
 
+    def _mark_dirty(
+        self,
+        *_: Any,
+    ) -> None:
+        self.dispatch("on_dirty")
+
+    def on_dirty(
+        self,
+    ) -> None:
+        pass
+
 class Viewport(ViewportBase):
 
     local_viewport: LocalViewport = ObjectProperty()
@@ -67,9 +95,6 @@ class Viewport(ViewportBase):
         ],
     )
 
-    __events__ = (
-        "on_dirty",
-    )
 
     def __init__(
         self,
@@ -86,13 +111,6 @@ class Viewport(ViewportBase):
         self.source = source
 
         self._previous_size: tuple[int, int, int, int] | None = None
-
-        self.bind(
-            x=self._mark_dirty,
-            y=self._mark_dirty,
-            width=self._mark_dirty,
-            height=self._mark_dirty,
-        )
 
         self.bind(
             source=self._sync,
@@ -170,6 +188,36 @@ class Viewport(ViewportBase):
             int(self.height),
         )
 
+    def override(
+        self,
+        *,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+    ) -> None:
+        if width <= 0 or height <= 0:
+            raise RuntimeError(
+                "Cannot override GL viewport because "
+                f"viewport size is invalid: {width}x{height}."
+            )
+
+        previous = glGetIntegerv(GL_VIEWPORT)
+
+        self._previous_size = (
+            int(previous[0]),
+            int(previous[1]),
+            int(previous[2]),
+            int(previous[3]),
+        )
+
+        glViewport(
+            int(x),
+            int(y),
+            int(width),
+            int(height),
+        )
+
     def restore(
         self,
         *_: Any,
@@ -187,22 +235,6 @@ class Viewport(ViewportBase):
         )
 
         self._previous_size = None
-
-    # =================================== #
-    # Events
-    # =================================== #
-
-    def _mark_dirty(
-        self,
-        *_: Any,
-    ) -> None:
-        self.dispatch("on_dirty")
-
-    def on_dirty(
-        self,
-    ) -> None:
-        pass
-
 
 
 

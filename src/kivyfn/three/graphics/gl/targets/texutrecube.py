@@ -230,7 +230,16 @@ class TextureCubeTarget(BaseTargetContext):
         GL.bind_framebuffer(face.framebuffer_id)
 
         if self.push_viewport:
+            self.viewport.override(
+                x=0,
+                y=0,
+                width=self.width,
+                height=self.height
+            )
+
+        else:
             self.viewport.apply()
+
 
         if self.depth_test:
             self.enable_depthtest()
@@ -252,8 +261,7 @@ class TextureCubeTarget(BaseTargetContext):
         if self.depth_test:
             self.disable_depthtest()
 
-        if self.push_viewport:
-            self.viewport.restore()
+        self.viewport.restore()
 
         GL.bind_framebuffer(self._previous_framebuffer)
         GL.bind_renderbuffer(self._previous_renderbuffer)

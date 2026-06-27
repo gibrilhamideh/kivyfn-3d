@@ -230,7 +230,12 @@ class LightManager(EventDispatcher):
 
             if shadow_stage.is_texture_cube:
                 shadow_stage.view.position = light.world_position
-                self.sync_shadow_uniforms(light)
+
+                shadow_stage.target.sync_view()
+
+                self.sync_shadow_uniforms(
+                    light,
+                )
                 continue
 
             if shadow_stage.is_texture_2d:
@@ -242,11 +247,16 @@ class LightManager(EventDispatcher):
                     target=target,
                 )
 
-                self.sync_shadow_uniforms(light)
+                shadow_stage.target.sync_view()
+
+                self.sync_shadow_uniforms(
+                    light,
+                )
                 continue
 
             raise TypeError(
-                f"Shadow stage {stage_name!r} is not a texture shadow stage.")
+                f"Shadow stage {stage_name!r} is not a texture shadow stage."
+            )
 
     # =================================== #
     # Sync Visibility
@@ -414,7 +424,7 @@ class LightManager(EventDispatcher):
             push_viewport=True,
             with_depthbuffer=True,
             with_stencilbuffer=False,
-            clear_color=(0.0, 0.0, 0.0, 0.0),
+            clear_color=(1.0, 1.0, 1.0, 1.0),
             clear_color_buffer=True,
             clear_depth_buffer=True,
             clear_stencil_buffer=False,
@@ -463,7 +473,7 @@ class LightManager(EventDispatcher):
             push_viewport=True,
             with_depthbuffer=True,
             with_stencilbuffer=False,
-            clear_color=(0.0, 0.0, 0.0, 0.0),
+            clear_color=(1.0, 1.0, 1.0, 1.0),
             clear_color_buffer=True,
             clear_depth_buffer=True,
             clear_stencil_buffer=False,
