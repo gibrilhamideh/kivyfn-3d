@@ -134,6 +134,8 @@ class RenderStageManager:
             view=view,
             viewport=viewport,
             depth_test=depth_test,
+            vs=shader.vertex_source,
+            fs=shader.fragment_source,
         )
 
         stage = RenderStage(
@@ -215,6 +217,8 @@ class RenderStageManager:
             push_viewport=push_viewport,
             with_depthbuffer=with_depthbuffer,
             with_stencilbuffer=with_stencilbuffer,
+            vs=shader.vertex_source,
+            fs=shader.fragment_source,
         )
 
         stage = RenderStage(
@@ -301,6 +305,8 @@ class RenderStageManager:
             push_viewport=push_viewport,
             with_depthbuffer=with_depthbuffer,
             with_stencilbuffer=with_stencilbuffer,
+            vs=shader.vertex_source,
+            fs=shader.fragment_source,
         )
 
         stage = RenderStage(

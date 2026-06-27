@@ -283,6 +283,7 @@ class GL:
     ) -> None:
         glActiveTexture(GL_TEXTURE0 + slot)
         glBindTexture(target, id)
+        glActiveTexture(GL_TEXTURE0)
 
     @classmethod
     def create_texture(

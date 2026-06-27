@@ -266,17 +266,17 @@ class Material(EventDispatcher):
             "emissive_factor": list(self.emissive_factor),
             "base_color": list(self.base_color),
 
-            "use_base_color_texture": self.base_color_texture is not None,
-            "use_normal_texture": self.normal_texture is not None,
-            "use_emissive_texture": self.emissive_texture is not None,
-            "use_occlusion_texture": self.occlusion_texture is not None,
-            "use_metallic_roughness_texture": (
+            "use_base_color_texture": int(self.base_color_texture is not None),
+            "use_normal_texture": int(self.normal_texture is not None),
+            "use_emissive_texture": int(self.emissive_texture is not None),
+            "use_occlusion_texture": int(self.occlusion_texture is not None),
+            "use_metallic_roughness_texture": int(
                 self.metallic_roughness_texture is not None
             ),
-            "use_roughness_texture": self.roughness_texture is not None,
-            "use_metallic_texture": self.metallic_texture is not None,
-            "use_specular_texture": self.specular_texture is not None,
-            "use_displacement_texture": self.displacement_texture is not None,
+            "use_roughness_texture": int(self.roughness_texture is not None),
+            "use_metallic_texture": int(self.metallic_texture is not None),
+            "use_specular_texture": int(self.specular_texture is not None),
+            "use_displacement_texture": int(self.displacement_texture is not None),
 
             **self._custom,
         }

@@ -10,19 +10,20 @@ from kivy.graphics import (
     InstructionGroup,
     Mesh,
 )
+
 from kivyfn.three.assets.geometry import Geometry
 from kivyfn.three.assets.material import Material
 from kivyfn.three.assets.object3d import Object3D
-from kivyfn.three.math.matrix import Matrix3, Matrix4
-from kivyfn.three.graphics.gl.bind import BindTexture
-from kivyfn.three.render.stage import RenderStage
-from kivyfn.three.render.config import TEXTURE_SLOTS
-from kivyfn.three.render.callbacks import (
-    MaterialCallback,
-    ObjectIdCallback,
-    TransformCallback,
-    GeometryCallback,
+from kivyfn.three.graphics.gl.context import (
+    BindGeometry,
+    BindMaterial,
+    BindObjectId,
+    BindTexture,
+    BindTransform,
 )
+from kivyfn.three.math.matrix import Matrix3, Matrix4
+from kivyfn.three.render.config import TEXTURE_SLOTS
+from kivyfn.three.render.stage import RenderStage
 
 
 class RenderInstanceManager(EventDispatcher):
@@ -357,26 +358,21 @@ class RenderInstance(EventDispatcher):
         self.visible = True
 
         self.group = InstructionGroup()
-        self.texture_group = InstructionGroup()
-        self.render_group = InstructionGroup()
 
+        self.texture_group = InstructionGroup()
         self.texture_binders: dict[str, BindTexture] = {}
 
-        self.transform_callback = TransformCallback(
-            stage=stage,
-        )
+        self.bind_transform = BindTransform()
 
-        self.geometry_callback = GeometryCallback(
-            stage=stage,
+        self.bind_geometry = BindGeometry(
             has_tangents=geometry.has_tangents,
         )
 
-        self.material_callback = MaterialCallback(
-            stage=stage,
+        self.bind_material = BindMaterial(
             material=material,
         )
 
-        self.object_id_callback: ObjectIdCallback | None = None
+        self.bind_object_id: BindObjectId | None = None
 
         if stage.use_render_id:
             if render_id is None:
@@ -384,10 +380,11 @@ class RenderInstance(EventDispatcher):
                     f"Render stage {stage.name!r} requires render_id."
                 )
 
-            target = stage.require_target("render-pass")
+            target = stage.require_target(
+                "render-pass",
+            )
 
-            self.object_id_callback = ObjectIdCallback(
-                stage=stage,
+            self.bind_object_id = BindObjectId(
                 render_id=render_id,
                 uniform=target.attach_as,
             )
@@ -397,66 +394,67 @@ class RenderInstance(EventDispatcher):
             indices=geometry.indices,
             fmt=geometry.fmt,
             mode=geometry.mode,
-            texture=geometry.texture,
         )
 
-        self.rebuild()
+        self.instructions = []
+
+        self.sync_textures(
+            rebuild=False,
+        )
         self.sync_uniforms()
-        self.sync_textures()
+        self.rebuild()
 
     # =================================== #
     # Build
     # =================================== #
 
+    def build_instructions(
+        self,
+    ) -> list:
+        instructions = [
+            self.bind_transform,
+            self.bind_geometry,
+        ]
+
+        if self.stage.use_material:
+            instructions.append(
+                self.bind_material,
+            )
+
+        if self.bind_object_id is not None:
+            instructions.append(
+                self.bind_object_id,
+            )
+
+        if self.stage.use_textures:
+            instructions.append(
+                self.texture_group,
+            )
+
+        instructions.append(
+            self.mesh,
+        )
+
+        return instructions
+
     def rebuild(
         self,
     ) -> None:
         self.group.clear()
-        self.texture_group.clear()
-        self.render_group.clear()
+        self.instructions.clear()
 
         if not self.visible:
             return
 
-        self.build_texture_group()
-        self.build_render_group()
-
-        self.group.add(self.texture_group)
-        self.group.add(self.render_group)
-
-    def build_texture_group(
-        self,
-    ) -> None:
-        if not self.stage.use_textures:
-            return
-
-        for binder in self.texture_binders.values():
-            self.texture_group.add(binder)
-
-    def build_render_group(
-        self,
-    ) -> None:
-        self.render_group.add(
-            self.transform_callback,
+        self.instructions.extend(
+            self.build_instructions(),
         )
 
-        self.render_group.add(
-            self.geometry_callback,
-        )
-
-        if self.stage.use_material:
-            self.render_group.add(
-                self.material_callback,
-            )
-
-        if self.object_id_callback is not None:
-            self.render_group.add(
-                self.object_id_callback,
-            )
-
-        self.render_group.add(
-            self.mesh,
-        )
+        for instruction in self.instructions:
+            if instruction is not None:
+                self.group.add(
+                    instruction,
+                )
 
     # =================================== #
     # Sync
@@ -467,7 +465,7 @@ class RenderInstance(EventDispatcher):
         model_mat: Matrix4,
         normal_mat: Matrix3,
     ) -> None:
-        self.transform_callback.sync(
+        self.bind_transform.sync(
             model_mat=model_mat,
             normal_mat=normal_mat,
         )
@@ -477,72 +475,97 @@ class RenderInstance(EventDispatcher):
         *_,
     ) -> None:
         if self.stage.use_material:
-            self.material_callback.ask_update()
+            self.bind_material.sync(
+                material=self.material,
+            )
 
-        if self.object_id_callback is not None:
-            self.object_id_callback.ask_update()
+        if self.bind_object_id is not None:
+            self.bind_object_id.sync()
 
     def sync_textures(
         self,
         *_,
+        rebuild: bool = True,
     ) -> None:
+        _ = rebuild
+
         if not self.stage.use_textures:
-            self.clear_texture_binders()
+            self.clear_texture_binders(
+                rebuild=False,
+            )
             return
 
-        changed = False
+        textures = self.material.textures
 
         for name, slot in TEXTURE_SLOTS.items():
-            texture = getattr(
-                self.material,
+            texture = textures.get(
                 name,
-                None,
             )
 
-            binder = self.texture_binders.get(name)
+            binder = self.texture_binders.get(
+                name,
+            )
 
             if texture is None:
                 if binder is not None:
-                    self.texture_binders.pop(name)
-                    changed = True
+                    self.texture_binders.pop(
+                        name,
+                    )
+
+                    self.texture_group.remove(
+                        binder,
+                    )
 
                 continue
 
             if binder is None:
-                self.texture_binders[name] = BindTexture(
-                    stage=self.stage,
+                binder = BindTexture(
                     uniform=name,
                     texture=texture,
                     slot=slot,
                 )
-                changed = True
+
+                self.texture_binders[name] = binder
+
+                self.texture_group.add(
+                    binder,
+                )
+
                 continue
 
-            if binder.texture is not texture:
-                binder.texture = texture
-                binder.ask_update()
-
-        if changed:
-            self.rebuild()
+            if binder.texture is not texture or binder.slot != slot:
+                binder.sync(
+                    texture=texture,
+                    slot=slot,
+                )
 
         if self.stage.use_material:
-            self.material_callback.ask_update()
+            self.bind_material.sync(
+                material=self.material,
+            )
 
     def clear_texture_binders(
         self,
+        *,
+        rebuild: bool = True,
     ) -> None:
+        _ = rebuild
+
         if not self.texture_binders:
             return
 
         self.texture_binders.clear()
-        self.rebuild()
+        self.texture_group.clear()
 
     def set_material(
         self,
         material: Material,
     ) -> None:
         self.material = material
-        self.material_callback.material = material
+
+        self.bind_material.set_material(
+            material,
+        )
 
         self.sync_uniforms()
         self.sync_textures()
@@ -576,10 +599,9 @@ class RenderInstance(EventDispatcher):
     def destroy(
         self,
     ) -> None:
-        self.texture_binders.clear()
-        self.texture_group.clear()
-        self.render_group.clear()
+        self.clear_texture_binders(
+            rebuild=False,
+        )
+        self.instructions.clear()
         self.group.clear()
-
-
 
