@@ -3,24 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
 
+from kivyfn.three.types import MeshMode
 from kivyfn.three.graphics.gl.texture import Texture2D
 from kivyfn.three.math.vector import Vector3
 
 
-RenderMode = Literal[
-    "points",
-    "line_strip",
-    "line_loop",
-    "lines",
-    "triangles",
-    "triangle_strip",
-    "triangle_fan",
-]
+
 
 
 @dataclass(slots=True)
@@ -109,15 +101,10 @@ class GeometryStats:
 
 @dataclass(slots=True)
 class Geometry:
-    name: str | None = None
 
-    fmt: list[tuple[bytes, int, str]] = field(
-        default_factory=lambda: [
-            (b"v_pos", 3, "float"),
-            (b"v_normal", 3, "float"),
-            (b"v_uv", 2, "float"),
-        ]
-    )
+    fmt: list[tuple[bytes, int, str]]
+
+    name: str | None = None
 
     vertices: NDArray[np.float32] = field(
         default_factory=lambda: np.array(
@@ -133,11 +120,12 @@ class Geometry:
         )
     )
 
-    mode: RenderMode = "triangles"
+    mode: MeshMode = "triangles"
 
     texture: Texture2D | None = None
 
     has_tangents: bool = False
+    has_skin: bool = False
 
     bounds: GeometryBounds = field(
         default_factory=GeometryBounds,
@@ -145,6 +133,15 @@ class Geometry:
 
     def __post_init__(self) -> None:
         if self.vertices.size > 0:
+            if self.stride <= 0:
+                raise ValueError("Geometry fmt cannot be empty when vertices exist.")
+
+            if self.vertices.size % self.stride != 0:
+                raise ValueError(
+                    f"Geometry vertices size {self.vertices.size} "
+                    f"is not divisible by stride {self.stride}."
+                )
+
             self.compute_bounds()
 
     def __repr__(self) -> str:
@@ -159,6 +156,7 @@ class Geometry:
             f"  mode={self.mode!r},\n"
             f"  has_texture={self.texture is not None},\n"
             f"  has_tangents={self.has_tangents},\n"
+            f"  has_skin={self.has_skin},\n"
             f"  bounds={self.bounds}\n"
             ")"
         )

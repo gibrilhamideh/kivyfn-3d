@@ -12,6 +12,7 @@ from typing import Any, ClassVar
 import numpy as np
 from pygltflib import GLTF2
 
+from kivyfn.three.types import MeshMode
 from kivyfn.three.parsers.glb.blueprint import GlbBlueprint, GlbAsset
 from kivyfn.three.math.matrix import Matrix3
 from kivyfn.three.math.matrix import Matrix4
@@ -26,6 +27,8 @@ from kivyfn.three.graphics.gl.texture import (
     TextureMinFilter,
     TextureMagFilter,
 )
+
+# TODO: add imported aniomation and play animation from the object its self
 
 @dataclass(slots=True)
 class GlbNode:
@@ -89,6 +92,14 @@ class GlbPrimitive:
         return getattr(self.attributes, "TANGENT", None)
 
     @property
+    def joints_index(self) -> int | None:
+        return getattr(self.attributes, "JOINTS_0", None)
+
+    @property
+    def weights_index(self) -> int | None:
+        return getattr(self.attributes, "WEIGHTS_0", None)
+
+    @property
     def indices_index(self) -> int | None:
         return getattr(self.raw, "indices", None)
 
@@ -99,6 +110,10 @@ class GlbPrimitive:
     @property
     def extras(self) -> dict[str, object]:
         return dict(getattr(self.raw, "extras", None) or {})
+
+    @property
+    def mode(self) -> int:
+        return int(getattr(self.raw, "mode", 4) or 4)
 
 
 
@@ -172,6 +187,16 @@ class GlbParser:
         33071: "clamp_to_edge",
         33648: "mirrored_repeat",
         10497: "repeat",
+    }
+
+    _GLTF_MODE_MAP: ClassVar[dict[int, MeshMode]] = {
+        0: "points",
+        1: "lines",
+        2: "line_loop",
+        3: "line_strip",
+        4: "triangles",
+        5: "triangle_strip",
+        6: "triangle_fan",
     }
 
     _MIME_EXTENSION_MAP: ClassVar[dict[str, str]] = {
@@ -1064,6 +1089,11 @@ class GlbParser:
         if primitive.position_index is None:
             return None
 
+        mode = self._GLTF_MODE_MAP.get(
+            primitive.mode,
+            "triangles",
+        )
+
         positions = self._read_accessor(
             primitive.position_index,
         )
@@ -1148,6 +1178,22 @@ class GlbParser:
             uvs[:, 1] = 1.0 - uvs[:, 1]
 
         # =================================== #
+        # Dynamic Vertex Format
+        # =================================== #
+
+        columns: list[np.ndarray] = [
+            positions[:, :3],
+            normals,
+            uvs,
+        ]
+
+        fmt: list[tuple[bytes, int, str]] = [
+            (b"v_pos", 3, "float"),
+            (b"v_normal", 3, "float"),
+            (b"v_uv", 2, "float"),
+        ]
+
+        # =================================== #
         # Tangents
         # =================================== #
 
@@ -1168,36 +1214,56 @@ class GlbParser:
                 copy=False,
             )
 
-            packed_vertices = np.column_stack(
-                [
-                    positions[:, :3],
-                    normals,
-                    uvs,
-                    tangents,
-                ]
-            ).reshape(-1)
+            columns.append(tangents)
+            fmt.append((b"v_tangent", 4, "float"))
 
-            fmt = [
-                (b"v_pos", 3, "float"),
-                (b"v_normal", 3, "float"),
-                (b"v_uv", 2, "float"),
-                (b"v_tangent", 4, "float"),
-            ]
+        # =================================== #
+        # Skinning: JOINTS_0 / WEIGHTS_0
+        # =================================== #
 
-        else:
-            packed_vertices = np.column_stack(
-                [
-                    positions[:, :3],
-                    normals,
-                    uvs,
-                ]
-            ).reshape(-1)
+        joints = self._read_accessor(
+            primitive.joints_index,
+        )
 
-            fmt = [
-                (b"v_pos", 3, "float"),
-                (b"v_normal", 3, "float"),
-                (b"v_uv", 2, "float"),
-            ]
+        weights = self._read_accessor(
+            primitive.weights_index,
+        )
+
+        has_valid_joints = (
+            joints is not None
+            and joints.shape[1] >= 4
+        )
+
+        has_valid_weights = (
+            weights is not None
+            and weights.shape[1] >= 4
+        )
+
+        has_skin = has_valid_joints and has_valid_weights
+
+        if has_skin:
+            assert joints is not None
+            assert weights is not None
+
+            joints = joints[:, :4].astype(
+                np.float32,
+                copy=False,
+            )
+
+            weights = weights[:, :4].astype(
+                np.float32,
+                copy=False,
+            )
+
+            columns.append(joints)
+            columns.append(weights)
+
+            fmt.append((b"v_joints", 4, "float"))
+            fmt.append((b"v_weights", 4, "float"))
+
+        packed_vertices = np.column_stack(
+            columns,
+        ).reshape(-1)
 
         # =================================== #
         # Winding
@@ -1221,7 +1287,9 @@ class GlbParser:
             vertices=packed_vertices,
             indices=final_indices,
             bounds=bounds,
+            mode=mode,
             has_tangents=has_tangents,
+            has_skin=has_skin,
         )
 
     def _ensure_uint16_indices(

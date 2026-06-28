@@ -64,13 +64,11 @@ class GlbAsset:
         name: str = "",
         new_material: bool = True,
     ) -> SceneObject:
+        node_name = name or self.generate_name()
 
-        # TODO: wether children should increment also or not
-        # name = name or self.generate_name()
-        name = name or self.name
         if self.is_renderable:
             node = Object3D(
-                name=name,
+                name=node_name,
                 uid=self.uid,
                 geometry=self.require_geometry(),
                 material=self.require_material(copy=new_material),
@@ -78,10 +76,11 @@ class GlbAsset:
             )
         else:
             node = Node3D(
-                name=name,
+                name=node_name,
                 uid=self.uid,
             )
 
+        node.asset_name = self.name
         node.transform = self.transform.copy()
 
         for child in self.children:

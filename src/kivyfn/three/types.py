@@ -50,3 +50,13 @@ ShaderReloadEvent = Literal[
     "created",
     "moved",
 ]
+
+MeshMode = Literal[
+    "points",
+    "line_strip",
+    "line_loop",
+    "lines",
+    "triangles",
+    "triangle_strip",
+    "triangle_fan",
+]

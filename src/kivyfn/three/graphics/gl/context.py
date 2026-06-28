@@ -114,16 +114,23 @@ class BindGeometry(InstructionGroup):
     def __init__(
         self,
         *,
-        has_tangents: bool,
+        use_tangents: bool,
+        use_skinning: bool,
     ) -> None:
         super().__init__()
 
-        self.has_tangents = BindUniform(
-            "has_tangents",
-            self._encode_bool(has_tangents),
+        self.use_tangents = BindUniform(
+            "use_tangents",
+            self._encode_bool(use_tangents),
         )
 
-        self.add(self.has_tangents)
+        self.use_skinning = BindUniform(
+            "use_skinning",
+            self._encode_bool(use_skinning),
+        )
+
+        self.add(self.use_tangents)
+        self.add(self.use_skinning)
 
     @staticmethod
     def _encode_bool(
@@ -134,10 +141,15 @@ class BindGeometry(InstructionGroup):
     def sync(
         self,
         *,
-        has_tangents: bool,
+        use_tangents: bool,
+        use_skinning: bool,
     ) -> None:
-        self.has_tangents.sync(
-            self._encode_bool(has_tangents),
+        self.use_tangents.sync(
+            self._encode_bool(use_tangents),
+        )
+
+        self.use_skinning.sync(
+            self._encode_bool(use_skinning),
         )
 
 

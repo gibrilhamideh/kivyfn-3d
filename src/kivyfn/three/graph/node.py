@@ -51,6 +51,11 @@ NodeKind = Literal[
     "object",
 ]
 
+NodeSearchField = Literal[
+    "name",
+    "asset_name",
+]
+
 
 B = TypeVar("B", bound="Behavior")
 
@@ -59,6 +64,7 @@ class Node3D(EventDispatcher):
     scene: Scene | None = ObjectProperty(None, allownone=True)
     uid: str | None = StringProperty(None, allownone=True)
     name: str = StringProperty("")
+    asset_name: str = StringProperty("")
     visible: bool = BooleanProperty(True)
 
     children: list[Node3D | Object3D | Light3D] = ListProperty([])
@@ -760,6 +766,7 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: Literal["nodes"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
@@ -772,6 +779,7 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: Literal["objects"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
@@ -784,6 +792,7 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: Literal["lights"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
@@ -796,6 +805,7 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: Literal["all"] = "all",
+        by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
@@ -807,6 +817,7 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: NodeFilter = "all",
+        by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
@@ -817,7 +828,7 @@ class Node3D(EventDispatcher):
             include=include,
             exclude=exclude,
         ):
-            if node.name == name:
+            if self._search_value(node, by) == name:
                 return node
 
         return None
@@ -828,6 +839,7 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: Literal["nodes"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
@@ -840,6 +852,7 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: Literal["objects"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
@@ -852,6 +865,7 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: Literal["lights"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
@@ -864,6 +878,7 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: Literal["all"] = "all",
+        by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
@@ -875,6 +890,7 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: NodeFilter = "all",
+        by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
@@ -887,7 +903,7 @@ class Node3D(EventDispatcher):
                 include=include,
                 exclude=exclude,
             )
-            if node.name == name
+            if self._search_value(node, by) == name
         ]
 
     @overload
@@ -896,6 +912,7 @@ class Node3D(EventDispatcher):
         text: str,
         *,
         filter: Literal["nodes"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         case_sensitive: bool = False,
         include: WalkFilter | None = None,
@@ -909,6 +926,7 @@ class Node3D(EventDispatcher):
         text: str,
         *,
         filter: Literal["objects"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         case_sensitive: bool = False,
         include: WalkFilter | None = None,
@@ -922,6 +940,7 @@ class Node3D(EventDispatcher):
         text: str,
         *,
         filter: Literal["lights"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         case_sensitive: bool = False,
         include: WalkFilter | None = None,
@@ -935,6 +954,7 @@ class Node3D(EventDispatcher):
         text: str,
         *,
         filter: Literal["all"] = "all",
+        by: NodeSearchField = "name",
         include_self: bool = True,
         case_sensitive: bool = False,
         include: WalkFilter | None = None,
@@ -947,6 +967,7 @@ class Node3D(EventDispatcher):
         text: str,
         *,
         filter: NodeFilter = "all",
+        by: NodeSearchField = "name",
         include_self: bool = True,
         case_sensitive: bool = False,
         include: WalkFilter | None = None,
@@ -955,6 +976,7 @@ class Node3D(EventDispatcher):
         matches = self.fuzzy_find_all(
             text,
             filter=filter,
+            by=by,
             include_self=include_self,
             case_sensitive=case_sensitive,
             include=include,
@@ -969,6 +991,7 @@ class Node3D(EventDispatcher):
         text: str,
         *,
         filter: Literal["nodes"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         case_sensitive: bool = False,
         include: WalkFilter | None = None,
@@ -982,6 +1005,7 @@ class Node3D(EventDispatcher):
         text: str,
         *,
         filter: Literal["objects"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         case_sensitive: bool = False,
         include: WalkFilter | None = None,
@@ -995,6 +1019,7 @@ class Node3D(EventDispatcher):
         text: str,
         *,
         filter: Literal["lights"],
+        by: NodeSearchField = "name",
         include_self: bool = True,
         case_sensitive: bool = False,
         include: WalkFilter | None = None,
@@ -1008,6 +1033,7 @@ class Node3D(EventDispatcher):
         text: str,
         *,
         filter: Literal["all"] = "all",
+        by: NodeSearchField = "name",
         include_self: bool = True,
         case_sensitive: bool = False,
         include: WalkFilter | None = None,
@@ -1020,6 +1046,7 @@ class Node3D(EventDispatcher):
         text: str,
         *,
         filter: NodeFilter = "all",
+        by: NodeSearchField = "name",
         include_self: bool = True,
         case_sensitive: bool = False,
         include: WalkFilter | None = None,
@@ -1036,7 +1063,9 @@ class Node3D(EventDispatcher):
                 exclude=exclude,
             )
             if needle in (
-                node.name if case_sensitive else node.name.lower()
+                self._search_value(node, by)
+                if case_sensitive
+                else self._search_value(node, by).lower()
             )
         ]
 
@@ -1135,16 +1164,18 @@ class Node3D(EventDispatcher):
         name: str,
         *,
         filter: NodeFilter = "all",
+        by: NodeSearchField = "name",
         include_self: bool = True,
     ) -> Any:
         node = self.find(
             name,
             filter=filter,
+            by=by,
             include_self=include_self,
         )
 
         if node is None:
-            raise ValueError(f"Node not found: {name!r}")
+            raise ValueError(f"Node not found by {by}: {name!r}")
 
         return node
 
@@ -1263,3 +1294,15 @@ class Node3D(EventDispatcher):
             return False
 
         return True
+
+    def _search_value(
+        self,
+        node: SceneObject,
+        by: NodeSearchField,
+    ) -> str:
+        value = getattr(node, by, "")
+
+        if value is None:
+            return ""
+
+        return str(value)

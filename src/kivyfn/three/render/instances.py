@@ -365,7 +365,8 @@ class RenderInstance(EventDispatcher):
         self.bind_transform = BindTransform()
 
         self.bind_geometry = BindGeometry(
-            has_tangents=geometry.has_tangents,
+            use_tangents=geometry.has_tangents,
+            use_skinning=geometry.has_skin,
         )
 
         self.bind_material = BindMaterial(
