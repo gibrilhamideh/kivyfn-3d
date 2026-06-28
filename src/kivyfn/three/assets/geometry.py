@@ -12,7 +12,11 @@ from kivyfn.three.graphics.gl.texture import Texture2D
 from kivyfn.three.math.vector import Vector3
 
 
-
+@dataclass(frozen=True, slots=True)
+class MorphTarget:
+    positions: NDArray[np.float32] | None = None
+    normals: NDArray[np.float32] | None = None
+    tangents: NDArray[np.float32] | None = None
 
 
 @dataclass(slots=True)
@@ -124,14 +128,18 @@ class Geometry:
 
     texture: Texture2D | None = None
 
-    has_tangents: bool = False
     has_skin: bool = False
+    has_tangents: bool = False
+
+    morph_targets: tuple[MorphTarget, ...] = field(default_factory=tuple)
+    has_morph_targets: bool = False
 
     bounds: GeometryBounds = field(
         default_factory=GeometryBounds,
     )
 
     def __post_init__(self) -> None:
+        self.has_morph_targets = bool(self.morph_targets)
         if self.vertices.size > 0:
             if self.stride <= 0:
                 raise ValueError("Geometry fmt cannot be empty when vertices exist.")

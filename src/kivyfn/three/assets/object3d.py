@@ -48,7 +48,11 @@ class Object3D(Node3D):
             ")"
         )
 
-    __events__ = ("on_material_dirty", "on_tag_dirty")
+    __events__ = (
+        "on_morph_weights_dirty",
+        "on_material_dirty",
+        "on_tag_dirty"
+    )
 
     def __init__(
         self,
@@ -70,6 +74,8 @@ class Object3D(Node3D):
         self._tags = set(tags or ())
 
         self.geometry = geometry
+        self.morph_weights: list[float] = []
+
         self.collider = Collider(self)
 
         self.set_material(material)
@@ -104,6 +110,27 @@ class Object3D(Node3D):
     def intersects_ray(self, origin, direction):
         return self.collider.intersects_ray(origin, direction)
 
+    # =================================== #
+    # Morph Targets
+    # =================================== #
+    def set_morph_weights(
+        self,
+        weights: tuple[float, ...] | list[float],
+    ) -> None:
+        new_weights = [
+            float(weight)
+            for weight in weights
+        ]
+
+        if self.morph_weights == new_weights:
+            return
+
+        self.morph_weights = new_weights
+        self.mark_morph_weights_dirty()
+
+
+    def mark_morph_weights_dirty(self) -> None:
+        self.dispatch("on_morph_weights_dirty")
 
     # =================================== #
     # Material
@@ -184,6 +211,11 @@ class Object3D(Node3D):
     # Events
     # =================================== #
     def on_material_dirty(
+        self,
+    ) -> None:
+        pass
+
+    def on_morph_weights_dirty(
         self,
     ) -> None:
         pass

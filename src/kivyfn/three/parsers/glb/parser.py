@@ -1,4 +1,4 @@
-# kivyfn/three/loaders/glb/parser.py
+# kivyfn/three/parsers/glb/parser.py
 
 from __future__ import annotations
 
@@ -7,20 +7,34 @@ import os
 import xxhash
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import numpy as np
 from pygltflib import GLTF2
 
 from kivyfn.three.types import MeshMode
-from kivyfn.three.parsers.glb.blueprint import GlbBlueprint, GlbAsset
 from kivyfn.three.math.matrix import Matrix3
 from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.math.vector import Vector3
-from kivyfn.three.assets.geometry import Geometry, GeometryBounds
+from kivyfn.three.assets.geometry import Geometry, GeometryBounds, MorphTarget
 from kivyfn.three.assets.material import Material
+from kivyfn.three.animations.channel import AnimationChannel
+from kivyfn.three.animations.clip import AnimationClip
+from kivyfn.three.animations.keyframe import AnimationKeyframe
+from kivyfn.three.animations.library import AnimationLibrary
+from kivyfn.three.animations.sampler import AnimationSampler
+from kivyfn.three.animations.types import (
+    AnimationPath,
+    AnimationValue,
+    InterpolationMode,
+)
+from kivyfn.three.parsers.glb.blueprint import (
+    GlbBlueprint,
+    GlbAsset,
+    GlbPrimitive,
+)
 from kivyfn.three.graphics.gl.texture import (
     Texture2D,
     TextureWrap,
@@ -28,10 +42,9 @@ from kivyfn.three.graphics.gl.texture import (
     TextureMagFilter,
 )
 
-# TODO: add imported aniomation and play animation from the object its self
 
 @dataclass(slots=True)
-class GlbNode:
+class GlbNodeData:
     raw: Any
 
     @property
@@ -68,7 +81,7 @@ class GlbNode:
 
 
 @dataclass(slots=True)
-class GlbPrimitive:
+class GlbPrimitiveData:
     raw: Any
 
     @property
@@ -115,10 +128,14 @@ class GlbPrimitive:
     def mode(self) -> int:
         return int(getattr(self.raw, "mode", 4) or 4)
 
+    @property
+    def targets(self) -> list[Any]:
+        return list(getattr(self.raw, "targets", None) or [])
+
 
 
 @dataclass(slots=True)
-class GlbMaterial:
+class GlbMaterialData:
     raw: Any
 
     @property
@@ -148,6 +165,69 @@ class GlbMaterial:
     @property
     def extras(self) -> dict[str, object]:
         return dict(getattr(self.raw, "extras", None) or {})
+
+
+@dataclass(slots=True)
+class GlbAnimationData:
+    raw: Any
+
+    @property
+    def name(self) -> str | None:
+        return getattr(self.raw, "name", None)
+
+    @property
+    def channels(self) -> list[Any]:
+        return list(getattr(self.raw, "channels", None) or [])
+
+    @property
+    def samplers(self) -> list[Any]:
+        return list(getattr(self.raw, "samplers", None) or [])
+
+
+@dataclass(slots=True)
+class GlbAnimationChannelData:
+    raw: Any
+
+    @property
+    def sampler_index(self) -> int:
+        return int(getattr(self.raw, "sampler"))
+
+    @property
+    def target(self) -> Any:
+        return getattr(self.raw, "target")
+
+    @property
+    def target_node_index(self) -> int | None:
+        target = self.target
+        if target is None:
+            return None
+
+        return getattr(target, "node", None)
+
+    @property
+    def target_path(self) -> str | None:
+        target = self.target
+        if target is None:
+            return None
+
+        return getattr(target, "path", None)
+
+
+@dataclass(slots=True)
+class GlbAnimationSamplerData:
+    raw: Any
+
+    @property
+    def input_index(self) -> int | None:
+        return getattr(self.raw, "input", None)
+
+    @property
+    def output_index(self) -> int | None:
+        return getattr(self.raw, "output", None)
+
+    @property
+    def interpolation(self) -> str:
+        return str(getattr(self.raw, "interpolation", None) or "LINEAR")
 
 class GlbParser:
     _DTYPE_MAP: ClassVar[dict[int, Any]] = {
@@ -205,15 +285,19 @@ class GlbParser:
         "image/webp": "webp",
     }
 
+
     def __init__(
         self,
         flip_v: bool = False,
         flip_winding: bool = False,
     ):
+
+
+        self.blueprint: GlbBlueprint
+
         self.flip_v = flip_v
         self.flip_winding = flip_winding
 
-        self.blueprint: GlbBlueprint = GlbBlueprint()
         self._gltf: Any = None
         self._buffer_bytes: bytes | None = None
         self._base_path: Path | None = None
@@ -231,6 +315,8 @@ class GlbParser:
     ) -> GlbBlueprint:
         path = Path(filename)
 
+        self.blueprint: GlbBlueprint = GlbBlueprint()
+
         self._gltf = GLTF2().load_binary(str(path))
         self._buffer_bytes = self._load_buffer_bytes(path)
         self._base_path = path.parent
@@ -242,6 +328,8 @@ class GlbParser:
         for root_index in self._get_scene_root_indices():
             root_blueprint = self._load_node(root_index)
             self.blueprint.tree.append(root_blueprint)
+
+        self.blueprint.animations = self._load_animations()
 
         return self.blueprint
 
@@ -258,7 +346,7 @@ class GlbParser:
         child_indices: set[int] = set()
 
         for raw_node in nodes:
-            node = GlbNode(raw_node)
+            node = GlbNodeData(raw_node)
             child_indices.update(node.children)
 
         return [
@@ -271,7 +359,7 @@ class GlbParser:
         self,
         node_index: int,
     ) -> GlbAsset:
-        node = GlbNode(self._gltf.nodes[node_index])
+        node = GlbNodeData(self._gltf.nodes[node_index])
 
         node_name = self._get_node_name(
             node_index=node_index,
@@ -283,46 +371,40 @@ class GlbParser:
 
         asset = GlbAsset(
             name=node_name,
-            geometry=None,
+            gltf_index=node_index,
             transform=local_transform,
-            material=None,
             extras=node.extras.copy(),
         )
 
         self._register_asset(asset)
 
         for primitive_index, primitive in enumerate(primitives):
-            name = node_name
+            primitive_name = node_name
 
             if len(primitives) > 1:
-                index = f"{primitive_index:03d}"
-                name = self._make_unique_name(f"{name}.{index}")
+                primitive_name = self._make_unique_name(
+                    f"{node_name}.{primitive_index:03d}"
+                )
 
             geometry = self._process_primitive_geometry(primitive)
             if geometry is None:
                 continue
 
-            geometry.name = name
+            geometry.name = primitive_name
+
             material = self._process_material(
                 primitive=primitive,
-                fallback_name=name,
+                fallback_name=primitive_name,
             )
 
-            if len(primitives) == 1:
-                asset.geometry = geometry
-                asset.material = material
-                continue
-
-            primitive_asset = GlbAsset(
-                name=name,
-                geometry=geometry,
-                transform=Transform(),
-                material=material,
-                extras=primitive.extras.copy(),
+            asset.primitives.append(
+                GlbPrimitive(
+                    name=primitive_name,
+                    geometry=geometry,
+                    material=material,
+                    extras=primitive.extras.copy(),
+                )
             )
-
-            self._register_asset(primitive_asset)
-            asset.children.append(primitive_asset)
 
         for child_index in node.children:
             child_asset = self._load_node(child_index)
@@ -333,7 +415,7 @@ class GlbParser:
     def _get_node_name(
         self,
         node_index: int,
-        node: GlbNode,
+        node: GlbNodeData,
     ) -> str:
         mesh_name = None
 
@@ -374,15 +456,15 @@ class GlbParser:
 
     def _get_node_primitives(
         self,
-        node: GlbNode,
-    ) -> list[GlbPrimitive]:
+        node: GlbNodeData,
+    ) -> list[GlbPrimitiveData]:
         if node.mesh_index is None:
             return []
 
         mesh = self._gltf.meshes[node.mesh_index]
 
         return [
-            GlbPrimitive(raw_primitive)
+            GlbPrimitiveData(raw_primitive)
             for raw_primitive in list(mesh.primitives or [])
         ]
 
@@ -392,7 +474,7 @@ class GlbParser:
 
     def _get_node_local_transform(
         self,
-        node: GlbNode,
+        node: GlbNodeData,
     ) -> Transform:
         if node.matrix:
             matrix = Matrix4(
@@ -490,12 +572,214 @@ class GlbParser:
         )
 
     # =================================== #
+    # Animations
+    # =================================== #
+    def _load_animations(self) -> AnimationLibrary | None:
+        raw_animations = list(self._gltf.animations or [])
+
+        if not raw_animations:
+            return None
+
+        library = AnimationLibrary()
+
+        for animation_index, raw_animation in enumerate(raw_animations):
+            animation = GlbAnimationData(raw_animation)
+
+            clip_name = (
+                animation.name
+                or f"animation_{animation_index}"
+            )
+
+            channels: list[AnimationChannel] = []
+
+            for raw_channel in animation.channels:
+                channel = GlbAnimationChannelData(raw_channel)
+
+                if channel.target_node_index is None:
+                    continue
+
+                target_path = channel.target_path
+                if target_path not in {
+                    "translation",
+                    "rotation",
+                    "scale",
+                    "weights",
+                }:
+                    continue
+
+                path = cast(AnimationPath, target_path)
+
+                if channel.sampler_index < 0:
+                    continue
+
+                if channel.sampler_index >= len(animation.samplers):
+                    continue
+
+                sampler_data = GlbAnimationSamplerData(
+                    animation.samplers[channel.sampler_index]
+                )
+
+                sampler = self._load_animation_sampler(
+                    sampler=sampler_data,
+                    path=path,
+                )
+
+                if sampler is None:
+                    continue
+
+                channels.append(
+                    AnimationChannel(
+                        target=channel.target_node_index,
+                        path=path,
+                        sampler=sampler,
+                    )
+                )
+
+            if not channels:
+                continue
+
+            library.add(
+                AnimationClip(
+                    name=clip_name,
+                    channels=tuple(channels),
+                )
+            )
+
+        if library.is_empty:
+            return None
+
+        return library
+
+    def _load_animation_sampler(
+        self,
+        sampler: GlbAnimationSamplerData,
+        path: AnimationPath,
+    ) -> AnimationSampler | None:
+        times = self._read_accessor(sampler.input_index)
+        values = self._read_accessor(sampler.output_index)
+
+        if times is None or values is None:
+            return None
+
+        times = times.reshape(-1).astype(
+            np.float32,
+            copy=False,
+        )
+
+        if len(times) == 0:
+            return None
+
+        interpolation_name = sampler.interpolation.upper()
+
+        interpolation = self._animation_interpolation_to_mode(
+            interpolation_name,
+        )
+
+        keyframes: list[AnimationKeyframe] = []
+
+        # First version: ignore glTF CUBICSPLINE tangents.
+        # CUBICSPLINE output layout is:
+        #   in_tangent, value, out_tangent
+        # per keyframe.
+        if interpolation_name == "CUBICSPLINE":
+            if len(values) != len(times) * 3:
+                return None
+
+            values = values.reshape(len(times), 3, -1)[:, 1, :]
+
+        if len(values) != len(times):
+            return None
+
+        for index, time in enumerate(times):
+            value = self._animation_value_from_row(
+                row=values[index],
+                path=path,
+            )
+
+            if value is None:
+                continue
+
+            keyframes.append(
+                AnimationKeyframe(
+                    time=float(time),
+                    value=value,
+                )
+            )
+
+        if not keyframes:
+            return None
+
+        return AnimationSampler(
+            keyframes=tuple(keyframes),
+            interpolation=interpolation,
+        )
+
+    def _animation_interpolation_to_mode(
+        self,
+        value: str,
+    ) -> InterpolationMode:
+        match value.upper():
+            case "STEP":
+                return "step"
+
+            case "LINEAR":
+                return "linear"
+
+            case "CUBICSPLINE":
+                # First version: we strip tangents and sample as linear.
+                return "linear"
+
+            case _:
+                return "linear"
+
+    def _animation_value_from_row(
+        self,
+        *,
+        row: np.ndarray,
+        path: AnimationPath,
+    ) -> AnimationValue | None:
+        match path:
+            case "translation":
+                if row.shape[0] < 3:
+                    return None
+
+                return Vector3(
+                    float(row[0]),
+                    float(row[1]),
+                    float(row[2]),
+                )
+
+            case "rotation":
+                if row.shape[0] < 4:
+                    return None
+
+                return Quaternion(
+                    float(row[0]),
+                    float(row[1]),
+                    float(row[2]),
+                    float(row[3]),
+                ).normalize()
+
+            case "scale":
+                if row.shape[0] < 3:
+                    return None
+
+                return Vector3(
+                    float(row[0]),
+                    float(row[1]),
+                    float(row[2]),
+                )
+
+            case "weights":
+                return tuple(float(value) for value in row.reshape(-1))
+
+    # =================================== #
     # Materials
     # =================================== #
 
     def _process_material(
         self,
-        primitive: GlbPrimitive,
+        primitive: GlbPrimitiveData,
         fallback_name: str,
     ) -> Material:
         material_index = primitive.material_index
@@ -508,7 +792,7 @@ class GlbParser:
         ):
             return Material(name=fallback_name)
 
-        glb_material = GlbMaterial(
+        glb_material = GlbMaterialData(
             self._gltf.materials[material_index]
         )
 
@@ -1084,7 +1368,7 @@ class GlbParser:
     # =================================== #
     def _process_primitive_geometry(
         self,
-        primitive: GlbPrimitive,
+        primitive: GlbPrimitiveData,
     ) -> Geometry | None:
         if primitive.position_index is None:
             return None
@@ -1265,6 +1549,42 @@ class GlbParser:
             columns,
         ).reshape(-1)
 
+        morph_targets: list[MorphTarget] = []
+        for raw_target in primitive.targets:
+            position_index = getattr(raw_target, "POSITION", None)
+            normal_index = getattr(raw_target, "NORMAL", None)
+            tangent_index = getattr(raw_target, "TANGENT", None)
+
+            morph_positions = self._read_accessor(position_index)
+            morph_normals = self._read_accessor(normal_index)
+            morph_tangents = self._read_accessor(tangent_index)
+
+            if morph_positions is not None:
+                morph_positions = morph_positions[:, :3].astype(
+                    np.float32,
+                    copy=False,
+                )
+
+            if morph_normals is not None:
+                morph_normals = morph_normals[:, :3].astype(
+                    np.float32,
+                    copy=False,
+                )
+
+            if morph_tangents is not None:
+                morph_tangents = morph_tangents[:, :3].astype(
+                    np.float32,
+                    copy=False,
+                )
+
+            morph_targets.append(
+                MorphTarget(
+                    positions=morph_positions,
+                    normals=morph_normals,
+                    tangents=morph_tangents,
+                )
+            )
+
         # =================================== #
         # Winding
         # =================================== #
@@ -1290,7 +1610,9 @@ class GlbParser:
             mode=mode,
             has_tangents=has_tangents,
             has_skin=has_skin,
+            morph_targets=tuple(morph_targets),
         )
+
 
     def _ensure_uint16_indices(
         self,

@@ -1,0 +1,35 @@
+# kivyfn/three/animations/types.py
+
+from __future__ import annotations
+
+from typing import Literal
+
+from kivyfn.three.math.quaternion import Quaternion
+from kivyfn.three.math.vector import Vector2, Vector3, Vector4
+
+
+AnimationPath = Literal[
+    "translation",
+    "rotation",
+    "scale",
+    "weights",
+]
+
+InterpolationMode = Literal[
+    "step",
+    "linear",
+    "cubic_spline",
+]
+
+AnimationTarget = int | str
+
+AnimationWeights = tuple[float, ...]
+
+AnimationValue = (
+    float
+    | Vector2
+    | Vector3
+    | Vector4
+    | Quaternion
+    | AnimationWeights
+)

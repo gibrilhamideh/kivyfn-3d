@@ -200,6 +200,46 @@ class Quaternion:
 
         return self.conjugate() / length_squared
 
+    def slerp(
+        self,
+        other: Quaternion,
+        t: float,
+    ) -> Quaternion:
+        dot = self.dot(other)
+
+        end = other
+
+        if dot < 0.0:
+            end = -other
+            dot = -dot
+
+        if dot > 0.9995:
+            return Quaternion(
+                self.x + ((end.x - self.x) * t),
+                self.y + ((end.y - self.y) * t),
+                self.z + ((end.z - self.z) * t),
+                self.w + ((end.w - self.w) * t),
+            ).normalize()
+
+        dot = max(-1.0, min(1.0, dot))
+
+        theta_0 = math.acos(dot)
+        theta = theta_0 * t
+
+        sin_theta = math.sin(theta)
+        sin_theta_0 = math.sin(theta_0)
+
+        scale_self = math.cos(theta) - dot * sin_theta / sin_theta_0
+        scale_other = sin_theta / sin_theta_0
+
+        return Quaternion(
+            (self.x * scale_self) + (end.x * scale_other),
+            (self.y * scale_self) + (end.y * scale_other),
+            (self.z * scale_self) + (end.z * scale_other),
+            (self.w * scale_self) + (end.w * scale_other),
+        ).normalize()
+
+
     def copy(self) -> Quaternion:
         return Quaternion(
             self.x,
