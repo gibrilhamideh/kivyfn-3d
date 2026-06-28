@@ -14,12 +14,14 @@ from kivy.graphics import (
 from kivyfn.three.assets.geometry import Geometry
 from kivyfn.three.assets.material import Material
 from kivyfn.three.assets.object3d import Object3D
+from kivyfn.three.assets.deformation import Deformation
 from kivyfn.three.graphics.gl.context import (
     BindGeometry,
     BindMaterial,
     BindObjectId,
     BindTexture,
     BindTransform,
+    BindDeformation,
 )
 from kivyfn.three.math.matrix import Matrix3, Matrix4
 from kivyfn.three.render.config import TEXTURE_SLOTS
@@ -45,6 +47,7 @@ class RenderInstanceManager(EventDispatcher):
         "on_transform_dirty",
         "on_material_dirty",
         "on_visibility_dirty",
+        "on_deformation_dirty",
     )
 
     def __init__(
@@ -127,6 +130,8 @@ class RenderInstanceManager(EventDispatcher):
         instance = RenderInstance(
             geometry=object3d.geometry,
             material=object3d.material,
+            deformation=object3d.deformation,
+            joint_matrices=object3d.joint_matrices,
             render_id=object3d.require_render_id()
             if stage.use_render_id
             else None,
@@ -233,6 +238,18 @@ class RenderInstanceManager(EventDispatcher):
             else:
                 instance.hide()
 
+    def sync_deformation(
+        self,
+        object3d: Object3D,
+    ) -> None:
+        joint_matrices = object3d.joint_matrices
+
+        for instance in self.instances_of(object3d=object3d).values():
+            instance.sync_deformation(
+                deformation=object3d.deformation,
+                joint_matrices=joint_matrices,
+            )
+
     # =================================== #
     # Visibility
     # =================================== #
@@ -268,6 +285,7 @@ class RenderInstanceManager(EventDispatcher):
             on_transform_dirty=self._on_object_transform_dirty,
             on_material_dirty=self._on_object_material_dirty,
             on_visibility_dirty=self._on_object_visibility_dirty,
+            on_deformation_dirty=self._on_object_deformation_dirty,
         )
 
         self._bound_objects.add(object_id)
@@ -285,6 +303,7 @@ class RenderInstanceManager(EventDispatcher):
             on_transform_dirty=self._on_object_transform_dirty,
             on_material_dirty=self._on_object_material_dirty,
             on_visibility_dirty=self._on_object_visibility_dirty,
+            on_deformation_dirty=self._on_object_deformation_dirty,
         )
 
         self._bound_objects.discard(object_id)
@@ -320,6 +339,15 @@ class RenderInstanceManager(EventDispatcher):
             object3d,
         )
 
+    def _on_object_deformation_dirty(
+        self,
+        object3d: Object3D,
+    ) -> None:
+        self.dispatch(
+            "on_deformation_dirty",
+            object3d,
+        )
+
     def on_transform_dirty(
         self,
         object3d: Object3D,
@@ -338,6 +366,12 @@ class RenderInstanceManager(EventDispatcher):
     ) -> None:
         pass
 
+    def on_deformation_dirty(
+        self,
+        object3d: Object3D,
+    ) -> None:
+        pass
+
 
 class RenderInstance(EventDispatcher):
     def __init__(
@@ -345,6 +379,8 @@ class RenderInstance(EventDispatcher):
         *,
         geometry: Geometry,
         material: Material,
+        deformation: Deformation,
+        joint_matrices: list[Matrix4],
         render_id: int | None,
         stage: RenderStage,
         **kwargs,
@@ -367,6 +403,12 @@ class RenderInstance(EventDispatcher):
         self.bind_geometry = BindGeometry(
             use_tangents=geometry.has_tangents,
             use_skinning=geometry.has_skin,
+            use_colors=geometry.has_colors
+        )
+
+        self.bind_deformation = BindDeformation(
+            deformation=deformation,
+            joint_matrices=joint_matrices,
         )
 
         self.bind_material = BindMaterial(
@@ -415,6 +457,7 @@ class RenderInstance(EventDispatcher):
         instructions = [
             self.bind_transform,
             self.bind_geometry,
+            self.bind_deformation,
         ]
 
         if self.stage.use_material:
@@ -460,6 +503,16 @@ class RenderInstance(EventDispatcher):
     # =================================== #
     # Sync
     # =================================== #
+    def sync_deformation(
+        self,
+        *,
+        deformation: Deformation,
+        joint_matrices: list[Matrix4],
+    ) -> None:
+        self.bind_deformation.sync(
+            deformation=deformation,
+            joint_matrices=joint_matrices,
+        )
 
     def sync_transform(
         self,

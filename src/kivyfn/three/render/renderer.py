@@ -74,6 +74,7 @@ class Renderer(EventDispatcher):
             on_transform_dirty=self.queue_transform,
             on_material_dirty=self.queue_material,
             on_visibility_dirty=self.queue_visibility,
+            on_deformation_dirty=self.queue_deformation,
         )
 
         self.hidden: set[str] = set()
@@ -82,6 +83,7 @@ class Renderer(EventDispatcher):
         self._transform_queue: set[int] = set()
         self._material_queue: set[int] = set()
         self._visibility_queue: set[int] = set()
+        self._deformation_queue: set[int] = set()
 
         self._trigger_dirty = Clock.create_trigger(self.flush_dirty, -1)
 
@@ -244,6 +246,14 @@ class Renderer(EventDispatcher):
         self._transform_queue.add(id(object3d))
         self._trigger_dirty()
 
+    def queue_deformation(
+        self,
+        manager: RenderInstanceManager,
+        object3d: Object3D,
+    ) -> None:
+        self._deformation_queue.add(id(object3d))
+        self._trigger_dirty()
+
     def queue_material(
         self,
         manager: RenderInstanceManager,
@@ -307,6 +317,13 @@ class Renderer(EventDispatcher):
             if object3d is not None:
                 self.instances.sync_material(object3d)
 
+        while self._deformation_queue:
+            object_id = self._deformation_queue.pop()
+            object3d = self.objects.get(object_id)
+
+            if object3d is not None:
+                self.instances.sync_deformation(object3d)
+
         # ---) Visibility
         while self._visibility_queue:
             object_id = self._visibility_queue.pop()
@@ -341,6 +358,7 @@ class Renderer(EventDispatcher):
 
             self.instances.sync_transform(object3d)
             self.instances.sync_material(object3d)
+            self.instances.sync_deformation(object3d)
             self.instances.sync_visibility(object3d)
 
     def remove(
@@ -386,6 +404,7 @@ class Renderer(EventDispatcher):
 
             self.instances.sync_transform(object3d)
             self.instances.sync_material(object3d)
+            self.instances.sync_deformation(object3d)
             self.instances.sync_visibility(object3d)
 
 
@@ -436,6 +455,7 @@ class Renderer(EventDispatcher):
 
                 self.instances.sync_transform(object3d)
                 self.instances.sync_material(object3d)
+                self.instances.sync_deformation(object3d)
                 self.instances.sync_visibility(object3d)
 
     def remove_stage_memberships(

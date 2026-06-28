@@ -154,7 +154,7 @@ class AnimationController:
                         "Translation animation value must be Vector3."
                     )
 
-                node.transform.position = value
+                node.set_translation(value)
 
             case "rotation":
                 if not isinstance(value, Quaternion):
@@ -162,7 +162,7 @@ class AnimationController:
                         "Rotation animation value must be Quaternion."
                     )
 
-                node.transform.rotation = value
+                node.set_rotation(value)
 
             case "scale":
                 if not isinstance(value, Vector3):
@@ -170,7 +170,7 @@ class AnimationController:
                         "Scale animation value must be Vector3."
                     )
 
-                node.transform.scale = value
+                node.set_scale(value)
 
             case "weights":
                 if not isinstance(value, tuple):

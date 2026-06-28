@@ -130,6 +130,7 @@ class Geometry:
 
     has_skin: bool = False
     has_tangents: bool = False
+    has_colors: bool = False
 
     morph_targets: tuple[MorphTarget, ...] = field(default_factory=tuple)
     has_morph_targets: bool = False
@@ -164,6 +165,7 @@ class Geometry:
             f"  mode={self.mode!r},\n"
             f"  has_texture={self.texture is not None},\n"
             f"  has_tangents={self.has_tangents},\n"
+            f"  has_colors={self.has_colors},\n"
             f"  has_skin={self.has_skin},\n"
             f"  bounds={self.bounds}\n"
             ")"

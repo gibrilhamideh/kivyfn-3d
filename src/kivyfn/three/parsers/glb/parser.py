@@ -20,6 +20,11 @@ from kivyfn.three.math.transform import Transform
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.assets.geometry import Geometry, GeometryBounds, MorphTarget
 from kivyfn.three.assets.material import Material
+from kivyfn.three.parsers.glb.blueprint import GlbBlueprint
+from kivyfn.three.parsers.glb.node import GlbNode
+from kivyfn.three.parsers.glb.skin import GlbSkin
+from kivyfn.three.parsers.glb.primitive import GlbPrimitive
+from kivyfn.three.parsers.glb.scene import GlbScene
 from kivyfn.three.animations.channel import AnimationChannel
 from kivyfn.three.animations.clip import AnimationClip
 from kivyfn.three.animations.keyframe import AnimationKeyframe
@@ -30,11 +35,7 @@ from kivyfn.three.animations.types import (
     AnimationValue,
     InterpolationMode,
 )
-from kivyfn.three.parsers.glb.blueprint import (
-    GlbBlueprint,
-    GlbAsset,
-    GlbPrimitive,
-)
+
 from kivyfn.three.graphics.gl.texture import (
     Texture2D,
     TextureWrap,
@@ -54,6 +55,10 @@ class GlbNodeData:
     @property
     def mesh_index(self) -> int | None:
         return getattr(self.raw, "mesh", None)
+
+    @property
+    def skin_index(self) -> int | None:
+        return getattr(self.raw, "skin", None)
 
     @property
     def children(self) -> list[int]:
@@ -81,12 +86,35 @@ class GlbNodeData:
 
 
 @dataclass(slots=True)
+class GlbMeshData:
+    raw: Any
+
+    @property
+    def name(self) -> str | None:
+        return getattr(self.raw, "name", None)
+
+    @property
+    def primitives(self) -> list[Any]:
+        return list(getattr(self.raw, "primitives", None) or [])
+
+    @property
+    def weights(self) -> tuple[float, ...]:
+        return tuple(
+            float(value)
+            for value in list(getattr(self.raw, "weights", None) or [])
+        )
+
+@dataclass(slots=True)
 class GlbPrimitiveData:
     raw: Any
 
     @property
     def attributes(self) -> Any:
         return self.raw.attributes
+
+    @property
+    def color_index(self) -> int | None:
+        return getattr(self.attributes, "COLOR_0", None)
 
     @property
     def position_index(self) -> int | None:
@@ -132,6 +160,22 @@ class GlbPrimitiveData:
     def targets(self) -> list[Any]:
         return list(getattr(self.raw, "targets", None) or [])
 
+
+@dataclass(slots=True)
+class GlbSkinData:
+    raw: Any
+
+    @property
+    def name(self) -> str | None:
+        return getattr(self.raw, "name", None)
+
+    @property
+    def joints(self) -> list[int]:
+        return list(getattr(self.raw, "joints", None) or [])
+
+    @property
+    def inverse_bind_matrices_index(self) -> int | None:
+        return getattr(self.raw, "inverseBindMatrices", None)
 
 
 @dataclass(slots=True)
@@ -315,7 +359,7 @@ class GlbParser:
     ) -> GlbBlueprint:
         path = Path(filename)
 
-        self.blueprint: GlbBlueprint = GlbBlueprint()
+        self.blueprint = GlbBlueprint()
 
         self._gltf = GLTF2().load_binary(str(path))
         self._buffer_bytes = self._load_buffer_bytes(path)
@@ -325,9 +369,11 @@ class GlbParser:
         self._image_bytes_cache.clear()
         self._image_texture_cache.clear()
 
-        for root_index in self._get_scene_root_indices():
-            root_blueprint = self._load_node(root_index)
-            self.blueprint.tree.append(root_blueprint)
+        self._load_scenes()
+        self._finalize_default_scene()
+
+        self.blueprint.skins = self._load_skins()
+        self._validate_node_skins()
 
         self.blueprint.animations = self._load_animations()
 
@@ -336,47 +382,94 @@ class GlbParser:
     # =================================== #
     # Scene / Node Tree
     # =================================== #
+    def _load_scenes(self) -> None:
+        raw_scenes = list(self._gltf.scenes or [])
 
-    def _get_scene_root_indices(self) -> list[int]:
-        if self._gltf.scenes and self._gltf.scene is not None:
-            scene = self._gltf.scenes[self._gltf.scene]
-            return list(scene.nodes or [])
+        if not raw_scenes:
+            raise ValueError(
+                "GLB contains no scenes. "
+                "kivyfn.three requires at least one glTF scene."
+            )
 
-        nodes = self._gltf.nodes or []
-        child_indices: set[int] = set()
+        for scene_index, raw_scene in enumerate(raw_scenes):
+            scene_name = (
+                getattr(raw_scene, "name", None)
+                or f"Scene.{scene_index:03d}"
+            )
 
-        for raw_node in nodes:
-            node = GlbNodeData(raw_node)
-            child_indices.update(node.children)
+            scene = GlbScene(
+                name=scene_name,
+            )
 
-        return [
-            index
-            for index in range(len(nodes))
-            if index not in child_indices
-        ]
+            for root_index in list(getattr(raw_scene, "nodes", None) or []):
+                scene.roots.append(
+                    self._load_node_cached(root_index)
+                )
+
+            if scene.is_empty:
+                raise ValueError(
+                    f"GLB scene {scene_index} has no root nodes."
+                )
+
+            self.blueprint.scenes.append(scene)
+
+
+    def _finalize_default_scene(self) -> None:
+        if not self.blueprint.scenes:
+            raise ValueError(
+                "GLB contains no scenes."
+            )
+
+        default_scene_index = getattr(
+            self._gltf,
+            "scene",
+            None,
+        )
+
+        if default_scene_index is None:
+            self.blueprint.set_default_scene(
+                self.blueprint.scenes[0]
+            )
+            return
+
+        if (
+            default_scene_index < 0
+            or default_scene_index >= len(self.blueprint.scenes)
+        ):
+            raise ValueError(
+                f"Invalid default GLB scene index: {default_scene_index!r}"
+            )
+
+        self.blueprint.set_default_scene(
+            self.blueprint.scenes[default_scene_index]
+        )
+
 
     def _load_node(
         self,
         node_index: int,
-    ) -> GlbAsset:
-        node = GlbNodeData(self._gltf.nodes[node_index])
+    ) -> GlbNode:
+        data = GlbNodeData(self._gltf.nodes[node_index])
 
         node_name = self._get_node_name(
             node_index=node_index,
-            node=node,
+            node=data,
         )
 
-        primitives = self._get_node_primitives(node)
-        local_transform = self._get_node_local_transform(node)
+        primitives = self._get_node_primitives(data)
+        local_transform = self._get_node_local_transform(data)
+        morph_weights = self._get_node_morph_weights(data)
 
-        asset = GlbAsset(
+        node = GlbNode(
             name=node_name,
             gltf_index=node_index,
             transform=local_transform,
-            extras=node.extras.copy(),
+            extras=data.extras.copy(),
+            skin_index=data.skin_index,
+            morph_weights=morph_weights,
         )
 
-        self._register_asset(asset)
+        self._register_node(node)
 
         for primitive_index, primitive in enumerate(primitives):
             primitive_name = node_name
@@ -397,7 +490,7 @@ class GlbParser:
                 fallback_name=primitive_name,
             )
 
-            asset.primitives.append(
+            node.primitives.append(
                 GlbPrimitive(
                     name=primitive_name,
                     geometry=geometry,
@@ -406,11 +499,22 @@ class GlbParser:
                 )
             )
 
-        for child_index in node.children:
-            child_asset = self._load_node(child_index)
-            asset.children.append(child_asset)
+        for child_index in data.children:
+            child_asset = self._load_node_cached(child_index)
+            node.children.append(child_asset)
 
-        return asset
+        return node
+
+    def _load_node_cached(
+        self,
+        node_index: int,
+    ) -> GlbNode:
+        existing = self.blueprint.nodes_by_index.get(node_index)
+
+        if existing is not None:
+            return existing
+
+        return self._load_node(node_index)
 
     def _get_node_name(
         self,
@@ -435,7 +539,7 @@ class GlbParser:
         self,
         name: str,
     ) -> str:
-        if name not in self.blueprint.assets:
+        if name not in self.blueprint.nodes_by_name:
             return name
 
         counter = 1
@@ -443,16 +547,27 @@ class GlbParser:
         while True:
             candidate = f"{name}.{counter:03d}"
 
-            if candidate not in self.blueprint.assets:
+            if candidate not in self.blueprint.nodes_by_name:
                 return candidate
 
             counter += 1
 
-    def _register_asset(
+    def _register_node(
         self,
-        asset: GlbAsset,
+        node: GlbNode,
     ) -> None:
-        self.blueprint.assets[asset.name] = asset
+        if node.gltf_index in self.blueprint.nodes_by_index:
+            raise ValueError(
+                f"Duplicate GLB node index: {node.gltf_index!r}"
+            )
+
+        if node.name in self.blueprint.nodes_by_name:
+            raise ValueError(
+                f"Duplicate GLB node name: {node.name!r}"
+            )
+
+        self.blueprint.nodes_by_index[node.gltf_index] = node
+        self.blueprint.nodes_by_name[node.name] = node
 
     def _get_node_primitives(
         self,
@@ -461,12 +576,22 @@ class GlbParser:
         if node.mesh_index is None:
             return []
 
-        mesh = self._gltf.meshes[node.mesh_index]
+        mesh = GlbMeshData(self._gltf.meshes[node.mesh_index])
 
         return [
             GlbPrimitiveData(raw_primitive)
-            for raw_primitive in list(mesh.primitives or [])
+            for raw_primitive in mesh.primitives
         ]
+
+    def _get_node_morph_weights(
+        self,
+        node: GlbNodeData,
+    ) -> tuple[float, ...]:
+        if node.mesh_index is None:
+            return ()
+
+        mesh = GlbMeshData(self._gltf.meshes[node.mesh_index])
+        return mesh.weights
 
     # =================================== #
     # Node Transforms
@@ -477,13 +602,18 @@ class GlbParser:
         node: GlbNodeData,
     ) -> Transform:
         if node.matrix:
-            matrix = Matrix4(
-                np.array(
-                    node.matrix,
-                    dtype=np.float32,
-                ).reshape((4, 4))
+            # NOTE: DEBUGING
+            # matrix = Matrix4(
+            #     np.array(
+            #         node.matrix,
+            #         dtype=np.float32,
+            #     ).reshape((4, 4))
+            # )
+            #
+            # return self._transform_from_matrix4(matrix)
+            matrix = self._matrix4_from_gltf(
+                node.matrix,
             )
-
             return self._transform_from_matrix4(matrix)
 
         translation_data = node.translation
@@ -569,6 +699,110 @@ class GlbParser:
             translation=translation,
             rotation=rotation,
             scale=scale,
+        )
+
+    # =================================== #
+    # Skins
+    # =================================== #
+    def _load_skins(self) -> list[GlbSkin]:
+        raw_skins = list(self._gltf.skins or [])
+
+        if not raw_skins:
+            return []
+
+        skins: list[GlbSkin] = []
+
+        for skin_index, raw_skin in enumerate(raw_skins):
+            skin = GlbSkinData(raw_skin)
+
+            if not skin.joints:
+                raise ValueError(
+                    f"GLB skin {skin_index} has no joints."
+                )
+
+            inverse_bind_matrices = self._load_inverse_bind_matrices(
+                skin=skin,
+                skin_index=skin_index,
+            )
+
+            skins.append(
+                GlbSkin(
+                    name=skin.name or f"skin_{skin_index}",
+                    joint_indices=tuple(skin.joints),
+                    inverse_bind_matrices=tuple(inverse_bind_matrices),
+                )
+            )
+
+        return skins
+
+    def _load_inverse_bind_matrices(
+        self,
+        *,
+        skin: GlbSkinData,
+        skin_index: int,
+    ) -> list[Matrix4]:
+        accessor_index = skin.inverse_bind_matrices_index
+
+        if accessor_index is None:
+            return [
+                Matrix4.identity()
+                for _ in skin.joints
+            ]
+
+        data = self._read_accessor(accessor_index)
+
+        if data is None:
+            raise ValueError(
+                f"GLB skin {skin_index} has invalid inverseBindMatrices."
+            )
+
+        if len(data) != len(skin.joints):
+            raise ValueError(
+                f"GLB skin {skin_index} inverseBindMatrices count does not "
+                f"match joint count: {len(data)} != {len(skin.joints)}."
+            )
+
+        # TODO: make sure of all tranpose
+        # matrices: list[Matrix4] = []
+        # for row in data:
+        #     values = np.array(
+        #         row,
+        #         dtype=np.float32,
+        #     ).reshape((4, 4))
+        #     matrices.append(
+        #         Matrix4(values.T) #NOTE: Skin Fix
+        #     )
+        # return matrices
+
+        return [
+            self._matrix4_from_gltf(row)
+            for row in data
+        ]
+
+
+
+    def _validate_node_skins(self) -> None:
+        skin_count = len(self.blueprint.skins)
+
+        for node in self.blueprint.nodes_by_index.values():
+            if node.skin_index is None:
+                continue
+
+            if node.skin_index < 0 or node.skin_index >= skin_count:
+                raise ValueError(
+                    f"GLB node {node.name!r} references invalid skin index "
+                    f"{node.skin_index!r}."
+                )
+
+    def _matrix4_from_gltf(
+        self,
+        values: np.ndarray | list[float],
+    ) -> Matrix4:
+        return Matrix4(
+            np.array(
+                values,
+                dtype=np.float32,
+            ).reshape((4, 4)).T
         )
 
     # =================================== #
@@ -809,6 +1043,11 @@ class GlbParser:
                 pbr=glb_material.pbr,
             )
 
+        self._apply_material_extensions(
+            material=material,
+            raw_material=glb_material.raw,
+        )
+
         if glb_material.emissive_factor is not None:
             material.emissive_factor = [
                 float(glb_material.emissive_factor[0]),
@@ -838,6 +1077,67 @@ class GlbParser:
             material.occlusion_texture = occlusion_texture
 
         return material
+
+    def _apply_material_extensions(
+        self,
+        material: Material,
+        raw_material: Any,
+    ) -> None:
+        extensions = getattr(
+            raw_material,
+            "extensions",
+            None,
+        )
+
+        if not extensions:
+            return
+
+        specular_glossiness = extensions.get(
+            "KHR_materials_pbrSpecularGlossiness",
+            None,
+        )
+
+        if specular_glossiness is None:
+            return
+
+        diffuse_factor = specular_glossiness.get(
+            "diffuseFactor",
+            None,
+        )
+
+        if diffuse_factor is not None:
+            material.base_color = [
+                float(diffuse_factor[0]),
+                float(diffuse_factor[1]),
+                float(diffuse_factor[2]),
+                float(diffuse_factor[3]),
+            ]
+
+        diffuse_texture = specular_glossiness.get(
+            "diffuseTexture",
+            None,
+        )
+
+        base_color_texture = self._load_texture_from_info(
+            diffuse_texture,
+        )
+
+        if base_color_texture is not None:
+            material.base_color_texture = base_color_texture
+
+        glossiness_factor = specular_glossiness.get(
+            "glossinessFactor",
+            None,
+        )
+
+        if glossiness_factor is not None:
+            material.roughness_factor = max(
+                0.0,
+                min(
+                    1.0,
+                    1.0 - float(glossiness_factor),
+                ),
+            )
 
     def _apply_pbr_material(
         self,
@@ -911,16 +1211,25 @@ class GlbParser:
         if texture_info is None:
             return None
 
-        texture_index = getattr(
-            texture_info,
-            "index",
-            None,
-        )
+        if isinstance(texture_info, dict):
+            texture_index = texture_info.get(
+                "index",
+                None,
+            )
+
+        else:
+            texture_index = getattr(
+                texture_info,
+                "index",
+                None,
+            )
 
         if texture_index is None:
             return None
 
-        return self._load_texture(texture_index)
+        return self._load_texture(
+            int(texture_index)
+        )
 
     def _load_texture(
         self,
@@ -1502,6 +1811,49 @@ class GlbParser:
             fmt.append((b"v_tangent", 4, "float"))
 
         # =================================== #
+        # Vertex Colors: COLOR_0
+        # =================================== #
+
+        colors = self._read_accessor(
+            primitive.color_index,
+        )
+
+        has_colors = (
+            colors is not None
+            and colors.shape[1] >= 3
+        )
+
+        if has_colors:
+            assert colors is not None
+
+            if colors.shape[1] >= 4:
+                colors = colors[:, :4].astype(
+                    np.float32,
+                    copy=False,
+                )
+
+            else:
+                rgb = colors[:, :3].astype(
+                    np.float32,
+                    copy=False,
+                )
+
+                alpha = np.ones(
+                    (vertex_count, 1),
+                    dtype=np.float32,
+                )
+
+                colors = np.column_stack(
+                    [
+                        rgb,
+                        alpha,
+                    ]
+                )
+
+            columns.append(colors)
+            fmt.append((b"v_color", 4, "float"))
+
+        # =================================== #
         # Skinning: JOINTS_0 / WEIGHTS_0
         # =================================== #
 
@@ -1549,7 +1901,12 @@ class GlbParser:
             columns,
         ).reshape(-1)
 
+        # =================================== #
+        # Morph Targets
+        # =================================== #
+
         morph_targets: list[MorphTarget] = []
+
         for raw_target in primitive.targets:
             position_index = getattr(raw_target, "POSITION", None)
             normal_index = getattr(raw_target, "NORMAL", None)
@@ -1610,6 +1967,7 @@ class GlbParser:
             mode=mode,
             has_tangents=has_tangents,
             has_skin=has_skin,
+            has_colors=has_colors,
             morph_targets=tuple(morph_targets),
         )
 

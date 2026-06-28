@@ -212,6 +212,12 @@ class Node3D(EventDispatcher):
     def mark_transform_dirty(self) -> None:
         self.dispatch("on_transform_dirty")
 
+        scene = self.scene
+
+        if scene is not None:
+            for object3d in scene.registry.skins.affected_by(self):
+                object3d.mark_deformation_dirty()
+
         for child in self.children:
             child.mark_transform_dirty()
 
@@ -412,6 +418,10 @@ class Node3D(EventDispatcher):
     @property
     def kind(self) -> NodeKind:
         return "node"
+
+    @property
+    def is_node(self) -> bool:
+        return self.kind == "node"
 
     @property
     def is_light(self) -> bool:

@@ -4,12 +4,21 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from array import array
+from kivy.graphics.opengl import (
+    GL_FALSE,
+    GL_CURRENT_PROGRAM,
+    glGetUniformLocation,
+    glUniformMatrix4fv,
+)
+
 from kivy.graphics import InstructionGroup, Callback
 from kivy.graphics.context_instructions import ChangeState
 from kivyfn.three.graphics.gl.core import GL
 from kivyfn.three.math.matrix import Matrix3, Matrix4
 
 if TYPE_CHECKING:
+    from kivyfn.three.assets.deformation import Deformation as AssetDeformation
     from kivyfn.three.assets.material import Material as AssetMaterial
     from kivyfn.three.graphics.gl.texture import Texture2D, TextureCube
 
@@ -18,10 +27,118 @@ __all__ = (
     "BindUniform",
     "BindTransform",
     "BindGeometry",
+    "BindDeformation",
     "BindMaterial",
     "BindObjectId",
     "BindTexture",
 )
+
+
+class BindMatrix4ArrayCallback(Callback):
+    def __init__(
+        self,
+        *,
+        uniform: str,
+        matrices: list[Matrix4],
+        **kwargs: Any,
+    ) -> None:
+        self.uniform = uniform
+        self.matrices = matrices
+        self._data = self._encode(matrices)
+
+        super().__init__(
+            self.apply,
+            **kwargs,
+        )
+
+    def sync(
+        self,
+        matrices: list[Matrix4],
+    ) -> None:
+        self.matrices = matrices
+        self._data = self._encode(matrices)
+        self.ask_update()
+
+    def apply(
+        self,
+        *_: Any,
+    ) -> None:
+        program = GL.get_int(
+            GL_CURRENT_PROGRAM,
+        )
+
+        if program == 0:
+            return
+
+        location = glGetUniformLocation(
+            program,
+            self.uniform.encode("utf-8"),
+        )
+
+        if location < 0:
+            return
+
+        glUniformMatrix4fv(
+            location,
+            len(self.matrices),
+            GL_FALSE,
+            self._data.tobytes(),
+        )
+
+    @staticmethod
+    def _encode(
+        matrices: list[Matrix4],
+    ) -> array:
+        values = array("f")
+
+        for matrix in matrices:
+            values.extend(matrix.values.T.flatten())
+
+        return values
+
+
+class BindMatrix4Array(InstructionGroup):
+    def __init__(
+        self,
+        *,
+        uniform: str,
+        matrices: list[Matrix4],
+    ) -> None:
+        super().__init__()
+
+        self.uniform = uniform
+
+        self.bind_callback = BindMatrix4ArrayCallback(
+            uniform=uniform,
+            matrices=matrices,
+        )
+
+        self.add(
+            self.bind_callback,
+        )
+
+    @property
+    def matrices(
+        self,
+    ) -> list[Matrix4]:
+        return self.bind_callback.matrices
+
+    @matrices.setter
+    def matrices(
+        self,
+        matrices: list[Matrix4],
+    ) -> None:
+        self.bind_callback.sync(
+            matrices,
+        )
+
+    def sync(
+        self,
+        matrices: list[Matrix4],
+    ) -> None:
+        self.bind_callback.sync(
+            matrices,
+        )
 
 
 # =================================== #
@@ -104,6 +221,91 @@ class BindTransform(InstructionGroup):
             normal_mat.to_uniform(),
         )
 
+# =================================== #
+# Bind Deformation
+# =================================== #
+
+class BindDeformation(InstructionGroup):
+    MAX_JOINTS = 512
+
+    def __init__(
+        self,
+        *,
+        deformation: AssetDeformation,
+        joint_matrices: list[Matrix4],
+    ) -> None:
+        super().__init__()
+
+        self.use_morphing = BindUniform(
+            "use_morphing",
+            self._encode_bool(deformation.has_morph_weights),
+        )
+
+        self.use_skinning = BindUniform(
+            "use_skinning",
+            self._encode_bool(deformation.has_skin),
+        )
+
+        self.morph_weights = BindUniform(
+            "morph_weights",
+            list(deformation.morph_weights),
+        )
+
+        self.joint_matrices = BindMatrix4Array(
+            uniform="joint_matrices",
+            matrices=self._encode_matrices(joint_matrices),
+        )
+
+        self.add(self.use_morphing)
+        self.add(self.use_skinning)
+        self.add(self.morph_weights)
+        self.add(self.joint_matrices)
+
+    @staticmethod
+    def _encode_bool(
+        value: bool,
+    ) -> int:
+        return 1 if value else 0
+
+    @classmethod
+    def _encode_matrices(
+        cls,
+        matrices: list[Matrix4],
+    ) -> list[Matrix4]:
+        if len(matrices) > cls.MAX_JOINTS:
+            raise ValueError(
+                f"Too many joints: {len(matrices)} > {cls.MAX_JOINTS}"
+            )
+
+        padded = list(matrices)
+
+        while len(padded) < cls.MAX_JOINTS:
+            padded.append(Matrix4.identity())
+
+        return padded
+
+    def sync(
+        self,
+        *,
+        deformation: AssetDeformation,
+        joint_matrices: list[Matrix4],
+    ) -> None:
+        self.use_morphing.sync(
+            self._encode_bool(deformation.has_morph_weights),
+        )
+
+        self.use_skinning.sync(
+            self._encode_bool(deformation.has_skin),
+        )
+
+        self.morph_weights.sync(
+            list(deformation.morph_weights),
+        )
+
+        self.joint_matrices.sync(
+            self._encode_matrices(joint_matrices),
+        )
+
 
 # =================================== #
 # Bind Geometry
@@ -116,6 +318,7 @@ class BindGeometry(InstructionGroup):
         *,
         use_tangents: bool,
         use_skinning: bool,
+        use_colors: bool,
     ) -> None:
         super().__init__()
 
@@ -129,8 +332,14 @@ class BindGeometry(InstructionGroup):
             self._encode_bool(use_skinning),
         )
 
+        self.use_colors = BindUniform(
+            "use_colors",
+            self._encode_bool(use_colors),
+        )
+
         self.add(self.use_tangents)
         self.add(self.use_skinning)
+        self.add(self.use_colors)
 
     @staticmethod
     def _encode_bool(
@@ -143,6 +352,7 @@ class BindGeometry(InstructionGroup):
         *,
         use_tangents: bool,
         use_skinning: bool,
+        use_colors: bool,
     ) -> None:
         self.use_tangents.sync(
             self._encode_bool(use_tangents),
@@ -150,6 +360,10 @@ class BindGeometry(InstructionGroup):
 
         self.use_skinning.sync(
             self._encode_bool(use_skinning),
+        )
+
+        self.use_colors.sync(
+            self._encode_bool(use_colors),
         )
 
 
