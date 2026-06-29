@@ -131,6 +131,7 @@ class Node3D(EventDispatcher):
 
         return self._local_matrix_cache
 
+
     @property
     def world_matrix(self) -> Matrix4:
         if self._world_matrix_dirty or self._world_matrix_cache is None:
@@ -251,7 +252,15 @@ class Node3D(EventDispatcher):
     # =================================== #
     def mark_local_matrix_dirty(self) -> None:
         self._local_matrix_dirty = True
+        self.mark_world_matrix_dirty()
+
+
+    def mark_world_matrix_dirty(self) -> None:
         self._world_matrix_dirty = True
+
+        for child in self.children:
+            child.mark_world_matrix_dirty()
+
 
     def mark_transform_dirty(self) -> None:
         self.dispatch("on_transform_dirty")

@@ -129,7 +129,6 @@ class AnimationController:
         action: AnimationAction,
     ) -> None:
         touched: list[Node3D] = []
-        seen: set[Node3D] = set()
 
         for channel in action.clip.channels:
             node = self.binding.get(channel.target)
@@ -148,10 +147,6 @@ class AnimationController:
             if not changed:
                 continue
 
-            if node in seen:
-                continue
-
-            seen.add(node)
             touched.append(node)
 
         for node in self._topmost_nodes(touched):

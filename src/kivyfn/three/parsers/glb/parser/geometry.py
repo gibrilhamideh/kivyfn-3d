@@ -93,12 +93,13 @@ class GlbGeometry:
             fmt=fmt,
         )
 
-        has_colors = self.colors(
-            primitive=primitive,
-            vertex_count=vertex_count,
-            columns=columns,
-            fmt=fmt,
-        )
+        has_colors = False
+        # has_colors = self.colors(
+        #     primitive=primitive,
+        #     vertex_count=vertex_count,
+        #     columns=columns,
+        #     fmt=fmt,
+        # )
 
         has_skin = self.skin(
             primitive=primitive,

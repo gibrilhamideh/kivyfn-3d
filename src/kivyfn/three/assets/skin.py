@@ -30,9 +30,7 @@ class Skin:
         self,
         mesh: Node3D,
     ) -> list[Matrix4]:
-
         mesh_inverse = mesh.world_matrix.inverse()
-
         return [
             mesh_inverse @ joint.world_matrix @ inverse_bind_matrix
             for joint, inverse_bind_matrix in zip(
@@ -40,7 +38,6 @@ class Skin:
                 self.inverse_bind_matrices,
             )
         ]
-
     def joint_matrix_for(
         self,
         mesh: Node3D,

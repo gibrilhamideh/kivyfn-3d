@@ -82,6 +82,7 @@ from kivy.graphics.opengl import (
     glRenderbufferStorage,
 
     # State functions
+    glGetError,
     glClear,
     glClearColor,
     glDisable,
@@ -551,6 +552,10 @@ class GL:
             width,
             height,
         )
+
+    @staticmethod
+    def error() -> int:
+        return int(glGetError())
 
     @classmethod
     def enable(
