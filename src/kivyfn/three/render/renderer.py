@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 from kivy.clock import Clock
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 
 from kivyfn.three.types import SceneObject
+from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.lights.limits import LightLimits
 from kivyfn.three.lights.manager import LightManager
 from kivyfn.three.assets.object3d import Object3D
@@ -20,6 +21,8 @@ from kivyfn.three.render.registry import (
     RenderMembershipRegistry,
     RenderObjectRegistry,
 )
+
+from kivyfn.three.utils.stopwatch import Stopwatch
 
 
 if TYPE_CHECKING:
@@ -76,7 +79,12 @@ class Renderer(EventDispatcher):
         self._visibility_queue: set[int] = set()
         self._deformation_queue: set[int] = set()
 
+        self._flush_scheduled = False
         self._trigger_dirty = Clock.create_trigger(self.flush, -1)
+
+        self.profile_flush = True
+        self.profile_flush_every = 60
+        self._profile_flush_count = 0
 
     def __repr__(self) -> str:
         return (
@@ -199,7 +207,7 @@ class Renderer(EventDispatcher):
                 node=node,
             )
         )
-        self._trigger_dirty()
+        self._wake()
 
     def queue_remove(
         self,
@@ -211,7 +219,7 @@ class Renderer(EventDispatcher):
                 node=node,
             )
         )
-        self._trigger_dirty()
+        self._wake()
 
     def queue_retag(
         self,
@@ -227,35 +235,35 @@ class Renderer(EventDispatcher):
                 new_tags=set(new_tags),
             )
         )
-        self._trigger_dirty()
+        self._wake()
 
     def queue_transform(
         self,
         node: SceneObject,
     ) -> None:
         self._transform_queue.add(id(node))
-        self._trigger_dirty()
+        self._wake()
 
     def queue_deformation(
         self,
         object3d: Object3D,
     ) -> None:
         self._deformation_queue.add(id(object3d))
-        self._trigger_dirty()
+        self._wake()
 
     def queue_material(
         self,
         object3d: Object3D,
     ) -> None:
         self._material_queue.add(id(object3d))
-        self._trigger_dirty()
+        self._wake()
 
     def queue_visibility(
         self,
         node: SceneObject,
     ) -> None:
         self._visibility_queue.add(id(node))
-        self._trigger_dirty()
+        self._wake()
 
     # =================================== #
     # Flush Queue
@@ -264,11 +272,60 @@ class Renderer(EventDispatcher):
         self,
         *_,
     ) -> None:
-        self.flush_lifecycle()
-        self.flush_transform()
-        self.flush_material()
-        self.flush_deformation()
-        self.flush_visibility()
+        self._flush_scheduled = False
+
+        if not self.profile_flush:
+            self.flush_lifecycle()
+            self.flush_transform()
+            self.flush_material()
+            self.flush_deformation()
+            self.flush_visibility()
+            return
+
+        self._profile_flush_count += 1
+
+        Stopwatch.add_count(
+            "queue.lifecycle",
+            len(self._lifecycle_queue),
+        )
+        Stopwatch.add_count(
+            "queue.transform",
+            len(self._transform_queue),
+        )
+        Stopwatch.add_count(
+            "queue.material",
+            len(self._material_queue),
+        )
+        Stopwatch.add_count(
+            "queue.deformation",
+            len(self._deformation_queue),
+        )
+        Stopwatch.add_count(
+            "queue.visibility",
+            len(self._visibility_queue),
+        )
+
+        with Stopwatch.section("flush.total"):
+            with Stopwatch.section("flush.lifecycle"):
+                self.flush_lifecycle()
+
+            with Stopwatch.section("flush.transform"):
+                self.flush_transform()
+
+            with Stopwatch.section("flush.material"):
+                self.flush_material()
+
+            with Stopwatch.section("flush.deformation"):
+                self.flush_deformation()
+
+            with Stopwatch.section("flush.visibility"):
+                self.flush_visibility()
+
+        if self._profile_flush_count % self.profile_flush_every == 0:
+            Stopwatch.summary(
+                clear=True,
+                min_ms=0.01,
+            )
 
     def flush_lifecycle(
         self,
@@ -298,97 +355,160 @@ class Renderer(EventDispatcher):
     def flush_transform(
         self,
     ) -> None:
-        affected_ids: set[int] = set()
+        dirty_ids = self._transform_queue
 
-        while self._transform_queue:
-            node_id = self._transform_queue.pop()
+        if not dirty_ids:
+            return
 
-            affected_ids.update(
-                self.scene.registry.affected_by_tree(
-                    node_id,
-                    ids=True,
-                    ordered=False,
-                )
-            )
+        self._transform_queue = set()
 
-        for affected_id in sorted(
-            affected_ids,
-            key=self.scene.registry.tree.depth_of,
-        ):
-            affected = self.scene.registry.get_by_id(affected_id)
+        registry = self.scene.registry
+        instances = self.instances
+        objects = self.objects
+        deformation_queue = self._deformation_queue
 
-            if affected is None:
-                continue
-
-            self.sync_matrix(affected)
-
-            if affected.is_object:
-                object3d = cast(Object3D, affected)
-
-                self.instances.sync_transform(object3d)
-
-                if object3d.skin is not None:
-                    self._deformation_queue.add(id(object3d))
-
-        self._deformation_queue.update(
-            self.scene.registry.affected_by_joints(
-                affected_ids,
-                ids=True,
-            )
+        affected_ids = registry.affected_by_compressed_tree(
+            dirty_ids,
+            ids=True,
         )
 
-    def flush_material(
-        self,
-    ) -> None:
-        while self._material_queue:
-            object_id = self._material_queue.pop()
-            object3d = self.objects.get(object_id)
+        dirty_joint_ids: set[int] = set()
+        dirty_object_ids: set[int] = set()
 
-            if object3d is None:
-                continue
+        by_id = registry.by_id
+        object_ids = registry.object_ids
+        is_joint_id = registry.is_joint_id
+        sync_matrix = self.sync_matrix
 
-            self.instances.sync_material(object3d)
-
-    def flush_deformation(
-        self,
-    ) -> None:
-        while self._deformation_queue:
-            object_id = self._deformation_queue.pop()
-            object3d = self.objects.get(object_id)
-
-            if object3d is None:
-                continue
-
-            self.sync_deformation(object3d)
-            self.instances.sync_deformation(object3d)
-
-    def flush_visibility(
-        self,
-    ) -> None:
-        visible_ids: set[int] = set()
-
-        while self._visibility_queue:
-            node_id = self._visibility_queue.pop()
-
-            visible_ids.update(
-                self.scene.registry.affected_by_tree(
-                    node_id,
-                    ids=True,
-                    ordered=False,
-                )
+        for affected_id in affected_ids:
+            node = by_id.get(
+                affected_id,
             )
-
-        for node_id in visible_ids:
-            node = self.scene.registry.get_by_id(node_id)
 
             if node is None:
                 continue
 
-            if not node.is_object:
+            if affected_id not in dirty_ids:
+                node._world_matrix_dirty = True
+
+            sync_matrix(
+                node,
+            )
+
+            if is_joint_id(
+                affected_id,
+            ):
+                dirty_joint_ids.add(
+                    affected_id,
+                )
+
+            if affected_id in object_ids:
+                dirty_object_ids.add(
+                    affected_id,
+                )
+
+        for object_id in dirty_object_ids:
+            object3d = objects.get(
+                object_id,
+            )
+
+            if object3d is None:
                 continue
 
-            object3d = cast(Object3D, node)
-            self.instances.sync_visibility(object3d)
+            instances.sync_transform(
+                object3d,
+            )
+
+            if object3d.skin is not None:
+                deformation_queue.add(
+                    object_id,
+                )
+
+        if dirty_joint_ids:
+            deformation_queue.update(
+                registry.affected_by_joints(
+                    dirty_joint_ids,
+                    ids=True,
+                )
+            )
+
+    def flush_material(
+        self,
+    ) -> None:
+        dirty_ids = self._material_queue
+
+        if not dirty_ids:
+            return
+
+        self._material_queue = set()
+
+        objects = self.objects
+        instances = self.instances
+
+        for object_id in dirty_ids:
+            object3d = objects.get(object_id)
+
+            if object3d is None:
+                continue
+
+            instances.sync_material(object3d)
+
+    def flush_deformation(
+        self,
+    ) -> None:
+        dirty_ids = self._deformation_queue
+
+        if not dirty_ids:
+            return
+
+        self._deformation_queue = set()
+
+        objects = self.objects
+        instances = self.instances
+
+        for object_id in dirty_ids:
+            object3d = objects.get(object_id)
+
+            if object3d is None:
+                continue
+
+            if object3d.skin is None:
+                continue
+
+            self.sync_deformation(object3d)
+            instances.sync_deformation(object3d)
+
+    def flush_visibility(
+        self,
+    ) -> None:
+        dirty_ids = self._visibility_queue
+
+        if not dirty_ids:
+            return
+
+        self._visibility_queue = set()
+
+        registry = self.scene.registry
+        instances = self.instances
+        objects = self.objects
+
+        visible_ids = registry.affected_by_compressed_tree(
+            dirty_ids,
+            ids=True,
+        )
+
+        for node_id in visible_ids:
+            object3d = registry.object_by_id(
+                node_id,
+            )
+
+            if object3d is None:
+                continue
+
+            if objects.get(id(object3d)) is None:
+                continue
+
+            instances.sync_visibility(object3d)
 
     # =================================== #
     # Lifecycle Sync
@@ -401,7 +521,6 @@ class Renderer(EventDispatcher):
 
         for affected in self.scene.registry.affected_by_tree(
             node,
-            ordered=True,
         ):
             self.sync_matrix(affected)
 
@@ -558,17 +677,37 @@ class Renderer(EventDispatcher):
         self,
         node: SceneObject,
     ) -> None:
-        local_matrix = node.transform.to_matrix4(
-            origin=node.origin,
-        )
+        if node._local_matrix_dirty:
+            origin = node.origin
 
-        if node.parent is None:
-            world_matrix = local_matrix
+            if origin.is_zero():
+                node._local_matrix.set_from(
+                    node.transform.matrix,
+                )
+            else:
+                node.transform.write_matrix4(
+                    node._local_matrix,
+                    origin=origin,
+                )
+
+            node._local_matrix_dirty = False
+
+        if not node._world_matrix_dirty:
+            return
+
+        parent = node.parent
+
+        if parent is None:
+            node._world_matrix.set_from(
+                node._local_matrix,
+            )
         else:
-            world_matrix = node.parent.world_matrix @ local_matrix
+            node._world_matrix.multiply_from(
+                parent._world_matrix,
+                node._local_matrix,
+            )
 
-        node._local_matrix = local_matrix
-        node._world_matrix = world_matrix
+        node._world_matrix_dirty = False
 
     def sync_deformation(
         self,
@@ -577,3 +716,13 @@ class Renderer(EventDispatcher):
         object3d.deformation.sync_joint_matrices_for(
             object3d,
         )
+
+    # =================================== #
+    # Helpers
+    # =================================== #
+    def _wake(self) -> None:
+        if self._flush_scheduled:
+            return
+
+        self._flush_scheduled = True
+        self._trigger_dirty()

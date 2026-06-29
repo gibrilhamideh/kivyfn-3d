@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 from time import perf_counter
 from typing import Iterator
 
 
-class Stopwatch:
+@dataclass(slots=True)
+class StopwatchStat:
+    count: int = 0
+    total: float = 0.0
+    max: float = 0.0
+    last: float = 0.0
 
-    _records: list[tuple[str, float]] = []
+
+class Stopwatch:
+    enabled: bool = True
+
+    _stats: dict[str, StopwatchStat] = {}
+    _counters: dict[str, int] = {}
 
     @classmethod
     @contextmanager
@@ -17,72 +28,113 @@ class Stopwatch:
         cls,
         name: str,
     ) -> Iterator[None]:
+        if not cls.enabled:
+            yield
+            return
+
         start = perf_counter()
 
         try:
             yield
-
         finally:
-            elapsed = perf_counter() - start
-
-            cls._records.append(
-                (name, elapsed)
-            )
-
-            print(
-                f"[STOPWATCH] "
-                f"{name}: {elapsed:.4f}s"
+            cls.add_time(
+                name,
+                perf_counter() - start,
             )
 
     @classmethod
-    def summary(cls) -> None:
-        records = [
-            (name, elapsed)
-            for name, elapsed in cls._records
-            if not name.endswith(".total")
-        ]
+    def add_time(
+        cls,
+        name: str,
+        elapsed: float,
+    ) -> None:
+        if not cls.enabled:
+            return
 
-        total_record = next(
-            (
-                elapsed
-                for name, elapsed in reversed(cls._records)
-                if name.endswith(".total")
-            ),
-            None,
+        stat = cls._stats.setdefault(
+            name,
+            StopwatchStat(),
         )
 
-        total = (
-            total_record
-            if total_record is not None
-            else sum(
-                elapsed
-                for _, elapsed in records
-            )
-        )
+        stat.count += 1
+        stat.total += elapsed
+        stat.last = elapsed
+
+        if elapsed > stat.max:
+            stat.max = elapsed
+
+    @classmethod
+    def add_count(
+        cls,
+        name: str,
+        value: int,
+    ) -> None:
+        if not cls.enabled:
+            return
+
+        cls._counters[name] = cls._counters.get(name, 0) + value
+
+    @classmethod
+    def summary(
+        cls,
+        *,
+        clear: bool = False,
+        min_ms: float = 0.0,
+    ) -> None:
+        if not cls._stats and not cls._counters:
+            return
 
         print("\n[STOPWATCH SUMMARY]")
-        print("-" * 50)
+        print("-" * 86)
+        print(
+            f"{'name':<38}"
+            f"{'total ms':>12}"
+            f"{'avg ms':>12}"
+            f"{'max ms':>12}"
+            f"{'last ms':>12}"
+            f"{'count':>8}"
+        )
+        print("-" * 86)
 
-        for name, elapsed in records:
-            percent = (
-                (elapsed / total) * 100.0
-                if total
-                else 0.0
-            )
+        for name, stat in sorted(
+            cls._stats.items(),
+            key=lambda item: item[1].total,
+            reverse=True,
+        ):
+            total_ms = stat.total * 1000.0
+
+            if total_ms < min_ms:
+                continue
+
+            avg_ms = total_ms / stat.count if stat.count else 0.0
 
             print(
-                f"{name:<32}"
-                f"{elapsed:>8.4f}s"
-                f" {percent:>6.2f}%"
+                f"{name:<38}"
+                f"{total_ms:>12.3f}"
+                f"{avg_ms:>12.3f}"
+                f"{stat.max * 1000.0:>12.3f}"
+                f"{stat.last * 1000.0:>12.3f}"
+                f"{stat.count:>8}"
             )
 
-        print("-" * 50)
+        if cls._counters:
+            print("-" * 86)
+            print("[COUNTERS]")
 
-        print(
-            f"{'TOTAL':<32}"
-            f"{total:>8.4f}s"
-        )
+            for name, value in sorted(cls._counters.items()):
+                print(
+                    f"{name:<38}"
+                    f"{value:>12}"
+                )
+
+        print("-" * 86)
+
+        if clear:
+            cls.clear()
 
     @classmethod
-    def clear(cls) -> None:
-        cls._records.clear()
+    def clear(
+        cls,
+    ) -> None:
+        cls._stats.clear()
+        cls._counters.clear()

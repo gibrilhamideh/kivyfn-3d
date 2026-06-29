@@ -120,6 +120,11 @@ class Vector2:
             self.y,
         )
 
+    def is_zero(
+        self,
+    ) -> bool:
+        return self.x == 0.0 and self.y == 0.0
+
     def __eq__(
         self,
         other: object,
@@ -192,6 +197,8 @@ class Vector3:
             f"y={self.y}, "
             f"z={self.z})"
         )
+
+
 
     @classmethod
     def zero(cls) -> Vector3:
@@ -402,6 +409,15 @@ class Vector3:
             self.x,
             self.y,
             self.z,
+        )
+
+    def is_zero(
+        self,
+    ) -> bool:
+        return (
+            self.x == 0.0 and
+            self.y == 0.0 and
+            self.z == 0.0
         )
 
     def __eq__(
@@ -705,6 +721,16 @@ class Vector4:
             self.y,
             self.z,
             self.w,
+        )
+
+    def is_zero(
+        self,
+    ) -> bool:
+        return (
+            self.x == 0.0 and
+            self.y == 0.0 and
+            self.z == 0.0 and
+            self.w == 0.0
         )
 
     def __eq__(

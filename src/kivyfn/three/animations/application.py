@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from kivyfn.three.assets.object3d import Object3D
 from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.vector import Vector3
 from kivyfn.three.graph.node import Node3D

@@ -75,6 +75,7 @@ class Node3D(EventDispatcher):
     extras: dict = DictProperty()
 
     origin: Vector3 = ObjectProperty(Vector3.zero())
+
     transform: Transform = ObjectProperty()
 
     __events__ = (
@@ -102,8 +103,14 @@ class Node3D(EventDispatcher):
         self.transform = transform or Transform()
         self.behaviors: dict[str, Behavior] = {}
 
-        self._local_matrix = self.transform.to_matrix4(origin=self.origin)
-        self._world_matrix = self._local_matrix
+        self._local_matrix = self.transform.to_matrix4(
+            origin=self.origin,
+        )
+
+        self._world_matrix = self._local_matrix.copy()
+
+        self._local_matrix_dirty = False
+        self._world_matrix_dirty = False
 
 
     def __repr__(self) -> str:
@@ -230,6 +237,8 @@ class Node3D(EventDispatcher):
     # Dirty Propagation
     # =================================== #
     def mark_transform_dirty(self) -> None:
+        self._local_matrix_dirty = True
+        self._world_matrix_dirty = True
         if self.scene is not None:
             self.scene.renderer.queue_transform(self)
 
@@ -240,6 +249,9 @@ class Node3D(EventDispatcher):
             self.scene.renderer.queue_visibility(self)
 
         self.dispatch("on_visibility_dirty")
+
+    def mark_world_matrix_dirty(self) -> None:
+        self._world_matrix_dirty = True
 
 
     # =================================== #
@@ -261,7 +273,10 @@ class Node3D(EventDispatcher):
     # =================================== #
     # Relationships
     # =================================== #
-    def add_child(self, child):
+    def add_child(
+        self,
+        child,
+    ) -> None:
         if child.parent is self:
             return
 
@@ -277,7 +292,10 @@ class Node3D(EventDispatcher):
         child.mark_transform_dirty()
         child.mark_visibility_dirty()
 
-    def remove_child(self, child):
+    def remove_child(
+        self,
+        child,
+    ) -> None:
         if child.parent is not self:
             return
 
@@ -286,9 +304,6 @@ class Node3D(EventDispatcher):
 
         self.children.remove(child)
         child.parent = None
-
-        child.mark_transform_dirty()
-        child.mark_visibility_dirty()
 
     def clear_children(self) -> None:
         for child in list(self.children):
@@ -387,19 +402,24 @@ class Node3D(EventDispatcher):
         if self.scene is not None:
             self._leave_scene()
 
-        self.scene = scene
+        nodes = tuple(
+            self.walk(
+                filter="all",
+            )
+        )
 
-        scene.registry.register(self)
+        for node in nodes:
+            node.scene = scene
+
+        scene.registry.register_tree(self)
 
         if render:
             scene.renderer.queue_render(self)
 
-        self.dispatch("on_enter_scene", scene)
-
-        for child in self.children:
-            child._enter_scene(
+        for node in nodes:
+            node.dispatch(
+                "on_enter_scene",
                 scene,
-                render=False,
             )
 
     def _leave_scene(
@@ -412,20 +432,28 @@ class Node3D(EventDispatcher):
 
         scene = self.scene
 
-        self.dispatch("on_leave_scene", scene)
+        nodes = tuple(
+            self.walk(
+                filter="all",
+            )
+        )
 
-        for child in self.children:
-            child._leave_scene(
-                render=False,
+        for node in nodes:
+            node.dispatch(
+                "on_leave_scene",
+                scene,
             )
 
-        scene.overlays.clear_anchor(self)
+        for node in nodes:
+            scene.overlays.clear_anchor(node)
 
         if render:
             scene.renderer.queue_remove(self)
 
-        scene.registry.unregister(self)
-        self.scene = None
+        scene.registry.unregister_tree(self)
+
+        for node in nodes:
+            node.scene = None
 
     # =================================== #
     # Type Helpers
