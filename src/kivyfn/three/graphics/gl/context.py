@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from array import array
 from kivy.graphics.opengl import (
     GL_FALSE,
     GL_CURRENT_PROGRAM,
@@ -78,7 +77,7 @@ class BindMatrix4ArrayCallback(Callback):
         self,
         *,
         uniform: str,
-        data: array,
+        data: bytes,
         count: int,
         **kwargs: Any,
     ) -> None:
@@ -94,7 +93,7 @@ class BindMatrix4ArrayCallback(Callback):
     def sync(
         self,
         *,
-        data: array,
+        data: bytes,
         count: int,
     ) -> None:
         self.data = data
@@ -127,7 +126,7 @@ class BindMatrix4ArrayCallback(Callback):
             location,
             self.count,
             GL_FALSE,
-            self.data.tobytes(),
+            self.data,
         )
 
 
@@ -136,7 +135,7 @@ class BindMatrix4Array(InstructionGroup):
         self,
         *,
         uniform: str,
-        data: array,
+        data: bytes,
         count: int,
     ) -> None:
         super().__init__()
@@ -156,7 +155,7 @@ class BindMatrix4Array(InstructionGroup):
     def sync(
         self,
         *,
-        data: array,
+        data: bytes,
         count: int,
     ) -> None:
         self.bind_callback.sync(

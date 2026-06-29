@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from array import array
 import numpy as np
 
 from kivyfn.three.assets.skin import Skin
 from kivyfn.three.graph.node import Node3D
 
-
-EMPTY_MATRIX4_ARRAY = array("f")
 
 
 @dataclass(slots=True)
@@ -36,8 +33,8 @@ class Deformation:
         repr=False,
     )
 
-    _joint_uniform_data: array = field(
-        default_factory=lambda: EMPTY_MATRIX4_ARRAY,
+    _joint_uniform_data: bytes = field(
+        default=b"",
         init=False,
         repr=False,
     )
@@ -61,12 +58,12 @@ class Deformation:
         return self._joint_count
 
     @property
-    def joint_uniform_data(self) -> array:
+    def joint_uniform_data(self) -> bytes:
         return self._joint_uniform_data
 
     def clear_joint_matrices(self) -> None:
         self._joint_count = 0
-        self._joint_uniform_data = EMPTY_MATRIX4_ARRAY
+        self._joint_uniform_data = b""
 
     def sync_joint_matrices_for(
         self,
@@ -104,10 +101,10 @@ class Deformation:
             out=self._joint_palette_array,
         )
 
-        self._joint_uniform_data = array(
-            "f",
-            self._joint_palette_array.transpose(0, 2, 1).ravel(),
-        )
+        self._joint_uniform_data = np.ascontiguousarray(
+            self._joint_palette_array.transpose(0, 2, 1).reshape(-1),
+            dtype=np.float32,
+        ).tobytes()
 
     def _ensure_skin_buffers(
         self,
@@ -135,7 +132,4 @@ class Deformation:
             dtype=np.float32,
         )
 
-        self._joint_uniform_data = array(
-            "f",
-            [0.0] * joint_count * 16,
-        )
+        self._joint_uniform_data = b""
