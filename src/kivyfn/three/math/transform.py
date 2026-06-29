@@ -27,9 +27,18 @@ class Transform:
         rotation: Quaternion | None = None,
         scale: Vector3 | None = None,
     ):
-        self.translation = translation or Vector3(0.0, 0.0, 0.0)
-        self.rotation = rotation or Quaternion.identity()
-        self.scale = scale or Vector3(1.0, 1.0, 1.0)
+        self.translation = Vector3(0.0, 0.0, 0.0)
+        self.rotation = Quaternion.identity()
+        self.scale = Vector3(1.0, 1.0, 1.0)
+
+        if translation is not None:
+            self.set_translation(translation)
+
+        if rotation is not None:
+            self.set_rotation(rotation)
+
+        if scale is not None:
+            self.set_scale(scale)
 
     def copy(self) -> Transform:
         return Transform(
@@ -45,7 +54,9 @@ class Transform:
         self,
         translation: Vector3,
     ) -> None:
-        self.translation = translation
+        self.translation.x = translation.x
+        self.translation.y = translation.y
+        self.translation.z = translation.z
 
     def translate_by(
         self,
@@ -60,7 +71,9 @@ class Transform:
         self,
         scale: Vector3,
     ) -> None:
-        self.scale = scale
+        self.scale.x = scale.x
+        self.scale.y = scale.y
+        self.scale.z = scale.z
 
     def scale_by(
         self,
@@ -79,7 +92,12 @@ class Transform:
         self,
         rotation: Quaternion,
     ) -> None:
-        self.rotation = rotation.normalize()
+        normalized = rotation.normalize()
+
+        self.rotation.x = normalized.x
+        self.rotation.y = normalized.y
+        self.rotation.z = normalized.z
+        self.rotation.w = normalized.w
 
     def rotate_by(
         self,

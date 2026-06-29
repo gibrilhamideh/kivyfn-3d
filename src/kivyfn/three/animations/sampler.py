@@ -2,23 +2,33 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from bisect import bisect_left
+from dataclasses import dataclass, field
 
 from kivyfn.three.animations.keyframe import AnimationKeyframe
 from kivyfn.three.animations.types import (
+    AnimationInterpolator,
     AnimationValue,
     InterpolationMode,
-)
-from kivyfn.three.animations.utility import (
-    copy_animation_value,
-    interpolate_animation_value,
 )
 
 
 @dataclass(frozen=True, slots=True)
 class AnimationSampler:
     keyframes: tuple[AnimationKeyframe, ...]
-    interpolation: InterpolationMode = "linear"
+    interpolation: InterpolationMode
+    interpolator: AnimationInterpolator
+    times: tuple[float, ...] = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "times",
+            tuple(
+                keyframe.time
+                for keyframe in self.keyframes
+            ),
+        )
 
     @property
     def duration(self) -> float:
@@ -31,43 +41,38 @@ class AnimationSampler:
         self,
         time: float,
     ) -> AnimationValue:
-        if not self.keyframes:
+        keyframes = self.keyframes
+        times = self.times
+
+        if not keyframes:
             raise ValueError(
                 "Cannot sample animation sampler with no keyframes."
             )
 
-        if time <= self.keyframes[0].time:
-            return copy_animation_value(
-                self.keyframes[0].value
-            )
+        if time <= times[0]:
+            return keyframes[0].value
 
-        if time >= self.keyframes[-1].time:
-            return copy_animation_value(
-                self.keyframes[-1].value
-            )
+        if time >= times[-1]:
+            return keyframes[-1].value
 
-        previous = self.keyframes[0]
+        index = bisect_left(
+            times,
+            time,
+        )
 
-        for current in self.keyframes[1:]:
-            if time <= current.time:
-                if self.interpolation == "step":
-                    return copy_animation_value(
-                        previous.value
-                    )
+        previous = keyframes[index - 1]
+        current = keyframes[index]
 
-                alpha = (
-                    (time - previous.time)
-                    / (current.time - previous.time)
-                )
+        if self.interpolation == "step":
+            return previous.value
 
-                return interpolate_animation_value(
-                    previous.value,
-                    current.value,
-                    alpha,
-                )
+        alpha = (
+            (time - previous.time)
+            / (current.time - previous.time)
+        )
 
-            previous = current
-
-        return copy_animation_value(
-            self.keyframes[-1].value
+        return self.interpolator(
+            previous.value,
+            current.value,
+            alpha,
         )

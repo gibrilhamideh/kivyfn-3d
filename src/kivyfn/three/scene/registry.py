@@ -115,9 +115,6 @@ class TreeDependencyRegistry:
             0,
         )
 
-    def clear(self) -> None:
-        self._by_ancestor.clear()
-
 
 class SkinDependencyRegistry:
     """
@@ -195,8 +192,25 @@ class SkinDependencyRegistry:
             )
         )
 
-    def clear(self) -> None:
-        self._by_joint.clear()
+    def affected_by_many(
+        self,
+        joint_ids: set[int],
+    ) -> tuple[int, ...]:
+        affected: set[int] = set()
+
+        for joint_id in joint_ids:
+            object_ids = self._by_joint.get(joint_id)
+
+            if object_ids is None:
+                continue
+
+            affected.update(object_ids)
+
+        return tuple(affected)
+
+
+
+
 
 
 class SceneRegistry:
@@ -536,15 +550,55 @@ class SceneRegistry:
         return tuple(affected)
 
     # =================================== #
-    # Clear
+    # Joint Dependency API
     # =================================== #
+    @overload
+    def affected_by_joints(
+        self,
+        items: set[int],
+        *,
+        ids: Literal[True],
+    ) -> tuple[int, ...]:
+        ...
 
-    def clear(self) -> None:
-        self.by_id.clear()
-        self.by_uid.clear()
-        self.by_render_id.clear()
+    @overload
+    def affected_by_joints(
+        self,
+        items: set[int],
+        *,
+        ids: Literal[False] = False,
+    ) -> tuple[Object3D, ...]:
+        ...
 
-        self.tree.clear()
-        self.skins.clear()
+    def affected_by_joints(
+        self,
+        items: set[int],
+        *,
+        ids: bool = False,
+    ) -> tuple[int, ...] | tuple[Object3D, ...]:
+        affected_ids = self.skins.affected_by_many(items)
 
-        self._next_render_id = 1
+        if ids:
+            return affected_ids
+
+        affected: list[Object3D] = []
+
+        for object_id in affected_ids:
+            node = self.get_by_id(object_id)
+
+            if node is None:
+                continue
+
+            if not node.is_object3d(node):
+                continue
+
+            affected.append(
+                cast(
+                    "Object3D",
+                    node,
+                )
+            )
+
+        return tuple(affected)
+
+

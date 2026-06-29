@@ -252,20 +252,27 @@ class Renderer(EventDispatcher):
 
     def queue_visibility(
         self,
-        object3d: Object3D,
+        node: SceneObject,
     ) -> None:
-        self._visibility_queue.add(id(object3d))
+        self._visibility_queue.add(id(node))
         self._trigger_dirty()
 
     # =================================== #
     # Flush Queue
     # =================================== #
-
     def flush(
         self,
         *_,
     ) -> None:
-        # ---) Lifecycle
+        self.flush_lifecycle()
+        self.flush_transform()
+        self.flush_material()
+        self.flush_deformation()
+        self.flush_visibility()
+
+    def flush_lifecycle(
+        self,
+    ) -> None:
         while self._lifecycle_queue:
             command = self._lifecycle_queue.popleft()
 
@@ -288,19 +295,34 @@ class Renderer(EventDispatcher):
                     command.new_tags,
                 )
 
-        # ---) Transform
+    def flush_transform(
+        self,
+    ) -> None:
+        affected_ids: set[int] = set()
+
         while self._transform_queue:
             node_id = self._transform_queue.pop()
 
-            for affected in self.scene.registry.affected_by_tree(
-                node_id,
-                ordered=True,
-            ):
-                self.sync_matrix(affected)
+            affected_ids.update(
+                self.scene.registry.affected_by_tree(
+                    node_id,
+                    ids=True,
+                    ordered=False,
+                )
+            )
 
-                if not affected.is_object:
-                    continue
+        for affected_id in sorted(
+            affected_ids,
+            key=self.scene.registry.tree.depth_of,
+        ):
+            affected = self.scene.registry.get_by_id(affected_id)
 
+            if affected is None:
+                continue
+
+            self.sync_matrix(affected)
+
+            if affected.is_object:
                 object3d = cast(Object3D, affected)
 
                 self.instances.sync_transform(object3d)
@@ -308,19 +330,28 @@ class Renderer(EventDispatcher):
                 if object3d.skin is not None:
                     self._deformation_queue.add(id(object3d))
 
-            for object3d in self.scene.registry.affected_by_joint(node_id):
-                self._deformation_queue.add(id(object3d))
+        self._deformation_queue.update(
+            self.scene.registry.affected_by_joints(
+                affected_ids,
+                ids=True,
+            )
+        )
 
-        # ---) Material
+    def flush_material(
+        self,
+    ) -> None:
         while self._material_queue:
             object_id = self._material_queue.pop()
             object3d = self.objects.get(object_id)
 
-            if object3d is not None:
-                self.instances.sync_material(object3d)
+            if object3d is None:
+                continue
 
+            self.instances.sync_material(object3d)
 
-        # ---) Deformation
+    def flush_deformation(
+        self,
+    ) -> None:
         while self._deformation_queue:
             object_id = self._deformation_queue.pop()
             object3d = self.objects.get(object_id)
@@ -331,13 +362,33 @@ class Renderer(EventDispatcher):
             self.sync_deformation(object3d)
             self.instances.sync_deformation(object3d)
 
-        # ---) Visibility
-        while self._visibility_queue:
-            object_id = self._visibility_queue.pop()
-            object3d = self.objects.get(object_id)
+    def flush_visibility(
+        self,
+    ) -> None:
+        visible_ids: set[int] = set()
 
-            if object3d is not None:
-                self.instances.sync_visibility(object3d)
+        while self._visibility_queue:
+            node_id = self._visibility_queue.pop()
+
+            visible_ids.update(
+                self.scene.registry.affected_by_tree(
+                    node_id,
+                    ids=True,
+                    ordered=False,
+                )
+            )
+
+        for node_id in visible_ids:
+            node = self.scene.registry.get_by_id(node_id)
+
+            if node is None:
+                continue
+
+            if not node.is_object:
+                continue
+
+            object3d = cast(Object3D, node)
+            self.instances.sync_visibility(object3d)
 
     # =================================== #
     # Lifecycle Sync

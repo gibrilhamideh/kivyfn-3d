@@ -194,7 +194,7 @@ class BindDeformation(InstructionGroup):
 
         self.joint_matrices = BindMatrix4Array(
             uniform="joint_matrices",
-            data=deformation.joint_uniform_data,
+            data=deformation.joint_palette_bytes,
             count=deformation.joint_count,
         )
 
@@ -227,7 +227,7 @@ class BindDeformation(InstructionGroup):
         )
 
         self.joint_matrices.sync(
-            data=deformation.joint_uniform_data,
+            data=deformation.joint_palette_bytes,
             count=deformation.joint_count,
         )
 

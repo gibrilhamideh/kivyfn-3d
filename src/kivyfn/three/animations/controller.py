@@ -4,21 +4,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from kivyfn.three.graph.node import Node3D
-from kivyfn.three.assets.object3d import Object3D
+from kivy.clock import Clock, ClockEvent
+
 from kivyfn.three.animations.action import AnimationAction
 from kivyfn.three.animations.binding import AnimationBinding
 from kivyfn.three.animations.clip import AnimationClip
-from kivyfn.three.animations.types import AnimationValue
-from kivyfn.three.math.quaternion import Quaternion
-from kivyfn.three.math.vector import Vector3
+from kivyfn.three.animations.channel import BoundAnimationChannel
+from kivyfn.three.animations.application import AnimationApplication
+from kivyfn.three.animations.types import (
+    AnimationApplier,
+    AnimationPath,
+)
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, weakref_slot=True)
 class AnimationController:
     binding: AnimationBinding
     clips: dict[str, AnimationClip]
-    active: dict[str, AnimationAction] = field(default_factory=dict)
+    actions: dict[str, AnimationAction] = field(default_factory=dict)
+
+    _event: ClockEvent | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     def get(
         self,
@@ -39,200 +48,201 @@ class AnimationController:
 
         return clip
 
+    def create(
+        self,
+        name: str,
+        *,
+        loop: bool = False,
+        speed: float = 1.0,
+        fps: float = 30.0,
+        replace: bool = True,
+    ) -> AnimationAction:
+        existing = self.actions.get(name)
+
+        if existing is not None:
+            if not replace:
+                return existing
+
+            existing.destroy()
+
+        clip = self.require(name)
+
+        action = AnimationAction(
+            clip=clip,
+            channels=self._bind_channels(clip),
+            time=0.0,
+            speed=speed,
+            fps=fps,
+            loop=loop,
+            playing=False,
+        )
+
+        self.actions[name] = action
+
+        action.bind(
+            on_destroy=lambda *_: self.actions.pop(name, None),
+        )
+
+        return action
+
     def play(
         self,
         name: str,
         *,
         loop: bool = False,
         speed: float = 1.0,
+        fps: float = 30.0,
         restart: bool = True,
+        replace: bool = True,
     ) -> AnimationAction:
-        existing = self.active.get(name)
-
-        if existing is not None and not restart:
-            existing.playing = True
-            existing.loop = loop
-            existing.speed = speed
-            return existing
-
-        clip = self.require(name)
-
-        action = AnimationAction(
-            clip=clip,
-            time=0.0,
-            speed=speed,
+        action = self.create(
+            name,
             loop=loop,
-            playing=True,
+            speed=speed,
+            fps=fps,
+            replace=replace,
         )
 
-        self.active[name] = action
+        action.play(
+            restart=restart,
+        )
+
+        self._ensure_event()
         return action
+
+    def tick(
+        self,
+        dt: float,
+    ) -> None:
+        alive = False
+
+        for action in tuple(self.actions.values()):
+            if action.destroyed:
+                continue
+
+            action.tick(dt)
+
+            if action.playing and not action.paused and not action.finished:
+                alive = True
+
+        if not alive:
+            self._cancel_event()
 
     def stop(
         self,
         name: str,
     ) -> None:
-        self.active.pop(name, None)
+        action = self.actions.get(name)
+
+        if action is None:
+            return
+
+        action.stop()
+
+    def remove(
+        self,
+        name: str,
+    ) -> None:
+        action = self.actions.pop(name, None)
+
+        if action is None:
+            return
+
+        action.destroy()
+
+    def pause_all(self) -> None:
+        for action in tuple(self.actions.values()):
+            action.pause()
+
+    def resume_all(self) -> None:
+        for action in tuple(self.actions.values()):
+            action.resume()
+
+        self._ensure_event()
 
     def stop_all(self) -> None:
-        self.active.clear()
+        for action in tuple(self.actions.values()):
+            action.stop()
+
+        self._cancel_event()
+
+    def clear(self) -> None:
+        for action in tuple(self.actions.values()):
+            action.destroy()
+
+        self.actions.clear()
+        self._cancel_event()
 
     def is_playing(
         self,
         name: str,
     ) -> bool:
-        action = self.active.get(name)
-        return action is not None and action.playing
+        action = self.actions.get(name)
 
-    def update(
-        self,
-        dt: float,
-    ) -> None:
-        for name, action in list(self.active.items()):
-            if not action.playing:
-                self.active.pop(name, None)
-                continue
+        return (
+            action is not None
+            and action.playing
+            and not action.paused
+            and not action.finished
+            and not action.destroyed
+        )
 
-            self._update_action(action, dt)
-            self._apply_action(action)
-
-            if not action.playing:
-                self.active.pop(name, None)
-
-    def _update_action(
-        self,
-        action: AnimationAction,
-        dt: float,
-    ) -> None:
-
-        duration = action.clip.duration
-
-        action.time += dt * action.speed
-
-        if duration <= 0.0:
-            action.time = 0.0
-            action.playing = False
+    def _ensure_event(self) -> None:
+        if self._event is not None:
             return
 
-        if action.time <= duration:
+        self._event = Clock.schedule_interval(
+            self.tick,
+            0.0,
+        )
+
+    def _cancel_event(self) -> None:
+        if self._event is None:
             return
 
-        if action.loop:
-            action.time %= duration
-            return
+        self._event.cancel()
+        self._event = None
 
-        action.time = duration
-        action.playing = False
-
-    def _apply_action(
+    def _bind_channels(
         self,
-        action: AnimationAction,
-    ) -> None:
-        touched: list[Node3D] = []
+        clip: AnimationClip,
+    ) -> tuple[BoundAnimationChannel, ...]:
+        channels: list[BoundAnimationChannel] = []
 
-        for channel in action.clip.channels:
+        for channel in clip.channels:
             node = self.binding.get(channel.target)
 
             if node is None:
                 continue
 
-            value = channel.sampler.sample(action.time)
-
-            changed = self._apply_value(
-                node=node,
-                path=channel.path,
-                value=value,
+            channels.append(
+                BoundAnimationChannel(
+                    node=node,
+                    path=channel.path,
+                    sampler=channel.sampler,
+                    applier=self.applier(channel.path),
+                )
             )
 
-            if not changed:
-                continue
+        return tuple(channels)
 
-            touched.append(node)
-
-        for node in self._topmost_nodes(touched):
-            node.mark_transform_dirty()
-
-    def _apply_value(
+    def applier(
         self,
-        *,
-        node: Node3D,
-        path: str,
-        value: AnimationValue,
-    ) -> bool:
+        path: AnimationPath,
+    ) -> AnimationApplier:
         match path:
             case "translation":
-                if not isinstance(value, Vector3):
-                    raise TypeError(
-                        "Translation animation value must be Vector3."
-                    )
-
-                node.set_translation(value, dirty=False)
-                return True
+                return AnimationApplication.translation
 
             case "rotation":
-                if not isinstance(value, Quaternion):
-                    raise TypeError(
-                        "Rotation animation value must be Quaternion."
-                    )
-
-                node.set_rotation(value, dirty=False)
-                return True
+                return AnimationApplication.rotation
 
             case "scale":
-                if not isinstance(value, Vector3):
-                    raise TypeError(
-                        "Scale animation value must be Vector3."
-                    )
-
-                node.set_scale(value, dirty=False)
-                return True
+                return AnimationApplication.scale
 
             case "weights":
-                if not isinstance(value, tuple):
-                    raise TypeError(
-                        "Weights animation value must be tuple[float, ...]."
-                    )
+                return AnimationApplication.weights
 
-                self._apply_morph_weights(
-                    node=node,
-                    weights=value,
-                )
-                return False
 
-            case _:
-                raise ValueError(
-                    f"Unsupported animation path: {path!r}"
-                )
 
-    def _apply_morph_weights(
-        self,
-        node,
-        weights: tuple[float, ...],
-    ) -> None:
-        if isinstance(node, Object3D):
-            node.set_morph_weights(weights)
-            return
 
-        for child in node.children:
-            if isinstance(child, Object3D):
-                child.set_morph_weights(weights)
-
-    def _topmost_nodes(
-        self,
-        nodes: list[Node3D],
-    ) -> list[Node3D]:
-        node_set = set(nodes)
-        roots: list[Node3D] = []
-
-        for node in nodes:
-            parent = node.parent
-
-            while parent is not None:
-                if parent in node_set:
-                    break
-
-                parent = parent.parent
-            else:
-                roots.append(node)
-
-        return roots

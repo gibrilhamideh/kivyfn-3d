@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Any
+from collections.abc import Callable
 
 from kivyfn.three.math.quaternion import Quaternion
 from kivyfn.three.math.vector import Vector2, Vector3, Vector4
@@ -25,6 +26,8 @@ AnimationTarget = int | str
 
 AnimationWeights = tuple[float, ...]
 
+
+
 AnimationValue = (
     float
     | Vector2
@@ -33,3 +36,13 @@ AnimationValue = (
     | Quaternion
     | AnimationWeights
 )
+
+AnimationInterpolator = Callable[
+    [Any, Any, float],
+    AnimationValue,
+]
+
+AnimationApplier = Callable[
+    [Any, Any],
+    None,
+]

@@ -11,7 +11,9 @@ from kivyfn.three.animations.clip import AnimationClip
 from kivyfn.three.animations.keyframe import AnimationKeyframe
 from kivyfn.three.animations.library import AnimationLibrary
 from kivyfn.three.animations.sampler import AnimationSampler
+from kivyfn.three.animations.interpolation import AnimationInterpolation
 from kivyfn.three.animations.types import (
+    AnimationInterpolator,
     AnimationPath,
     AnimationValue,
     InterpolationMode,
@@ -217,6 +219,7 @@ class GlbAnimations:
         return AnimationSampler(
             keyframes=tuple(keyframes),
             interpolation=interpolation,
+            interpolator=self.interpolator(path)
         )
 
     def values(
@@ -257,6 +260,23 @@ class GlbAnimations:
 
             case _:
                 return "linear"
+
+    def interpolator(
+        self,
+        path: AnimationPath,
+    ) -> AnimationInterpolator:
+        match path:
+            case "translation":
+                return AnimationInterpolation.vector3
+
+            case "rotation":
+                return AnimationInterpolation.quaternion
+
+            case "scale":
+                return AnimationInterpolation.vector3
+
+            case "weights":
+                return AnimationInterpolation.weights
 
     def value(
         self,
@@ -329,6 +349,7 @@ class GlbAnimations:
             sampler = AnimationSampler(
                 keyframes=keyframes,
                 interpolation=channel.sampler.interpolation,
+                interpolator=channel.sampler.interpolator
             )
 
             normalized.append(

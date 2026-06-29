@@ -156,15 +156,15 @@ class Node3D(EventDispatcher):
     # =================================== #
     @property
     def translation(self) -> Vector3:
-        return self.transform.translation
+        return self.transform.translation.copy()
 
     @property
     def rotation(self) -> Quaternion:
-        return self.transform.rotation
+        return self.transform.rotation.copy()
 
     @property
     def scale(self) -> Vector3:
-        return self.transform.scale
+        return self.transform.scale.copy()
 
     # =================================== #
     # Translation
@@ -172,22 +172,16 @@ class Node3D(EventDispatcher):
     def set_translation(
         self,
         translation: Vector3,
-        *,
-        dirty: bool = True,
     ) -> None:
         self.transform.set_translation(translation)
-        if dirty:
-            self.mark_transform_dirty()
+        self.mark_transform_dirty()
 
     def translate_by(
         self,
         offset: Vector3,
-        *,
-        dirty: bool = True,
     ) -> None:
         self.transform.translate_by(offset)
-        if dirty:
-            self.mark_transform_dirty()
+        self.mark_transform_dirty()
 
     # =================================== #
     # Scale
@@ -195,22 +189,16 @@ class Node3D(EventDispatcher):
     def set_scale(
         self,
         scale: Vector3,
-        *,
-        dirty: bool = True,
     ) -> None:
         self.transform.set_scale(scale)
-        if dirty:
-            self.mark_transform_dirty()
+        self.mark_transform_dirty()
 
     def scale_by(
         self,
         factor: Vector3,
-        *,
-        dirty: bool = True,
     ) -> None:
         self.transform.scale_by(factor)
-        if dirty:
-            self.mark_transform_dirty()
+        self.mark_transform_dirty()
 
     # =================================== #
     # Rotation
@@ -218,40 +206,41 @@ class Node3D(EventDispatcher):
     def set_rotation(
         self,
         rotation: Quaternion,
-        *,
-        dirty: bool = True,
     ) -> None:
         self.transform.set_rotation(rotation)
-        if dirty:
-            self.mark_transform_dirty()
+        self.mark_transform_dirty()
 
     def rotate_by(
         self,
         angle_degrees: float,
         axis: Vector3,
-        *,
-        dirty: bool = True,
     ) -> None:
         self.transform.rotate_by(angle_degrees, axis)
-        if dirty:
-            self.mark_transform_dirty()
+        self.mark_transform_dirty()
+
+
+    def set_morph_weights(
+        self,
+        weights: tuple[float, ...],
+    ) -> None:
+        for child in self.children:
+            child.set_morph_weights(weights)
 
     # =================================== #
     # Dirty Propagation
     # =================================== #
     def mark_transform_dirty(self) -> None:
-        scene = self.scene
-
-        if scene is not None:
-            scene.renderer.queue_transform(self)
+        if self.scene is not None:
+            self.scene.renderer.queue_transform(self)
 
         self.dispatch("on_transform_dirty")
 
     def mark_visibility_dirty(self) -> None:
+        if self.scene is not None:
+            self.scene.renderer.queue_visibility(self)
+
         self.dispatch("on_visibility_dirty")
 
-        for child in self.children:
-            child.mark_visibility_dirty()
 
     # =================================== #
     # Events

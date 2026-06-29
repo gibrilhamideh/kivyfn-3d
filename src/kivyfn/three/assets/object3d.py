@@ -108,8 +108,12 @@ class Object3D(Node3D):
         return self.deformation.skin
 
     @property
-    def joint_matrices(self) -> list[Matrix4]:
-        return self.deformation.joint_matrices
+    def joint_count(self) -> int:
+        return self.deformation.joint_count
+
+    @property
+    def joint_palette_bytes(self) -> bytes:
+        return self.deformation.joint_palette_bytes
 
     # =================================== #
     # Requirements
@@ -141,15 +145,11 @@ class Object3D(Node3D):
     # =================================== #
     # Deformation
     # =================================== #
-
     def set_morph_weights(
-        self,
-        weights: tuple[float, ...] | list[float],
-    ) -> None:
-        new_weights = [
-            float(weight)
-            for weight in weights
-        ]
+            self,
+            weights: tuple[float, ...],
+        ) -> None:
+        new_weights = list(weights)
 
         if self.deformation.morph_weights == new_weights:
             return
@@ -164,7 +164,16 @@ class Object3D(Node3D):
         if self.deformation.skin is skin:
             return
 
+        scene = self.scene
+
+        if scene is not None:
+            scene.registry.skins.unregister(self)
+
         self.deformation.skin = skin
+
+        if scene is not None:
+            scene.registry.skins.register(self)
+
         self.mark_deformation_dirty()
 
     # =================================== #

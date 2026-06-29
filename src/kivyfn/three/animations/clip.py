@@ -12,13 +12,15 @@ from kivyfn.three.animations.channel import AnimationChannel
 class AnimationClip:
     name: str
     channels: tuple[AnimationChannel, ...] = field(default_factory=tuple)
+    duration: float = field(init=False)
 
-    @property
-    def duration(self) -> float:
-        if not self.channels:
-            return 0.0
-
-        return max(
-            channel.sampler.duration
-            for channel in self.channels
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "duration",
+            max(
+                (channel.sampler.duration for channel in self.channels),
+                default=0.0,
+            ),
         )
+
