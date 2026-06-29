@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from kivyfn.three.graph.node import Node3D
 from kivyfn.three.assets.object3d import Object3D
 from kivyfn.three.animations.action import AnimationAction
 from kivyfn.three.animations.binding import AnimationBinding
@@ -103,6 +104,7 @@ class AnimationController:
         action: AnimationAction,
         dt: float,
     ) -> None:
+
         duration = action.clip.duration
 
         action.time += dt * action.speed
@@ -126,6 +128,9 @@ class AnimationController:
         self,
         action: AnimationAction,
     ) -> None:
+        touched: list[Node3D] = []
+        seen: set[Node3D] = set()
+
         for channel in action.clip.channels:
             node = self.binding.get(channel.target)
 
@@ -134,19 +139,31 @@ class AnimationController:
 
             value = channel.sampler.sample(action.time)
 
-            self._apply_value(
+            changed = self._apply_value(
                 node=node,
                 path=channel.path,
                 value=value,
             )
 
+            if not changed:
+                continue
+
+            if node in seen:
+                continue
+
+            seen.add(node)
+            touched.append(node)
+
+        for node in self._topmost_nodes(touched):
+            node.mark_transform_dirty()
+
     def _apply_value(
         self,
         *,
-        node,
+        node: Node3D,
         path: str,
         value: AnimationValue,
-    ) -> None:
+    ) -> bool:
         match path:
             case "translation":
                 if not isinstance(value, Vector3):
@@ -154,7 +171,8 @@ class AnimationController:
                         "Translation animation value must be Vector3."
                     )
 
-                node.set_translation(value)
+                node.set_translation(value, dirty=False)
+                return True
 
             case "rotation":
                 if not isinstance(value, Quaternion):
@@ -162,7 +180,8 @@ class AnimationController:
                         "Rotation animation value must be Quaternion."
                     )
 
-                node.set_rotation(value)
+                node.set_rotation(value, dirty=False)
+                return True
 
             case "scale":
                 if not isinstance(value, Vector3):
@@ -170,7 +189,8 @@ class AnimationController:
                         "Scale animation value must be Vector3."
                     )
 
-                node.set_scale(value)
+                node.set_scale(value, dirty=False)
+                return True
 
             case "weights":
                 if not isinstance(value, tuple):
@@ -182,6 +202,7 @@ class AnimationController:
                     node=node,
                     weights=value,
                 )
+                return False
 
             case _:
                 raise ValueError(
@@ -200,3 +221,23 @@ class AnimationController:
         for child in node.children:
             if isinstance(child, Object3D):
                 child.set_morph_weights(weights)
+
+    def _topmost_nodes(
+        self,
+        nodes: list[Node3D],
+    ) -> list[Node3D]:
+        node_set = set(nodes)
+        roots: list[Node3D] = []
+
+        for node in nodes:
+            parent = node.parent
+
+            while parent is not None:
+                if parent in node_set:
+                    break
+
+                parent = parent.parent
+            else:
+                roots.append(node)
+
+        return roots

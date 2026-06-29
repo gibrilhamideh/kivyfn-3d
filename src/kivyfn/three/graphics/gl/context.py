@@ -226,7 +226,6 @@ class BindTransform(InstructionGroup):
 # =================================== #
 
 class BindDeformation(InstructionGroup):
-    MAX_JOINTS = 512
 
     def __init__(
         self,
@@ -253,7 +252,7 @@ class BindDeformation(InstructionGroup):
 
         self.joint_matrices = BindMatrix4Array(
             uniform="joint_matrices",
-            matrices=self._encode_matrices(joint_matrices),
+            matrices=joint_matrices,
         )
 
         self.add(self.use_morphing)
@@ -266,23 +265,6 @@ class BindDeformation(InstructionGroup):
         value: bool,
     ) -> int:
         return 1 if value else 0
-
-    @classmethod
-    def _encode_matrices(
-        cls,
-        matrices: list[Matrix4],
-    ) -> list[Matrix4]:
-        if len(matrices) > cls.MAX_JOINTS:
-            raise ValueError(
-                f"Too many joints: {len(matrices)} > {cls.MAX_JOINTS}"
-            )
-
-        padded = list(matrices)
-
-        while len(padded) < cls.MAX_JOINTS:
-            padded.append(Matrix4.identity())
-
-        return padded
 
     def sync(
         self,
@@ -303,7 +285,7 @@ class BindDeformation(InstructionGroup):
         )
 
         self.joint_matrices.sync(
-            self._encode_matrices(joint_matrices),
+            joint_matrices,
         )
 
 

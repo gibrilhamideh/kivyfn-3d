@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import overload
 
+import time
+
 from kivy.event import EventDispatcher
 from kivy.graphics import (
     InstructionGroup,
@@ -238,12 +240,12 @@ class RenderInstanceManager(EventDispatcher):
             else:
                 instance.hide()
 
+
     def sync_deformation(
         self,
         object3d: Object3D,
     ) -> None:
         joint_matrices = object3d.joint_matrices
-
         for instance in self.instances_of(object3d=object3d).values():
             instance.sync_deformation(
                 deformation=object3d.deformation,

@@ -30,6 +30,7 @@ class Skin:
         self,
         mesh: Node3D,
     ) -> list[Matrix4]:
+
         mesh_inverse = mesh.world_matrix.inverse()
 
         return [

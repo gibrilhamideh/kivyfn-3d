@@ -36,15 +36,34 @@ class Stopwatch:
 
     @classmethod
     def summary(cls) -> None:
-        total = sum(
-            elapsed
-            for _, elapsed in cls._records
+        records = [
+            (name, elapsed)
+            for name, elapsed in cls._records
+            if not name.endswith(".total")
+        ]
+
+        total_record = next(
+            (
+                elapsed
+                for name, elapsed in reversed(cls._records)
+                if name.endswith(".total")
+            ),
+            None,
+        )
+
+        total = (
+            total_record
+            if total_record is not None
+            else sum(
+                elapsed
+                for _, elapsed in records
+            )
         )
 
         print("\n[STOPWATCH SUMMARY]")
         print("-" * 50)
 
-        for name, elapsed in cls._records:
+        for name, elapsed in records:
             percent = (
                 (elapsed / total) * 100.0
                 if total

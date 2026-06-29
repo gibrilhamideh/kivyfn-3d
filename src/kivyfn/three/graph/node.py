@@ -102,6 +102,12 @@ class Node3D(EventDispatcher):
         self.transform = transform or Transform()
         self.behaviors: dict[str, Behavior] = {}
 
+        self._local_matrix_dirty = True
+        self._world_matrix_dirty = True
+
+        self._local_matrix_cache: Matrix4 | None = None
+        self._world_matrix_cache: Matrix4 | None = None
+
     def __repr__(self) -> str:
         return (
             "Node3D("
@@ -117,14 +123,27 @@ class Node3D(EventDispatcher):
     # =================================== #
     @property
     def local_matrix(self) -> Matrix4:
-        return self.transform.to_matrix4(origin=self.origin)
+        if self._local_matrix_dirty or self._local_matrix_cache is None:
+            self._local_matrix_cache = self.transform.to_matrix4(
+                origin=self.origin,
+            )
+            self._local_matrix_dirty = False
+
+        return self._local_matrix_cache
 
     @property
     def world_matrix(self) -> Matrix4:
-        if self.parent is None:
-            return self.local_matrix
+        if self._world_matrix_dirty or self._world_matrix_cache is None:
+            if self.parent is None:
+                self._world_matrix_cache = self.local_matrix
+            else:
+                self._world_matrix_cache = (
+                    self.parent.world_matrix @ self.local_matrix
+                )
 
-        return self.parent.world_matrix @ self.local_matrix
+            self._world_matrix_dirty = False
+
+        return self._world_matrix_cache
 
     @property
     def world_position(self) -> Vector3:
@@ -157,16 +176,24 @@ class Node3D(EventDispatcher):
     def set_translation(
         self,
         translation: Vector3,
+        *,
+        dirty: bool = True,
     ) -> None:
         self.transform.set_translation(translation)
-        self.mark_transform_dirty()
+        self.mark_local_matrix_dirty()
+        if dirty:
+            self.mark_transform_dirty()
 
     def translate_by(
         self,
         offset: Vector3,
+        *,
+        dirty: bool = True,
     ) -> None:
         self.transform.translate_by(offset)
-        self.mark_transform_dirty()
+        self.mark_local_matrix_dirty()
+        if dirty:
+            self.mark_transform_dirty()
 
     # =================================== #
     # Scale
@@ -174,16 +201,24 @@ class Node3D(EventDispatcher):
     def set_scale(
         self,
         scale: Vector3,
+        *,
+        dirty: bool = True,
     ) -> None:
         self.transform.set_scale(scale)
-        self.mark_transform_dirty()
+        self.mark_local_matrix_dirty()
+        if dirty:
+            self.mark_transform_dirty()
 
     def scale_by(
         self,
         factor: Vector3,
+        *,
+        dirty: bool = True,
     ) -> None:
         self.transform.scale_by(factor)
-        self.mark_transform_dirty()
+        self.mark_local_matrix_dirty()
+        if dirty:
+            self.mark_transform_dirty()
 
     # =================================== #
     # Rotation
@@ -191,24 +226,33 @@ class Node3D(EventDispatcher):
     def set_rotation(
         self,
         rotation: Quaternion,
+        *,
+        dirty: bool = True,
     ) -> None:
         self.transform.set_rotation(rotation)
-        self.mark_transform_dirty()
+        self.mark_local_matrix_dirty()
+        if dirty:
+            self.mark_transform_dirty()
 
     def rotate_by(
         self,
         angle_degrees: float,
         axis: Vector3,
+        *,
+        dirty: bool = True,
     ) -> None:
-        self.transform.rotate_by(
-            angle_degrees,
-            axis,
-        )
-        self.mark_transform_dirty()
+        self.transform.rotate_by(angle_degrees, axis)
+        self.mark_local_matrix_dirty()
+        if dirty:
+            self.mark_transform_dirty()
 
     # =================================== #
     # Dirty Propagation
     # =================================== #
+    def mark_local_matrix_dirty(self) -> None:
+        self._local_matrix_dirty = True
+        self._world_matrix_dirty = True
+
     def mark_transform_dirty(self) -> None:
         self.dispatch("on_transform_dirty")
 
