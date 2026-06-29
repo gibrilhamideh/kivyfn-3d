@@ -4,27 +4,26 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from kivy.clock import Clock
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 
+from kivyfn.three.types import SceneObject
 from kivyfn.three.lights.limits import LightLimits
 from kivyfn.three.lights.manager import LightManager
+from kivyfn.three.assets.object3d import Object3D
 from kivyfn.three.render.instances import RenderInstanceManager
+from kivyfn.three.render.stages import RenderStageManager
 from kivyfn.three.render.registry import (
     RenderMembershipRegistry,
     RenderObjectRegistry,
 )
-from kivyfn.three.render.stages import RenderStageManager
-
-from kivyfn.three.types import SceneObject
 
 
 if TYPE_CHECKING:
     from kivyfn.three.scene.scene import Scene
-    from kivyfn.three.assets.object3d import Object3D
     from kivyfn.three.render.binder import RenderBindingRecord
     from kivyfn.three.render.stage import RenderStage
 
@@ -69,14 +68,6 @@ class Renderer(EventDispatcher):
         )
 
 
-
-        self.instances.bind(
-            on_transform_dirty=self.queue_transform,
-            on_material_dirty=self.queue_material,
-            on_visibility_dirty=self.queue_visibility,
-            on_deformation_dirty=self.queue_deformation,
-        )
-
         self.hidden: set[str] = set()
 
         self._lifecycle_queue: deque[RenderCommand] = deque()
@@ -85,7 +76,7 @@ class Renderer(EventDispatcher):
         self._visibility_queue: set[int] = set()
         self._deformation_queue: set[int] = set()
 
-        self._trigger_dirty = Clock.create_trigger(self.flush_dirty, -1)
+        self._trigger_dirty = Clock.create_trigger(self.flush, -1)
 
     def __repr__(self) -> str:
         return (
@@ -240,15 +231,13 @@ class Renderer(EventDispatcher):
 
     def queue_transform(
         self,
-        manager: RenderInstanceManager,
-        object3d: Object3D,
+        node: SceneObject,
     ) -> None:
-        self._transform_queue.add(id(object3d))
+        self._transform_queue.add(id(node))
         self._trigger_dirty()
 
     def queue_deformation(
         self,
-        manager: RenderInstanceManager,
         object3d: Object3D,
     ) -> None:
         self._deformation_queue.add(id(object3d))
@@ -256,7 +245,6 @@ class Renderer(EventDispatcher):
 
     def queue_material(
         self,
-        manager: RenderInstanceManager,
         object3d: Object3D,
     ) -> None:
         self._material_queue.add(id(object3d))
@@ -264,7 +252,6 @@ class Renderer(EventDispatcher):
 
     def queue_visibility(
         self,
-        manager: RenderInstanceManager,
         object3d: Object3D,
     ) -> None:
         self._visibility_queue.add(id(object3d))
@@ -274,7 +261,7 @@ class Renderer(EventDispatcher):
     # Flush Queue
     # =================================== #
 
-    def flush_dirty(
+    def flush(
         self,
         *_,
     ) -> None:
@@ -303,11 +290,26 @@ class Renderer(EventDispatcher):
 
         # ---) Transform
         while self._transform_queue:
-            object_id = self._transform_queue.pop()
-            object3d = self.objects.get(object_id)
+            node_id = self._transform_queue.pop()
 
-            if object3d is not None:
+            for affected in self.scene.registry.affected_by_tree(
+                node_id,
+                ordered=True,
+            ):
+                self.sync_matrix(affected)
+
+                if not affected.is_object:
+                    continue
+
+                object3d = cast(Object3D, affected)
+
                 self.instances.sync_transform(object3d)
+
+                if object3d.skin is not None:
+                    self._deformation_queue.add(id(object3d))
+
+            for object3d in self.scene.registry.affected_by_joint(node_id):
+                self._deformation_queue.add(id(object3d))
 
         # ---) Material
         while self._material_queue:
@@ -317,12 +319,17 @@ class Renderer(EventDispatcher):
             if object3d is not None:
                 self.instances.sync_material(object3d)
 
+
+        # ---) Deformation
         while self._deformation_queue:
             object_id = self._deformation_queue.pop()
             object3d = self.objects.get(object_id)
 
-            if object3d is not None:
-                self.instances.sync_deformation(object3d)
+            if object3d is None:
+                continue
+
+            self.sync_deformation(object3d)
+            self.instances.sync_deformation(object3d)
 
         # ---) Visibility
         while self._visibility_queue:
@@ -335,15 +342,19 @@ class Renderer(EventDispatcher):
     # =================================== #
     # Lifecycle Sync
     # =================================== #
-
     def render(
         self,
         node: SceneObject,
     ) -> None:
         self.lights.attach(node)
 
-        for object3d in node.walk(filter="objects"):
+        for affected in self.scene.registry.affected_by_tree(
+            node,
+            ordered=True,
+        ):
+            self.sync_matrix(affected)
 
+        for object3d in node.walk(filter="objects"):
             self.objects.register(object3d)
             tags = self.objects.tags_of(object3d)
 
@@ -489,4 +500,29 @@ class Renderer(EventDispatcher):
 
         return stage_names
 
+    # =================================== #
+    # Matching
+    # =================================== #
+    def sync_matrix(
+        self,
+        node: SceneObject,
+    ) -> None:
+        local_matrix = node.transform.to_matrix4(
+            origin=node.origin,
+        )
 
+        if node.parent is None:
+            world_matrix = local_matrix
+        else:
+            world_matrix = node.parent.world_matrix @ local_matrix
+
+        node._local_matrix = local_matrix
+        node._world_matrix = world_matrix
+
+    def sync_deformation(
+        self,
+        object3d: Object3D,
+    ) -> None:
+        object3d.deformation.sync_joint_matrices_for(
+            object3d,
+        )

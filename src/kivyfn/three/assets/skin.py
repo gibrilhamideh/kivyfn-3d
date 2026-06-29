@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import numpy as np
 
 from kivyfn.three.graph.node import Node3D
 from kivyfn.three.math.matrix import Matrix4
@@ -14,6 +15,11 @@ class Skin:
     inverse_bind_matrices: tuple[Matrix4, ...]
     name: str = ""
 
+    inverse_bind_array: np.ndarray = field(
+        init=False,
+        repr=False,
+    )
+
     def __post_init__(self) -> None:
         if len(self.joints) != len(self.inverse_bind_matrices):
             raise ValueError(
@@ -22,35 +28,21 @@ class Skin:
                 f"{len(self.inverse_bind_matrices)} inverse bind matrices."
             )
 
+        self.inverse_bind_array = np.stack(
+            [
+                matrix.values
+                for matrix in self.inverse_bind_matrices
+            ],
+            axis=0,
+        ).astype(np.float32)
+
     @property
     def joint_count(self) -> int:
         return len(self.joints)
 
-    def joint_matrices_for(
+    def fill_joint_world_array(
         self,
-        mesh: Node3D,
-    ) -> list[Matrix4]:
-        mesh_inverse = mesh.world_matrix.inverse()
-        return [
-            mesh_inverse @ joint.world_matrix @ inverse_bind_matrix
-            for joint, inverse_bind_matrix in zip(
-                self.joints,
-                self.inverse_bind_matrices,
-            )
-        ]
-    def joint_matrix_for(
-        self,
-        mesh: Node3D,
-        index: int,
-    ) -> Matrix4:
-        if index < 0 or index >= len(self.joints):
-            raise IndexError(
-                f"Skin joint index out of range: {index}. "
-                f"Joint count is {len(self.joints)}."
-            )
-
-        mesh_inverse = mesh.world_matrix.inverse()
-        joint = self.joints[index]
-        inverse_bind_matrix = self.inverse_bind_matrices[index]
-
-        return mesh_inverse @ joint.world_matrix @ inverse_bind_matrix
+        out: np.ndarray,
+    ) -> None:
+        for index, joint in enumerate(self.joints):
+            out[index] = joint.world_matrix.values

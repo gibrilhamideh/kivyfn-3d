@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import overload
-
-import time
+from collections import defaultdict
 
 from kivy.event import EventDispatcher
 from kivy.graphics import (
@@ -30,7 +28,7 @@ from kivyfn.three.render.config import TEXTURE_SLOTS
 from kivyfn.three.render.stage import RenderStage
 
 
-class RenderInstanceManager(EventDispatcher):
+class RenderInstanceManager():
     """
     Owns render instances for object/stage pairs.
 
@@ -45,12 +43,6 @@ class RenderInstanceManager(EventDispatcher):
     That belongs to Renderer and the render registries.
     """
 
-    __events__ = (
-        "on_transform_dirty",
-        "on_material_dirty",
-        "on_visibility_dirty",
-        "on_deformation_dirty",
-    )
 
     def __init__(
         self,
@@ -133,7 +125,6 @@ class RenderInstanceManager(EventDispatcher):
             geometry=object3d.geometry,
             material=object3d.material,
             deformation=object3d.deformation,
-            joint_matrices=object3d.joint_matrices,
             render_id=object3d.require_render_id()
             if stage.use_render_id
             else None,
@@ -145,8 +136,6 @@ class RenderInstanceManager(EventDispatcher):
         self._objects[object_id] = object3d
         self._instances_by_object[object_id][stage_name] = instance
         self._instances_by_stage[stage_name][object_id] = instance
-
-        self.bind_object(object3d)
 
         return instance
 
@@ -204,7 +193,6 @@ class RenderInstanceManager(EventDispatcher):
         if not stage_map:
             self._instances_by_object.pop(object_id, None)
             self._objects.pop(object_id, None)
-            self.unbind_object(object3d)
 
     # =================================== #
     # Sync
@@ -245,11 +233,9 @@ class RenderInstanceManager(EventDispatcher):
         self,
         object3d: Object3D,
     ) -> None:
-        joint_matrices = object3d.joint_matrices
         for instance in self.instances_of(object3d=object3d).values():
             instance.sync_deformation(
                 deformation=object3d.deformation,
-                joint_matrices=joint_matrices,
             )
 
     # =================================== #
@@ -270,110 +256,6 @@ class RenderInstanceManager(EventDispatcher):
         for instance in self.instances_of(object3d=object3d).values():
             instance.hide()
 
-    # =================================== #
-    # Object Binding
-    # =================================== #
-
-    def bind_object(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        object_id = id(object3d)
-
-        if object_id in self._bound_objects:
-            return
-
-        object3d.bind(
-            on_transform_dirty=self._on_object_transform_dirty,
-            on_material_dirty=self._on_object_material_dirty,
-            on_visibility_dirty=self._on_object_visibility_dirty,
-            on_deformation_dirty=self._on_object_deformation_dirty,
-        )
-
-        self._bound_objects.add(object_id)
-
-    def unbind_object(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        object_id = id(object3d)
-
-        if object_id not in self._bound_objects:
-            return
-
-        object3d.unbind(
-            on_transform_dirty=self._on_object_transform_dirty,
-            on_material_dirty=self._on_object_material_dirty,
-            on_visibility_dirty=self._on_object_visibility_dirty,
-            on_deformation_dirty=self._on_object_deformation_dirty,
-        )
-
-        self._bound_objects.discard(object_id)
-
-    # =================================== #
-    # Dirty Events
-    # =================================== #
-
-    def _on_object_transform_dirty(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        self.dispatch(
-            "on_transform_dirty",
-            object3d,
-        )
-
-    def _on_object_material_dirty(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        self.dispatch(
-            "on_material_dirty",
-            object3d,
-        )
-
-    def _on_object_visibility_dirty(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        self.dispatch(
-            "on_visibility_dirty",
-            object3d,
-        )
-
-    def _on_object_deformation_dirty(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        self.dispatch(
-            "on_deformation_dirty",
-            object3d,
-        )
-
-    def on_transform_dirty(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        pass
-
-    def on_material_dirty(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        pass
-
-    def on_visibility_dirty(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        pass
-
-    def on_deformation_dirty(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        pass
-
 
 class RenderInstance(EventDispatcher):
     def __init__(
@@ -382,7 +264,6 @@ class RenderInstance(EventDispatcher):
         geometry: Geometry,
         material: Material,
         deformation: Deformation,
-        joint_matrices: list[Matrix4],
         render_id: int | None,
         stage: RenderStage,
         **kwargs,
@@ -410,7 +291,6 @@ class RenderInstance(EventDispatcher):
 
         self.bind_deformation = BindDeformation(
             deformation=deformation,
-            joint_matrices=joint_matrices,
         )
 
         self.bind_material = BindMaterial(
@@ -509,11 +389,9 @@ class RenderInstance(EventDispatcher):
         self,
         *,
         deformation: Deformation,
-        joint_matrices: list[Matrix4],
     ) -> None:
         self.bind_deformation.sync(
             deformation=deformation,
-            joint_matrices=joint_matrices,
         )
 
     def sync_transform(

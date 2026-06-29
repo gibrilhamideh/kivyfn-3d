@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import numpy as np
+from dataclasses import dataclass
 
 from kivy.graphics.transformation import Matrix
 from kivyfn.three.math.vector import Vector3
 
 
+dataclass(slots=True)
 class Matrix3:
     def __init__(self, values=None):
         if values is None:
@@ -49,6 +51,7 @@ class Matrix3:
         return f"Matrix3(\n{formatted}\n)"
 
 
+dataclass(slots=True)
 class Matrix4:
     def __init__(self, values=None):
         if values is None:

@@ -18,8 +18,8 @@ from kivyfn.three.graphics.gl.core import GL
 from kivyfn.three.math.matrix import Matrix3, Matrix4
 
 if TYPE_CHECKING:
-    from kivyfn.three.assets.deformation import Deformation as AssetDeformation
-    from kivyfn.three.assets.material import Material as AssetMaterial
+    from kivyfn.three.assets.deformation import Deformation
+    from kivyfn.three.assets.material import Material
     from kivyfn.three.graphics.gl.texture import Texture2D, TextureCube
 
 
@@ -32,113 +32,6 @@ __all__ = (
     "BindObjectId",
     "BindTexture",
 )
-
-
-class BindMatrix4ArrayCallback(Callback):
-    def __init__(
-        self,
-        *,
-        uniform: str,
-        matrices: list[Matrix4],
-        **kwargs: Any,
-    ) -> None:
-        self.uniform = uniform
-        self.matrices = matrices
-        self._data = self._encode(matrices)
-
-        super().__init__(
-            self.apply,
-            **kwargs,
-        )
-
-    def sync(
-        self,
-        matrices: list[Matrix4],
-    ) -> None:
-        self.matrices = matrices
-        self._data = self._encode(matrices)
-        self.ask_update()
-
-    def apply(
-        self,
-        *_: Any,
-    ) -> None:
-        program = GL.get_int(
-            GL_CURRENT_PROGRAM,
-        )
-
-        if program == 0:
-            return
-
-        location = glGetUniformLocation(
-            program,
-            self.uniform.encode("utf-8"),
-        )
-
-        if location < 0:
-            return
-
-        glUniformMatrix4fv(
-            location,
-            len(self.matrices),
-            GL_FALSE,
-            self._data.tobytes(),
-        )
-
-    @staticmethod
-    def _encode(
-        matrices: list[Matrix4],
-    ) -> array:
-        values = array("f")
-
-        for matrix in matrices:
-            values.extend(matrix.values.T.flatten())
-
-        return values
-
-
-class BindMatrix4Array(InstructionGroup):
-    def __init__(
-        self,
-        *,
-        uniform: str,
-        matrices: list[Matrix4],
-    ) -> None:
-        super().__init__()
-
-        self.uniform = uniform
-
-        self.bind_callback = BindMatrix4ArrayCallback(
-            uniform=uniform,
-            matrices=matrices,
-        )
-
-        self.add(
-            self.bind_callback,
-        )
-
-    @property
-    def matrices(
-        self,
-    ) -> list[Matrix4]:
-        return self.bind_callback.matrices
-
-    @matrices.setter
-    def matrices(
-        self,
-        matrices: list[Matrix4],
-    ) -> None:
-        self.bind_callback.sync(
-            matrices,
-        )
-
-    def sync(
-        self,
-        matrices: list[Matrix4],
-    ) -> None:
-        self.bind_callback.sync(
-            matrices,
-        )
 
 
 # =================================== #
@@ -178,6 +71,166 @@ class BindUniform(ChangeState):
         }
 
         self.flag_data_update()
+
+
+class BindMatrix4ArrayCallback(Callback):
+    def __init__(
+        self,
+        *,
+        uniform: str,
+        data: array,
+        count: int,
+        **kwargs: Any,
+    ) -> None:
+        self.uniform = uniform
+        self.data = data
+        self.count = count
+
+        super().__init__(
+            self.apply,
+            **kwargs,
+        )
+
+    def sync(
+        self,
+        *,
+        data: array,
+        count: int,
+    ) -> None:
+        self.data = data
+        self.count = count
+        self.ask_update()
+
+    def apply(
+        self,
+        *_: Any,
+    ) -> None:
+        if self.count <= 0:
+            return
+
+        program = GL.get_int(
+            GL_CURRENT_PROGRAM,
+        )
+
+        if program == 0:
+            return
+
+        location = glGetUniformLocation(
+            program,
+            self.uniform.encode("utf-8"),
+        )
+
+        if location < 0:
+            return
+
+        glUniformMatrix4fv(
+            location,
+            self.count,
+            GL_FALSE,
+            self.data.tobytes(),
+        )
+
+
+class BindMatrix4Array(InstructionGroup):
+    def __init__(
+        self,
+        *,
+        uniform: str,
+        data: array,
+        count: int,
+    ) -> None:
+        super().__init__()
+
+        self.uniform = uniform
+
+        self.bind_callback = BindMatrix4ArrayCallback(
+            uniform=uniform,
+            data=data,
+            count=count,
+        )
+
+        self.add(
+            self.bind_callback,
+        )
+
+    def sync(
+        self,
+        *,
+        data: array,
+        count: int,
+    ) -> None:
+        self.bind_callback.sync(
+            data=data,
+            count=count,
+        )
+
+
+# =================================== #
+# Bind Deformation
+# =================================== #
+
+class BindDeformation(InstructionGroup):
+
+    def __init__(
+        self,
+        *,
+        deformation: Deformation,
+    ) -> None:
+        super().__init__()
+
+        self.use_morphing = BindUniform(
+            "use_morphing",
+            self._encode_bool(deformation.has_morph_weights),
+        )
+
+        self.use_skinning = BindUniform(
+            "use_skinning",
+            self._encode_bool(deformation.has_skin),
+        )
+
+        self.morph_weights = BindUniform(
+            "morph_weights",
+            list(deformation.morph_weights),
+        )
+
+        self.joint_matrices = BindMatrix4Array(
+            uniform="joint_matrices",
+            data=deformation.joint_uniform_data,
+            count=deformation.joint_count,
+        )
+
+        self.add(self.use_morphing)
+        self.add(self.use_skinning)
+        self.add(self.morph_weights)
+        self.add(self.joint_matrices)
+
+    @staticmethod
+    def _encode_bool(
+        value: bool,
+    ) -> int:
+        return 1 if value else 0
+
+    def sync(
+        self,
+        *,
+        deformation: Deformation,
+    ) -> None:
+        self.use_morphing.sync(
+            self._encode_bool(deformation.has_morph_weights),
+        )
+
+        self.use_skinning.sync(
+            self._encode_bool(deformation.has_skin),
+        )
+
+        self.morph_weights.sync(
+            list(deformation.morph_weights),
+        )
+
+        self.joint_matrices.sync(
+            data=deformation.joint_uniform_data,
+            count=deformation.joint_count,
+        )
 
 
 # =================================== #
@@ -221,72 +274,7 @@ class BindTransform(InstructionGroup):
             normal_mat.to_uniform(),
         )
 
-# =================================== #
-# Bind Deformation
-# =================================== #
 
-class BindDeformation(InstructionGroup):
-
-    def __init__(
-        self,
-        *,
-        deformation: AssetDeformation,
-        joint_matrices: list[Matrix4],
-    ) -> None:
-        super().__init__()
-
-        self.use_morphing = BindUniform(
-            "use_morphing",
-            self._encode_bool(deformation.has_morph_weights),
-        )
-
-        self.use_skinning = BindUniform(
-            "use_skinning",
-            self._encode_bool(deformation.has_skin),
-        )
-
-        self.morph_weights = BindUniform(
-            "morph_weights",
-            list(deformation.morph_weights),
-        )
-
-        self.joint_matrices = BindMatrix4Array(
-            uniform="joint_matrices",
-            matrices=joint_matrices,
-        )
-
-        self.add(self.use_morphing)
-        self.add(self.use_skinning)
-        self.add(self.morph_weights)
-        self.add(self.joint_matrices)
-
-    @staticmethod
-    def _encode_bool(
-        value: bool,
-    ) -> int:
-        return 1 if value else 0
-
-    def sync(
-        self,
-        *,
-        deformation: AssetDeformation,
-        joint_matrices: list[Matrix4],
-    ) -> None:
-        self.use_morphing.sync(
-            self._encode_bool(deformation.has_morph_weights),
-        )
-
-        self.use_skinning.sync(
-            self._encode_bool(deformation.has_skin),
-        )
-
-        self.morph_weights.sync(
-            list(deformation.morph_weights),
-        )
-
-        self.joint_matrices.sync(
-            joint_matrices,
-        )
 
 
 # =================================== #
@@ -358,7 +346,7 @@ class BindMaterial(InstructionGroup):
     def __init__(
         self,
         *,
-        material: AssetMaterial,
+        material: Material,
     ) -> None:
         super().__init__()
 
@@ -372,7 +360,7 @@ class BindMaterial(InstructionGroup):
     def sync(
         self,
         *,
-        material: AssetMaterial | None = None,
+        material: Material | None = None,
     ) -> None:
         if material is not None:
             self.material = material
@@ -406,7 +394,7 @@ class BindMaterial(InstructionGroup):
 
     def set_material(
         self,
-        material: AssetMaterial,
+        material: Material,
     ) -> None:
         self.sync(
             material=material,

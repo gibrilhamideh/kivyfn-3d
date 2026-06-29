@@ -102,11 +102,9 @@ class Node3D(EventDispatcher):
         self.transform = transform or Transform()
         self.behaviors: dict[str, Behavior] = {}
 
-        self._local_matrix_dirty = True
-        self._world_matrix_dirty = True
+        self._local_matrix = self.transform.to_matrix4(origin=self.origin)
+        self._world_matrix = self._local_matrix
 
-        self._local_matrix_cache: Matrix4 | None = None
-        self._world_matrix_cache: Matrix4 | None = None
 
     def __repr__(self) -> str:
         return (
@@ -117,34 +115,31 @@ class Node3D(EventDispatcher):
             ")"
         )
 
+    # =================================== #
+    # Matrix 
+    # =================================== #
+    def _set_local_matrix(
+        self,
+        matrix: Matrix4,
+    ) -> None:
+        self._local_matrix = matrix
+
+    def _set_world_matrix(
+        self,
+        matrix: Matrix4,
+    ) -> None:
+        self._world_matrix = matrix
 
     # =================================== #
     # Matrices
     # =================================== #
     @property
     def local_matrix(self) -> Matrix4:
-        if self._local_matrix_dirty or self._local_matrix_cache is None:
-            self._local_matrix_cache = self.transform.to_matrix4(
-                origin=self.origin,
-            )
-            self._local_matrix_dirty = False
-
-        return self._local_matrix_cache
-
+        return self._local_matrix
 
     @property
     def world_matrix(self) -> Matrix4:
-        if self._world_matrix_dirty or self._world_matrix_cache is None:
-            if self.parent is None:
-                self._world_matrix_cache = self.local_matrix
-            else:
-                self._world_matrix_cache = (
-                    self.parent.world_matrix @ self.local_matrix
-                )
-
-            self._world_matrix_dirty = False
-
-        return self._world_matrix_cache
+        return self._world_matrix
 
     @property
     def world_position(self) -> Vector3:
@@ -181,7 +176,6 @@ class Node3D(EventDispatcher):
         dirty: bool = True,
     ) -> None:
         self.transform.set_translation(translation)
-        self.mark_local_matrix_dirty()
         if dirty:
             self.mark_transform_dirty()
 
@@ -192,7 +186,6 @@ class Node3D(EventDispatcher):
         dirty: bool = True,
     ) -> None:
         self.transform.translate_by(offset)
-        self.mark_local_matrix_dirty()
         if dirty:
             self.mark_transform_dirty()
 
@@ -206,7 +199,6 @@ class Node3D(EventDispatcher):
         dirty: bool = True,
     ) -> None:
         self.transform.set_scale(scale)
-        self.mark_local_matrix_dirty()
         if dirty:
             self.mark_transform_dirty()
 
@@ -217,7 +209,6 @@ class Node3D(EventDispatcher):
         dirty: bool = True,
     ) -> None:
         self.transform.scale_by(factor)
-        self.mark_local_matrix_dirty()
         if dirty:
             self.mark_transform_dirty()
 
@@ -231,7 +222,6 @@ class Node3D(EventDispatcher):
         dirty: bool = True,
     ) -> None:
         self.transform.set_rotation(rotation)
-        self.mark_local_matrix_dirty()
         if dirty:
             self.mark_transform_dirty()
 
@@ -243,36 +233,19 @@ class Node3D(EventDispatcher):
         dirty: bool = True,
     ) -> None:
         self.transform.rotate_by(angle_degrees, axis)
-        self.mark_local_matrix_dirty()
         if dirty:
             self.mark_transform_dirty()
 
     # =================================== #
     # Dirty Propagation
     # =================================== #
-    def mark_local_matrix_dirty(self) -> None:
-        self._local_matrix_dirty = True
-        self.mark_world_matrix_dirty()
-
-
-    def mark_world_matrix_dirty(self) -> None:
-        self._world_matrix_dirty = True
-
-        for child in self.children:
-            child.mark_world_matrix_dirty()
-
-
     def mark_transform_dirty(self) -> None:
-        self.dispatch("on_transform_dirty")
-
         scene = self.scene
 
         if scene is not None:
-            for object3d in scene.registry.skins.affected_by(self):
-                object3d.mark_deformation_dirty()
+            scene.renderer.queue_transform(self)
 
-        for child in self.children:
-            child.mark_transform_dirty()
+        self.dispatch("on_transform_dirty")
 
     def mark_visibility_dirty(self) -> None:
         self.dispatch("on_visibility_dirty")

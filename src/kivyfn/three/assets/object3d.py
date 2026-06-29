@@ -103,19 +103,13 @@ class Object3D(Node3D):
     def morph_weights(self) -> list[float]:
         return list(self.deformation.morph_weights)
 
-
     @property
     def skin(self) -> Skin | None:
         return self.deformation.skin
 
     @property
     def joint_matrices(self) -> list[Matrix4]:
-        skin = self.skin
-
-        if skin is None:
-            return []
-
-        return skin.joint_matrices_for(self)
+        return self.deformation.joint_matrices
 
     # =================================== #
     # Requirements
@@ -173,13 +167,6 @@ class Object3D(Node3D):
         self.deformation.skin = skin
         self.mark_deformation_dirty()
 
-    def mark_deformation_dirty(
-        self,
-    ) -> None:
-        self.dispatch(
-            "on_deformation_dirty",
-        )
-
     # =================================== #
     # Material
     # =================================== #
@@ -230,15 +217,13 @@ class Object3D(Node3D):
     def mark_material_dirty(
         self,
     ) -> None:
+        if self.scene is not None:
+            self.scene.renderer.queue_material(self)
+
         self.dispatch(
             "on_material_dirty",
         )
 
-    def mark_transform_dirty(self) -> None:
-        super().mark_transform_dirty()
-
-        if self.skin is not None:
-            self.mark_deformation_dirty()
 
     def mark_tag_dirty(
         self,
@@ -258,6 +243,20 @@ class Object3D(Node3D):
                 old,
                 new,
             )
+
+
+    def mark_deformation_dirty(
+        self,
+    ) -> None:
+
+        if self.scene is not None:
+            self.scene.renderer.queue_deformation(self)
+
+        self.dispatch(
+            "on_deformation_dirty",
+        )
+
+
 
     # =================================== #
     # Tags
