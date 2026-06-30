@@ -203,7 +203,7 @@ class RenderInstanceManager():
         object3d: Object3D,
     ) -> None:
         model_mat = object3d.world_matrix
-        normal_mat = model_mat.to_normal_matrix()
+        normal_mat = model_mat.to_normal()
 
         for instance in self.instances_of(object3d=object3d).values():
             instance.sync_transform(

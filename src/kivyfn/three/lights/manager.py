@@ -102,90 +102,72 @@ class LightManager(EventDispatcher):
     # =================================== #
     def attach(
         self,
-        node: SceneObject,
+        light: LightSource,
     ) -> None:
-        changed = False
 
-        for light in node.walk(filter="lights"):
-            light = cast("LightSource", light)
-
-            light_id = id(light)
-
-            if light_id in self._bound_ids:
-                raise ValueError(
-                    f"Light {light.name!r} is already attached."
-                )
-
-            self.registry.add(light)
-            self._bound_ids.add(light_id)
-
-            config = light.config.shadow
-            if config is not None and config.enabled:
-                self._create_shadow_resources(
-                    light=light,
-                    config=config,
-                )
-
-            light.bind(
-                on_light_dirty=self.on_light_dirty,
-            )
-            light.bind(
-                on_transform_dirty=self.on_transform_dirty,
-            )
-            light.bind(
-                on_visibility_dirty=self.on_visibility_dirty,
+        light_id = id(light)
+        if light_id in self._bound_ids:
+            raise ValueError(
+                f"Light {light.name!r} is already attached."
             )
 
-            self.sync_transform(light)
-            self.sync_visibility(light)
+        self.registry.add(light)
+        self._bound_ids.add(light_id)
 
-            changed = True
+        config = light.config.shadow
+        if config is not None and config.enabled:
+            self._create_shadow_resources(
+                light=light,
+                config=config,
+            )
 
-        if changed:
-            self._uniform_trigger()
+        light.bind(
+            on_light_dirty=self.on_light_dirty,
+        )
+        light.bind(
+            on_transform_dirty=self.on_transform_dirty,
+        )
+        light.bind(
+            on_visibility_dirty=self.on_visibility_dirty,
+        )
+
+        self.sync_transform(light)
+        self.sync_visibility(light)
+        self._uniform_trigger()
 
     def detach(
         self,
-        node: SceneObject,
+        light: LightSource,
     ) -> None:
-        changed = False
 
-        for light in list(node.walk(filter="lights")):
-            light = cast("LightSource", light)
+        light_id = id(light)
+        if light_id not in self._bound_ids:
+            raise ValueError(
+                f"Light {light.name!r} is not attached."
+            )
 
-            light_id = id(light)
+        light.unbind(
+            on_light_dirty=self.on_light_dirty,
+        )
+        light.unbind(
+            on_transform_dirty=self.on_transform_dirty,
+        )
+        light.unbind(
+            on_visibility_dirty=self.on_visibility_dirty,
+        )
 
-            if light_id not in self._bound_ids:
-                raise ValueError(
-                    f"Light {light.name!r} is not attached."
+        self._bound_ids.discard(light_id)
+
+        if light.name in self._shadow_stages:
+            self._shadow_stages.remove(light.name)
+
+            if self.renderer.stages.registry.get(light.name) is not None:
+                self.renderer.remove_stage(
+                    light.name,
                 )
 
-            light.unbind(
-                on_light_dirty=self.on_light_dirty,
-            )
-            light.unbind(
-                on_transform_dirty=self.on_transform_dirty,
-            )
-            light.unbind(
-                on_visibility_dirty=self.on_visibility_dirty,
-            )
-
-            self._bound_ids.discard(light_id)
-
-            if light.name in self._shadow_stages:
-                self._shadow_stages.remove(light.name)
-
-                if self.renderer.stages.registry.get(light.name) is not None:
-                    self.renderer.remove_stage(
-                        light.name,
-                    )
-
-            self.registry.remove(light.name)
-
-            changed = True
-
-        if changed:
-            self._uniform_trigger()
+        self.registry.remove(light.name)
+        self._uniform_trigger()
 
     # =================================== #
     # Dirty

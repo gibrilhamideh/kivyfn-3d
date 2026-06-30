@@ -89,86 +89,7 @@ class Matrix3:
         ).reshape((3, 3))
         return self
 
-    # =================================== #
-    # In-place Operations
-    # =================================== #
-
-    def multiply_by(
-        self,
-        other: Matrix3,
-    ) -> Matrix3:
-        result = self.values @ other.values
-        self.values[...] = result
-        return self
-
-    def premultiply_by(
-        self,
-        other: Matrix3,
-    ) -> Matrix3:
-        result = other.values @ self.values
-        self.values[...] = result
-        return self
-
-    def multiply_from(
-        self,
-        left: Matrix3,
-        right: Matrix3,
-    ) -> Matrix3:
-        if self is left or self is right:
-            result = left.values @ right.values
-            self.values[...] = result
-            return self
-
-        np.matmul(
-            left.values,
-            right.values,
-            out=self.values,
-        )
-        return self
-
-    def inverse_by(
-        self,
-    ) -> Matrix3:
-        self.values[...] = np.linalg.inv(
-            self.values,
-        ).astype(
-            np.float32,
-            copy=False,
-        )
-        return self
-
-    def inverse_from(
-        self,
-        other: Matrix3,
-    ) -> Matrix3:
-        if self is other:
-            return self.inverse_by()
-
-        self.values[...] = np.linalg.inv(
-            other.values,
-        ).astype(
-            np.float32,
-            copy=False,
-        )
-        return self
-
-    def transpose_by(
-        self,
-    ) -> Matrix3:
-        self.values[...] = self.values.T.copy()
-        return self
-
-    def transpose_from(
-        self,
-        other: Matrix3,
-    ) -> Matrix3:
-        if self is other:
-            return self.transpose_by()
-
-        self.values[...] = other.values.T
-        return self
-
-    def normal_from_matrix4(
+    def set_normal_from(
         self,
         matrix: Matrix4,
     ) -> Matrix3:
@@ -188,29 +109,37 @@ class Matrix3:
         return self
 
     # =================================== #
-    # Non-mutating API
+    # Mutating Operations
     # =================================== #
 
-    def transpose(
+    def multiply(
         self,
+        other: Matrix3,
     ) -> Matrix3:
-        return Matrix3(
-            self.values.T,
-        )
+        result = self.values @ other.values
+        self.values[...] = result
+        return self
 
     def inverse(
         self,
     ) -> Matrix3:
-        return Matrix3(
-            np.linalg.inv(
-                self.values,
-            )
+        self.values[...] = np.linalg.inv(
+            self.values,
+        ).astype(
+            np.float32,
+            copy=False,
         )
+        return self
 
-    def tolist(
+    def transpose(
         self,
-    ) -> list[list[float]]:
-        return self.values.tolist()
+    ) -> Matrix3:
+        self.values[...] = self.values.T.copy()
+        return self
+
+    # =================================== #
+    # Conversion
+    # =================================== #
 
     def to_matrix4(
         self,
@@ -224,13 +153,10 @@ class Matrix3:
     ) -> Matrix:
         return self.to_matrix4().to_uniform()
 
-    def __matmul__(
+    def tolist(
         self,
-        other: Matrix3,
-    ) -> Matrix3:
-        return Matrix3(
-            self.values @ other.values,
-        )
+    ) -> list[list[float]]:
+        return self.values.tolist()
 
     def __repr__(
         self,
@@ -405,7 +331,7 @@ class Matrix4:
         ).reshape((4, 4))
         return self
 
-    def set_from_translation(
+    def set_translation(
         self,
         translation: Vector3,
     ) -> Matrix4:
@@ -417,7 +343,7 @@ class Matrix4:
 
         return self
 
-    def set_from_scale(
+    def set_scale(
         self,
         scale: Vector3,
     ) -> Matrix4:
@@ -432,10 +358,10 @@ class Matrix4:
         return self
 
     # =================================== #
-    # In-place Operations
+    # Mutating Operations
     # =================================== #
 
-    def multiply_by(
+    def multiply(
         self,
         other: Matrix4,
     ) -> Matrix4:
@@ -443,32 +369,7 @@ class Matrix4:
         self.values[...] = result
         return self
 
-    def premultiply_by(
-        self,
-        other: Matrix4,
-    ) -> Matrix4:
-        result = other.values @ self.values
-        self.values[...] = result
-        return self
-
-    def multiply_from(
-        self,
-        left: Matrix4,
-        right: Matrix4,
-    ) -> Matrix4:
-        if self is left or self is right:
-            result = left.values @ right.values
-            self.values[...] = result
-            return self
-
-        np.matmul(
-            left.values,
-            right.values,
-            out=self.values,
-        )
-        return self
-
-    def inverse_by(
+    def inverse(
         self,
     ) -> Matrix4:
         self.values[...] = np.linalg.inv(
@@ -479,65 +380,15 @@ class Matrix4:
         )
         return self
 
-    def inverse_from(
-        self,
-        other: Matrix4,
-    ) -> Matrix4:
-        if self is other:
-            return self.inverse_by()
-
-        self.values[...] = np.linalg.inv(
-            other.values,
-        ).astype(
-            np.float32,
-            copy=False,
-        )
-        return self
-
-    def transpose_by(
+    def transpose(
         self,
     ) -> Matrix4:
         self.values[...] = self.values.T.copy()
         return self
 
-    def transpose_from(
-        self,
-        other: Matrix4,
-    ) -> Matrix4:
-        if self is other:
-            return self.transpose_by()
-
-        self.values[...] = other.values.T
-        return self
-
     # =================================== #
-    # Non-mutating API
+    # Transform
     # =================================== #
-
-    def transpose(
-        self,
-    ) -> Matrix4:
-        return Matrix4(
-            self.values.T,
-        )
-
-    def inverse(
-        self,
-    ) -> Matrix4:
-        return Matrix4(
-            np.linalg.inv(
-                self.values,
-            )
-        )
-
-    def to_normal_matrix(
-        self,
-    ) -> Matrix3:
-        normal = Matrix3.empty()
-        normal.normal_from_matrix4(
-            self,
-        )
-        return normal
 
     def transform_point(
         self,
@@ -615,10 +466,25 @@ class Matrix4:
             ),
         )
 
-    def tolist(
+    # =================================== #
+    # Conversion
+    # =================================== #
+
+    def to_matrix3(
         self,
-    ) -> list[list[float]]:
-        return self.values.tolist()
+    ) -> Matrix3:
+        matrix = Matrix3.empty()
+        matrix.values[...] = self.values[:3, :3]
+        return matrix
+
+    def to_normal(
+        self,
+    ) -> Matrix3:
+        matrix = Matrix3.empty()
+        matrix.set_normal_from(
+            self,
+        )
+        return matrix
 
     def to_uniform(
         self,
@@ -631,13 +497,10 @@ class Matrix4:
 
         return matrix
 
-    def __matmul__(
+    def tolist(
         self,
-        other: Matrix4,
-    ) -> Matrix4:
-        return Matrix4(
-            self.values @ other.values,
-        )
+    ) -> list[list[float]]:
+        return self.values.tolist()
 
     def __repr__(
         self,
@@ -649,4 +512,3 @@ class Matrix4:
         )
 
         return f"Matrix4(\n{formatted}\n)"
-

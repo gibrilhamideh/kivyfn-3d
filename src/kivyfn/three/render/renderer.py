@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from kivy.clock import Clock
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 
-from kivyfn.three.types import SceneObject
-from kivyfn.three.math.matrix import Matrix4
+from kivyfn.three.types import LightSource, SceneObject
 from kivyfn.three.lights.limits import LightLimits
 from kivyfn.three.lights.manager import LightManager
 from kivyfn.three.assets.object3d import Object3D
@@ -330,13 +329,17 @@ class Renderer(EventDispatcher):
     def flush_lifecycle(
         self,
     ) -> None:
+        dirty = False
+
         while self._lifecycle_queue:
             command = self._lifecycle_queue.popleft()
 
             if command.op == "render":
+                dirty = True
                 self.render(command.node)
 
             elif command.op == "remove":
+                dirty = True
                 self.remove(command.node)
 
             elif command.op == "retag":
@@ -351,6 +354,9 @@ class Renderer(EventDispatcher):
                     command.old_tags,
                     command.new_tags,
                 )
+
+        if dirty:
+            self.scene.registry.rebuild_graph()    
 
     def flush_transform(
         self,
@@ -367,44 +373,40 @@ class Renderer(EventDispatcher):
         objects = self.objects
         deformation_queue = self._deformation_queue
 
-        affected_ids = registry.affected_by_compressed_tree(
+        affected = registry.affected_by(
             dirty_ids,
-            ids=True,
         )
+
+        return 
 
         dirty_joint_ids: set[int] = set()
         dirty_object_ids: set[int] = set()
 
-        by_id = registry.by_id
         object_ids = registry.object_ids
-        is_joint_id = registry.is_joint_id
+        is_joint = registry.skins.is_joint
+        skins_of = registry.skins.skins_of
         sync_matrix = self.sync_matrix
 
-        for affected_id in affected_ids:
-            node = by_id.get(
-                affected_id,
-            )
+        for node in affected:
+            node_id = id(node)
 
-            if node is None:
-                continue
-
-            if affected_id not in dirty_ids:
+            if node_id not in dirty_ids:
                 node._world_matrix_dirty = True
 
             sync_matrix(
                 node,
             )
 
-            if is_joint_id(
-                affected_id,
+            if is_joint(
+                node_id,
             ):
                 dirty_joint_ids.add(
-                    affected_id,
+                    node_id,
                 )
 
-            if affected_id in object_ids:
+            if node_id in object_ids:
                 dirty_object_ids.add(
-                    affected_id,
+                    node_id,
                 )
 
         for object_id in dirty_object_ids:
@@ -426,9 +428,8 @@ class Renderer(EventDispatcher):
 
         if dirty_joint_ids:
             deformation_queue.update(
-                registry.affected_by_joints(
+                skins_of(
                     dirty_joint_ids,
-                    ids=True,
                 )
             )
 
@@ -492,23 +493,26 @@ class Renderer(EventDispatcher):
         instances = self.instances
         objects = self.objects
 
-        visible_ids = registry.affected_by_compressed_tree(
+        visible_nodes = registry.affected_by(
             dirty_ids,
-            ids=True,
         )
 
-        for node_id in visible_ids:
+        for node in visible_nodes:
             object3d = registry.object_by_id(
-                node_id,
+                id(node),
             )
 
             if object3d is None:
                 continue
 
-            if objects.get(id(object3d)) is None:
+            if objects.get(
+                id(object3d),
+            ) is None:
                 continue
 
-            instances.sync_visibility(object3d)
+            instances.sync_visibility(
+                object3d,
+            )
 
     # =================================== #
     # Lifecycle Sync
@@ -517,44 +521,54 @@ class Renderer(EventDispatcher):
         self,
         node: SceneObject,
     ) -> None:
-        self.lights.attach(node)
+        for child in node.walk():
 
-        for affected in self.scene.registry.affected_by_tree(
-            node,
-        ):
-            self.sync_matrix(affected)
+            self.scene.registry.register(child)
 
-        for object3d in node.walk(filter="objects"):
-            self.objects.register(object3d)
-            tags = self.objects.tags_of(object3d)
+            if child.is_light:
+                light = cast(LightSource, child)
+                self.lights.attach(light)
+                continue
 
-            desired_stages = self.stages_for_tags(tags)
-            current_stages = self.memberships.stages_of(object3d)
+            if child.is_object:
+                object3d = cast(Object3D, child)
+                self.objects.register(object3d)
+                tags = self.objects.tags_of(object3d)
 
-            for stage_name in current_stages - desired_stages:
-                self.remove_membership(object3d, stage_name)
+                desired_stages = self.stages_for_tags(tags)
+                current_stages = self.memberships.stages_of(object3d)
 
-            for stage_name in desired_stages - current_stages:
-                self.add_membership(object3d, stage_name)
+                for stage_name in current_stages - desired_stages:
+                    self.remove_membership(object3d, stage_name)
 
-            self.instances.sync_transform(object3d)
-            self.instances.sync_material(object3d)
-            self.instances.sync_deformation(object3d)
-            self.instances.sync_visibility(object3d)
+                for stage_name in desired_stages - current_stages:
+                    self.add_membership(object3d, stage_name)
+
+                self.instances.sync_transform(object3d)
+                self.instances.sync_material(object3d)
+                self.instances.sync_deformation(object3d)
+                self.instances.sync_visibility(object3d)
 
     def remove(
         self,
         node: SceneObject,
     ) -> None:
-        self.lights.detach(node)
 
-        for object3d in node.walk(filter="objects"):
-            active_stages = self.memberships.stages_of(object3d)
+        for child in node.walk():
+            self.scene.registry.unregister(child)
 
-            for stage_name in active_stages:
-                self.remove_membership(object3d, stage_name)
+            if child.is_light:
+                light = cast(LightSource, child)
+                self.lights.detach(light)
+                continue
 
-            self.objects.unregister(object3d)
+            if child.is_object:
+                object3d = cast(Object3D, child)
+                active_stages = self.memberships.stages_of(object3d)
+                for stage_name in active_stages:
+                    self.remove_membership(object3d, stage_name)
+
+                self.objects.unregister(object3d)
 
     def retag(
         self,
@@ -685,7 +699,7 @@ class Renderer(EventDispatcher):
                     node.transform.matrix,
                 )
             else:
-                node.transform.write_matrix4(
+                node.transform.set_matrix(
                     node._local_matrix,
                     origin=origin,
                 )
@@ -696,14 +710,14 @@ class Renderer(EventDispatcher):
             return
 
         parent = node.parent
-
         if parent is None:
             node._world_matrix.set_from(
                 node._local_matrix,
             )
         else:
-            node._world_matrix.multiply_from(
+            node._world_matrix.set_from(
                 parent._world_matrix,
+            ).multiply(
                 node._local_matrix,
             )
 
@@ -726,3 +740,4 @@ class Renderer(EventDispatcher):
 
         self._flush_scheduled = True
         self._trigger_dirty()
+

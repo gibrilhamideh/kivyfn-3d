@@ -78,10 +78,11 @@ class Scene(SceneControllerBase):
             max_spot_lights=self.max_spot_lights,
         )
 
-        self.overlays = OverlayManager(self)
-        self.registry = SceneRegistry()
         self.root = Node3D(name="root")
         self.root.scene = self # root bootstrap only
+
+        self.overlays = OverlayManager(self)
+        self.registry = SceneRegistry(self.root)
 
         super().on_kv_post(base_widget)
 

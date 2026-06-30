@@ -112,6 +112,9 @@ class Node3D(EventDispatcher):
         self._local_matrix_dirty = False
         self._world_matrix_dirty = False
 
+        self._graph_start = 0
+        self._graph_end = 0
+
 
     def __repr__(self) -> str:
         return (
@@ -289,8 +292,10 @@ class Node3D(EventDispatcher):
         if self.scene is not None:
             child._enter_scene(self.scene)
 
+
         child.mark_transform_dirty()
         child.mark_visibility_dirty()
+
 
     def remove_child(
         self,
@@ -402,58 +407,41 @@ class Node3D(EventDispatcher):
         if self.scene is not None:
             self._leave_scene()
 
-        nodes = tuple(
-            self.walk(
-                filter="all",
+        self.scene = scene
+
+        for child in self.children:
+            child._enter_scene(
+                scene,
+                render=False,
             )
-        )
-
-        for node in nodes:
-            node.scene = scene
-
-        scene.registry.register_tree(self)
 
         if render:
             scene.renderer.queue_render(self)
-
-        for node in nodes:
-            node.dispatch(
-                "on_enter_scene",
-                scene,
-            )
 
     def _leave_scene(
         self,
         *,
         render: bool = True,
     ) -> None:
-        if self.scene is None:
+        scene = self.scene
+        if scene is None:
             return
 
-        scene = self.scene
-
-        nodes = tuple(
-            self.walk(
-                filter="all",
-            )
+        self.dispatch(
+            "on_leave_scene",
+            scene,
         )
 
-        for node in nodes:
-            node.dispatch(
-                "on_leave_scene",
-                scene,
-            )
-
-        for node in nodes:
-            scene.overlays.clear_anchor(node)
-
+        scene.overlays.clear_anchor(self)
         if render:
             scene.renderer.queue_remove(self)
 
-        scene.registry.unregister_tree(self)
+        for child in self.children:
+            child._leave_scene(
+                render=False,
+            )
 
-        for node in nodes:
-            node.scene = None
+        self.scene = None
 
     # =================================== #
     # Type Helpers

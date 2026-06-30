@@ -10,7 +10,6 @@ from kivy.properties import (
     BooleanProperty,
 )
 
-from kivyfn.three.math.matrix import Matrix4
 from kivyfn.three.collision import Collider
 from kivyfn.three.graph.node import Node3D
 from kivyfn.three.assets.deformation import Deformation

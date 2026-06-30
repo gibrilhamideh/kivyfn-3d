@@ -150,7 +150,7 @@ class Transform:
     # Matrix
     # =================================== #
 
-    def write_matrix4(
+    def set_matrix(
         self,
         out: Matrix4,
         *,
@@ -213,7 +213,7 @@ class Transform:
 
         matrix = Matrix4.empty()
 
-        self.write_matrix4(
+        self.set_matrix(
             matrix,
             origin=origin,
         )
