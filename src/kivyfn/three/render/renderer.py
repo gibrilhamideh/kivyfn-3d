@@ -377,8 +377,6 @@ class Renderer(EventDispatcher):
             dirty_ids,
         )
 
-        return 
-
         dirty_joint_ids: set[int] = set()
         dirty_object_ids: set[int] = set()
 
