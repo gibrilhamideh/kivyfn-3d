@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import overload
 from collections import defaultdict
+from typing import overload
 
 from kivy.event import EventDispatcher
 from kivy.graphics import (
@@ -14,21 +14,23 @@ from kivy.graphics import (
 from kivyfn.three.assets.geometry import Geometry
 from kivyfn.three.assets.material import Material
 from kivyfn.three.assets.object3d import Object3D
-from kivyfn.three.assets.deformation import Deformation
+from kivyfn.three.skinning.skinned_mesh import SkinnedMesh3D
 from kivyfn.three.graphics.gl.context import (
     BindGeometry,
     BindMaterial,
+    BindMorph,
     BindObjectId,
+    BindSkin,
     BindTexture,
     BindTransform,
-    BindDeformation,
 )
 from kivyfn.three.math.matrix import Matrix3, Matrix4
 from kivyfn.three.render.config import TEXTURE_SLOTS
 from kivyfn.three.render.stage import RenderStage
+from kivyfn.three.skinning.palette import SkinPalette
 
 
-class RenderInstanceManager():
+class RenderInstanceManager:
     """
     Owns render instances for object/stage pairs.
 
@@ -42,7 +44,6 @@ class RenderInstanceManager():
     This manager does NOT decide which objects belong to which stages.
     That belongs to Renderer and the render registries.
     """
-
 
     def __init__(
         self,
@@ -99,11 +100,17 @@ class RenderInstanceManager():
             )
 
         if object3d is not None:
-            return self._instances_by_object.get(id(object3d), {})
+            return self._instances_by_object.get(
+                id(object3d),
+                {},
+            )
 
         assert stage_name is not None
 
-        return self._instances_by_stage.get(stage_name, {})
+        return self._instances_by_stage.get(
+            stage_name,
+            {},
+        )
 
     # =================================== #
     # Create
@@ -117,21 +124,24 @@ class RenderInstanceManager():
         object_id = id(object3d)
         stage_name = stage.name
 
-        existing = self._instances_by_object[object_id].get(stage_name)
+        existing = self._instances_by_object[object_id].get(
+            stage_name,
+        )
         if existing is not None:
             return existing
 
         instance = RenderInstance(
             geometry=object3d.geometry,
             material=object3d.material,
-            deformation=object3d.deformation,
             render_id=object3d.require_render_id()
             if stage.use_render_id
             else None,
             stage=stage,
         )
 
-        stage.add(instance.group)
+        stage.add(
+            instance.group,
+        )
 
         self._objects[object_id] = object3d
         self._instances_by_object[object_id][stage_name] = instance
@@ -172,27 +182,48 @@ class RenderInstanceManager():
     ) -> None:
         object_id = id(object3d)
 
-        stage_map = self._instances_by_object.get(object_id)
+        stage_map = self._instances_by_object.get(
+            object_id,
+        )
         if stage_map is None:
             return
 
-        instance = stage_map.pop(stage_name, None)
+        instance = stage_map.pop(
+            stage_name,
+            None,
+        )
         if instance is None:
             return
 
-        instance.stage.remove(instance.group)
+        instance.stage.remove(
+            instance.group,
+        )
         instance.destroy()
 
-        object_map = self._instances_by_stage.get(stage_name)
+        object_map = self._instances_by_stage.get(
+            stage_name,
+        )
         if object_map is not None:
-            object_map.pop(object_id, None)
+            object_map.pop(
+                object_id,
+                None,
+            )
 
             if not object_map:
-                self._instances_by_stage.pop(stage_name, None)
+                self._instances_by_stage.pop(
+                    stage_name,
+                    None,
+                )
 
         if not stage_map:
-            self._instances_by_object.pop(object_id, None)
-            self._objects.pop(object_id, None)
+            self._instances_by_object.pop(
+                object_id,
+                None,
+            )
+            self._objects.pop(
+                object_id,
+                None,
+            )
 
     # =================================== #
     # Sync
@@ -205,7 +236,9 @@ class RenderInstanceManager():
         model_mat = object3d.world_matrix
         normal_mat = model_mat.to_normal()
 
-        for instance in self.instances_of(object3d=object3d).values():
+        for instance in self.instances_of(
+            object3d=object3d,
+        ).values():
             instance.sync_transform(
                 model_mat=model_mat,
                 normal_mat=normal_mat,
@@ -215,27 +248,45 @@ class RenderInstanceManager():
         self,
         object3d: Object3D,
     ) -> None:
-        for instance in self.instances_of(object3d=object3d).values():
-            instance.set_material(object3d.material)
+        for instance in self.instances_of(
+            object3d=object3d,
+        ).values():
+            instance.set_material(
+                object3d.material,
+            )
 
     def sync_visibility(
         self,
         object3d: Object3D,
     ) -> None:
-        for instance in self.instances_of(object3d=object3d).values():
+        for instance in self.instances_of(
+            object3d=object3d,
+        ).values():
             if object3d.visible_in_tree:
                 instance.show()
             else:
                 instance.hide()
 
-
-    def sync_deformation(
+    def sync_morph(
         self,
         object3d: Object3D,
     ) -> None:
-        for instance in self.instances_of(object3d=object3d).values():
-            instance.sync_deformation(
-                deformation=object3d.deformation,
+        for instance in self.instances_of(
+            object3d=object3d,
+        ).values():
+            instance.sync_morph(
+                weights=tuple(object3d.morph_weights),
+            )
+
+    def sync_skin(
+        self,
+        mesh: SkinnedMesh3D,
+    ) -> None:
+        for instance in self.instances_of(
+            object3d=mesh,
+        ).values():
+            instance.sync_skin(
+                skin_palette=mesh.skin_palette,
             )
 
     # =================================== #
@@ -246,14 +297,18 @@ class RenderInstanceManager():
         self,
         object3d: Object3D,
     ) -> None:
-        for instance in self.instances_of(object3d=object3d).values():
+        for instance in self.instances_of(
+            object3d=object3d,
+        ).values():
             instance.show()
 
     def hide(
         self,
         object3d: Object3D,
     ) -> None:
-        for instance in self.instances_of(object3d=object3d).values():
+        for instance in self.instances_of(
+            object3d=object3d,
+        ).values():
             instance.hide()
 
 
@@ -263,7 +318,6 @@ class RenderInstance(EventDispatcher):
         *,
         geometry: Geometry,
         material: Material,
-        deformation: Deformation,
         render_id: int | None,
         stage: RenderStage,
         **kwargs,
@@ -286,12 +340,11 @@ class RenderInstance(EventDispatcher):
         self.bind_geometry = BindGeometry(
             use_tangents=geometry.has_tangents,
             use_skinning=geometry.has_skin,
-            use_colors=geometry.has_colors
+            use_colors=geometry.has_colors,
         )
 
-        self.bind_deformation = BindDeformation(
-            deformation=deformation,
-        )
+        self.bind_morph = BindMorph()
+        self.bind_skin = BindSkin()
 
         self.bind_material = BindMaterial(
             material=material,
@@ -339,7 +392,8 @@ class RenderInstance(EventDispatcher):
         instructions = [
             self.bind_transform,
             self.bind_geometry,
-            self.bind_deformation,
+            self.bind_morph,
+            self.bind_skin,
         ]
 
         if self.stage.use_material:
@@ -385,13 +439,24 @@ class RenderInstance(EventDispatcher):
     # =================================== #
     # Sync
     # =================================== #
-    def sync_deformation(
+
+    def sync_morph(
         self,
         *,
-        deformation: Deformation,
+        weights: tuple[float, ...],
     ) -> None:
-        self.bind_deformation.sync(
-            deformation=deformation,
+        self.bind_morph.sync(
+            weights=weights,
+        )
+
+    def sync_skin(
+        self,
+        *,
+        skin_palette: SkinPalette,
+    ) -> None:
+        self.bind_skin.sync(
+            data=skin_palette.bytes,
+            count=skin_palette.joint_count,
         )
 
     def sync_transform(

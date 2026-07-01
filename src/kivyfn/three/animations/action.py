@@ -200,9 +200,8 @@ class AnimationAction(EventDispatcher):
         self._require_alive()
 
         for channel in self.channels:
-            channel.applier(
-                channel.node,
-                channel.sampler.sample(self.time),
+            channel.apply(
+                self.time,
             )
 
     def _require_alive(self) -> None:

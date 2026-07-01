@@ -9,163 +9,6 @@ from kivyfn.three.types import SceneObject
 from kivyfn.three.assets.object3d import Object3D
 
 
-
-class SkinDependencyIndex:
-    """
-    Tracks reverse skin dependencies by object id.
-
-    object_id -> joint ids
-    joint_id  -> skinned Object3D ids
-
-    This index does not own nodes, objects, or skins.
-    It only stores ids.
-
-    Public query rules:
-    - queries accept ids only
-    - queries return ids only
-    """
-
-    def __init__(
-        self,
-    ) -> None:
-        self._by_joint: dict[int, set[int]] = {}
-        self._by_object: dict[int, tuple[int, ...]] = {}
-
-        self._skins_of_cache: dict[frozenset[int], tuple[int, ...]] = {}
-
-    # =================================== #
-    # Cache
-    # =================================== #
-
-    def clear_cache(
-        self,
-    ) -> None:
-        self._skins_of_cache.clear()
-
-    def clear(
-        self,
-    ) -> None:
-        self._by_joint.clear()
-        self._by_object.clear()
-        self.clear_cache()
-
-    # =================================== #
-    # Register
-    # =================================== #
-
-    def register(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        object_id = id(object3d)
-
-        if object_id in self._by_object:
-            self.unregister(object3d)
-
-        skin = object3d.skin
-
-        if skin is None:
-            return
-
-        joint_ids = tuple(
-            id(joint)
-            for joint in skin.joints
-        )
-
-        if not joint_ids:
-            return
-
-        self._by_object[object_id] = joint_ids
-
-        for joint_id in joint_ids:
-            self._by_joint.setdefault(
-                joint_id,
-                set(),
-            ).add(object_id)
-
-        self.clear_cache()
-
-    def unregister(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        object_id = id(object3d)
-
-        joint_ids = self._by_object.pop(
-            object_id,
-            None,
-        )
-
-        if joint_ids is None:
-            return
-
-        for joint_id in joint_ids:
-            object_ids = self._by_joint.get(
-                joint_id,
-            )
-
-            if object_ids is None:
-                continue
-
-            object_ids.discard(
-                object_id,
-            )
-
-            if not object_ids:
-                del self._by_joint[joint_id]
-
-        self.clear_cache()
-
-    # =================================== #
-    # Query
-    # =================================== #
-
-    def is_joint(
-        self,
-        node_id: int,
-    ) -> bool:
-        return node_id in self._by_joint
-
-    def joints_of(
-        self,
-        object_id: int,
-    ) -> tuple[int, ...]:
-        return self._by_object.get(
-            object_id,
-            (),
-        )
-
-    def skins_of(
-        self,
-        joint_ids: set[int],
-    ) -> tuple[int, ...]:
-        if not joint_ids:
-            return ()
-
-        key = frozenset(joint_ids)
-
-        cached = self._skins_of_cache.get(
-            key,
-        )
-
-        if cached is not None:
-            return cached
-
-        skin_ids: set[int] = set()
-
-        for joint_id in key:
-            skin_ids.update(
-                self._by_joint.get(
-                    joint_id,
-                    (),
-                )
-            )
-
-        result = tuple(skin_ids)
-        self._skins_of_cache[key] = result
-        return result
-
-
 class SceneRegistry:
     """
     Tracks scene nodes by id, uid, render_id, transform dependencies,
@@ -205,7 +48,6 @@ class SceneRegistry:
         self._root = root
         self._graph: list[SceneObject] = []
 
-        self.skins = SkinDependencyIndex()
 
     def __len__(
         self,
@@ -240,13 +82,12 @@ class SceneRegistry:
         if node.uid is not None:
             self.register_uid(node)
 
-        if node.is_object:
+        if node.is_renderable:
             object3d = cast(Object3D, node)
             object_id = id(object3d)
 
             self.object_ids.add(object_id)
             self.register_render_id(object3d)
-            self.skins.register(object3d)
 
     def _unregister_indexes(
         self,
@@ -255,11 +96,10 @@ class SceneRegistry:
         if node.uid is not None:
             self.unregister_uid(node)
 
-        if node.is_object:
+        if node.is_renderable:
             object3d = cast(Object3D, node)
             object_id = id(object3d)
 
-            self.skins.unregister(object3d)
             self.unregister_render_id(object3d)
             self.object_ids.discard(object_id)
 
@@ -483,13 +323,16 @@ class SceneRegistry:
         node_ids: set[int],
     ) -> list[SceneObject]:
 
-
-        #NOTE: performance
-        # 83.3% reduction.
-        # 60 frames:
-        # raw span:          1,617,280 node hits
-        # compressed span:     270,360 node hits
-        # removed span:      1,346,920 node hits
+        # NOTE: performance
+        # Compressing dirty transform spans removed 83.3% of node visits.
+        # 60-frame sample:
+        #   raw span hits:        1,617,280
+        #   compressed hits:        270,360
+        #   removed hits:         1,346,920
+        # Per frame:
+        #   raw:        ~26,955 hits
+        #   compressed: ~4,506 hits
+        #   removed:   ~22,449 hits
         ranges = self._compress(node_ids)
 
         if not ranges:

@@ -8,11 +8,14 @@ from collections.abc import Callable
 
 if TYPE_CHECKING:
     from kivyfn.three.assets.object3d import Object3D
+    from kivyfn.three.skinning.skinned_mesh import SkinnedMesh3D
+    from kivyfn.three.skinning.skinned_model import SkinnedModel3D
     from kivyfn.three.graph.node import Node3D
     from kivyfn.three.parsers.glb.blueprint import GlbBlueprint, GlbInstance
     from kivyfn.three.parsers.obj.blueprint import ObjBlueprint, ObjAsset
     from kivyfn.three.graphics.gl.targets import ScreenTarget, Texture2DTarget, TextureCubeTarget
 
+    from kivyfn.three.lights.sources.base import Light3D
     from kivyfn.three.lights.sources.directional import DirectionalLight
     from kivyfn.three.lights.sources.point import PointLight
     from kivyfn.three.lights.sources.spot import SpotLight
@@ -34,7 +37,8 @@ StageTargetKind = Literal[
     "texture-cube",
 ]
 
-SceneObject: TypeAlias = "Node3D | Object3D"
+SceneObject: TypeAlias = "Node3D | Object3D | SkinnedModel3D | SkinnedMesh3D | Light3D"
+RenderableObject: TypeAlias = "Object3D | SkinnedMesh3D"
 
 
 WalkFilter = Callable[["SceneObject"], bool]

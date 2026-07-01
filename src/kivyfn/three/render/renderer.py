@@ -10,10 +10,12 @@ from kivy.clock import Clock
 from kivy.event import EventDispatcher
 from kivy.graphics import InstructionGroup
 
-from kivyfn.three.types import LightSource, SceneObject
+from kivyfn.three.types import LightSource, SceneObject, RenderableObject
 from kivyfn.three.lights.limits import LightLimits
 from kivyfn.three.lights.manager import LightManager
 from kivyfn.three.assets.object3d import Object3D
+from kivyfn.three.skinning.skinned_mesh import SkinnedMesh3D
+from kivyfn.three.skinning.skinned_model import SkinnedModel3D
 from kivyfn.three.render.instances import RenderInstanceManager
 from kivyfn.three.render.stages import RenderStageManager
 from kivyfn.three.render.registry import (
@@ -76,7 +78,9 @@ class Renderer(EventDispatcher):
         self._transform_queue: set[int] = set()
         self._material_queue: set[int] = set()
         self._visibility_queue: set[int] = set()
-        self._deformation_queue: set[int] = set()
+        self._morph_queue: set[int] = set()
+        self._skinned_model_queue: set[int] = set()
+        self._skinned_mesh_queue: set[int] = set()
 
         self._flush_scheduled = False
         self._trigger_dirty = Clock.create_trigger(self.flush, -1)
@@ -243,12 +247,36 @@ class Renderer(EventDispatcher):
         self._transform_queue.add(id(node))
         self._wake()
 
-    def queue_deformation(
+
+    def queue_skinned_model(
+        self,
+        skinned_model: SkinnedModel3D,
+    ) -> None:
+        self._skinned_model_queue.add(
+            id(skinned_model),
+        )
+        self._wake()
+
+    def queue_skinned_mesh(
+        self,
+        skinned_mesh: SkinnedMesh3D,
+    ) -> None:
+        self._skinned_mesh_queue.add(
+            id(skinned_mesh),
+        )
+        self._wake()
+
+    def queue_morph(
         self,
         object3d: Object3D,
     ) -> None:
-        self._deformation_queue.add(id(object3d))
-        self._wake()
+        return
+        
+        # TODO: implemntation
+        # self._morph_queue.add(
+        #     id(object3d),
+        # )
+        # self._wake()
 
     def queue_material(
         self,
@@ -271,51 +299,65 @@ class Renderer(EventDispatcher):
         self,
         *_,
     ) -> None:
+
         self._flush_scheduled = False
 
         if not self.profile_flush:
             self.flush_lifecycle()
             self.flush_transform()
+            self.flush_skinned_models()
+            self.flush_skinned_meshes()
             self.flush_material()
-            self.flush_deformation()
             self.flush_visibility()
             return
 
         self._profile_flush_count += 1
 
-        Stopwatch.add_count(
-            "queue.lifecycle",
-            len(self._lifecycle_queue),
-        )
-        Stopwatch.add_count(
-            "queue.transform",
-            len(self._transform_queue),
-        )
-        Stopwatch.add_count(
-            "queue.material",
-            len(self._material_queue),
-        )
-        Stopwatch.add_count(
-            "queue.deformation",
-            len(self._deformation_queue),
-        )
-        Stopwatch.add_count(
-            "queue.visibility",
-            len(self._visibility_queue),
-        )
-
         with Stopwatch.section("flush.total"):
+
+            Stopwatch.add_count(
+                "queue.lifecycle",
+                len(self._lifecycle_queue),
+            )
             with Stopwatch.section("flush.lifecycle"):
                 self.flush_lifecycle()
+
+            Stopwatch.add_count(
+                "queue.transform",
+                len(self._transform_queue),
+            )
 
             with Stopwatch.section("flush.transform"):
                 self.flush_transform()
 
+            Stopwatch.add_count(
+                "queue.skinned-models",
+                len(self._skinned_model_queue),
+            )
+
+            with Stopwatch.section("flush.skinned-models"):
+                self.flush_skinned_models()
+
+            Stopwatch.add_count(
+                "queue.skinned-meshes",
+                len(self._skinned_mesh_queue),
+            )
+
+            with Stopwatch.section("flush.skinned-meshes"):
+                self.flush_skinned_meshes()
+
+            Stopwatch.add_count(
+                "queue.material",
+                len(self._material_queue),
+            )
+
             with Stopwatch.section("flush.material"):
                 self.flush_material()
 
-            with Stopwatch.section("flush.deformation"):
-                self.flush_deformation()
+            Stopwatch.add_count(
+                "queue.visibility",
+                len(self._visibility_queue),
+            )
 
             with Stopwatch.section("flush.visibility"):
                 self.flush_visibility()
@@ -325,6 +367,8 @@ class Renderer(EventDispatcher):
                 clear=True,
                 min_ms=0.01,
             )
+
+
 
     def flush_lifecycle(
         self,
@@ -371,18 +415,14 @@ class Renderer(EventDispatcher):
         registry = self.scene.registry
         instances = self.instances
         objects = self.objects
-        deformation_queue = self._deformation_queue
 
         affected = registry.affected_by(
             dirty_ids,
         )
 
-        dirty_joint_ids: set[int] = set()
         dirty_object_ids: set[int] = set()
 
         object_ids = registry.object_ids
-        is_joint = registry.skins.is_joint
-        skins_of = registry.skins.skins_of
         sync_matrix = self.sync_matrix
 
         for node in affected:
@@ -395,12 +435,9 @@ class Renderer(EventDispatcher):
                 node,
             )
 
-            if is_joint(
-                node_id,
-            ):
-                dirty_joint_ids.add(
-                    node_id,
-                )
+            if node.is_skinned_model:
+                model = cast(SkinnedModel3D, node)
+                model.mark_bones_dirty(queue=False)
 
             if node_id in object_ids:
                 dirty_object_ids.add(
@@ -408,27 +445,74 @@ class Renderer(EventDispatcher):
                 )
 
         for object_id in dirty_object_ids:
+            object3d = objects.get(object_id)
+
+            if object3d is None:
+                continue
+
+            instances.sync_transform(object3d)
+
+            if object3d.is_skinned_mesh:
+                self._skinned_mesh_queue.add(
+                    object_id,
+                )
+
+
+
+
+    def flush_skinned_models(
+        self,
+    ) -> None:
+        dirty_ids = self._skinned_model_queue
+
+        if not dirty_ids:
+            return
+
+        self._skinned_model_queue = set()
+
+        registry = self.scene.registry
+
+        for model_id in dirty_ids:
+            node = registry.get_by_id(model_id)
+
+            if node is None:
+                continue
+
+            if not node.is_skinned_model:
+                continue
+
+            model = cast(SkinnedModel3D, node)
+            model.sync_skin()
+            for mesh in model.iter_skinned_meshes():
+                self._skinned_mesh_queue.add(
+                    id(mesh),
+                )
+
+    def flush_skinned_meshes(
+        self,
+    ) -> None:
+        dirty_ids = self._skinned_mesh_queue
+
+        if not dirty_ids:
+            return
+
+        self._skinned_mesh_queue = set()
+
+        objects = self.objects
+        instances = self.instances
+
+        for mesh_id in dirty_ids:
             object3d = objects.get(
-                object_id,
+                mesh_id,
             )
 
             if object3d is None:
                 continue
 
-            instances.sync_transform(
-                object3d,
-            )
-
-            if object3d.skin is not None:
-                deformation_queue.add(
-                    object_id,
-                )
-
-        if dirty_joint_ids:
-            deformation_queue.update(
-                skins_of(
-                    dirty_joint_ids,
-                )
+            mesh = cast(SkinnedMesh3D, object3d)
+            mesh.sync_skin_palette()
+            instances.sync_skin(
+                mesh,
             )
 
     def flush_material(
@@ -451,31 +535,6 @@ class Renderer(EventDispatcher):
                 continue
 
             instances.sync_material(object3d)
-
-    def flush_deformation(
-        self,
-    ) -> None:
-        dirty_ids = self._deformation_queue
-
-        if not dirty_ids:
-            return
-
-        self._deformation_queue = set()
-
-        objects = self.objects
-        instances = self.instances
-
-        for object_id in dirty_ids:
-            object3d = objects.get(object_id)
-
-            if object3d is None:
-                continue
-
-            if object3d.skin is None:
-                continue
-
-            self.sync_deformation(object3d)
-            instances.sync_deformation(object3d)
 
     def flush_visibility(
         self,
@@ -528,8 +587,8 @@ class Renderer(EventDispatcher):
                 self.lights.attach(light)
                 continue
 
-            if child.is_object:
-                object3d = cast(Object3D, child)
+            if child.is_renderable:
+                object3d = cast(RenderableObject, child)
                 self.objects.register(object3d)
                 tags = self.objects.tags_of(object3d)
 
@@ -544,8 +603,13 @@ class Renderer(EventDispatcher):
 
                 self.instances.sync_transform(object3d)
                 self.instances.sync_material(object3d)
-                self.instances.sync_deformation(object3d)
+                self.instances.sync_morph(object3d)
                 self.instances.sync_visibility(object3d)
+
+                if object3d.is_skinned_mesh:
+                    self._skinned_mesh_queue.add(
+                        id(object3d),
+                    )
 
     def remove(
         self,
@@ -560,8 +624,8 @@ class Renderer(EventDispatcher):
                 self.lights.detach(light)
                 continue
 
-            if child.is_object:
-                object3d = cast(Object3D, child)
+            if child.is_renderable:
+                object3d = cast(RenderableObject, child)
                 active_stages = self.memberships.stages_of(object3d)
                 for stage_name in active_stages:
                     self.remove_membership(object3d, stage_name)
@@ -574,7 +638,7 @@ class Renderer(EventDispatcher):
         old_tags: set[str],
         new_tags: set[str],
     ) -> None:
-        for object3d in node.walk(filter="objects"):
+        for object3d in node.walk(filter="renderables"):
             if object3d is node:
                 self.objects.clear_tags(object3d)
 
@@ -597,13 +661,13 @@ class Renderer(EventDispatcher):
 
             self.instances.sync_transform(object3d)
             self.instances.sync_material(object3d)
-            self.instances.sync_deformation(object3d)
+            self.instances.sync_morph(object3d)
             self.instances.sync_visibility(object3d)
 
 
     def add_membership(
         self,
-        object3d: Object3D,
+        object3d: RenderableObject,
         stage_name: str,
     ) -> None:
         stage = self.stages.registry.get(stage_name)
@@ -615,7 +679,7 @@ class Renderer(EventDispatcher):
 
     def remove_membership(
         self,
-        object3d: Object3D,
+        object3d: RenderableObject,
         stage_name: str,
     ) -> None:
         stage = self.stages.registry.get(stage_name)
@@ -648,7 +712,7 @@ class Renderer(EventDispatcher):
 
                 self.instances.sync_transform(object3d)
                 self.instances.sync_material(object3d)
-                self.instances.sync_deformation(object3d)
+                self.instances.sync_morph(object3d)
                 self.instances.sync_visibility(object3d)
 
     def remove_stage_memberships(
@@ -720,14 +784,6 @@ class Renderer(EventDispatcher):
             )
 
         node._world_matrix_dirty = False
-
-    def sync_deformation(
-        self,
-        object3d: Object3D,
-    ) -> None:
-        object3d.deformation.sync_joint_matrices_for(
-            object3d,
-        )
 
     # =================================== #
     # Helpers

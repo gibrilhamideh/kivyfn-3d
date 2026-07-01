@@ -6,14 +6,14 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from kivyfn.three.math.transform import Transform
-from kivyfn.three.graph.node import Node3D
 from kivyfn.three.assets.object3d import Object3D
+from kivyfn.three.skinning.skinned_mesh import SkinnedMesh3D
+from kivyfn.three.graph.node import Node3D
+from kivyfn.three.math.transform import Transform
 from kivyfn.three.parsers.glb.primitive import GlbPrimitive
 
 
 GlbNodeFilter = Callable[["GlbNode"], bool]
-
 
 
 @dataclass(slots=True)
@@ -21,10 +21,11 @@ class GlbNode:
     name: str
     gltf_index: int
 
-    primitives: list[GlbPrimitive] = field(default_factory=list)
     morph_weights: tuple[float, ...] = ()
-
     transform: Transform = field(default_factory=Transform)
+    primitives: list[GlbPrimitive] = field(default_factory=list)
+
+    parent: GlbNode | None = None
     children: list[GlbNode] = field(default_factory=list)
     extras: dict[str, Any] = field(default_factory=dict)
     tags: set[str] = field(default_factory=set)
@@ -43,16 +44,41 @@ class GlbNode:
         return str(value)
 
     @property
-    def is_renderable(self) -> bool:
-        return bool(self.primitives)
+    def is_renderable(
+        self,
+    ) -> bool:
+        return bool(
+            self.primitives,
+        )
+
+    @property
+    def is_skinned(
+        self,
+    ) -> bool:
+        return self.skin_index is not None
 
     def instantiate(
         self,
         *,
         by_gltf_index: dict[int, Node3D],
+        skip_indices: set[int],
         name: str = "",
         new_material: bool = True,
-    ) -> Node3D:
+    ) -> list[Node3D]:
+        if self.gltf_index in skip_indices:
+            nodes: list[Node3D] = []
+
+            for child in self.children:
+                nodes.extend(
+                    child.instantiate(
+                        by_gltf_index=by_gltf_index,
+                        skip_indices=skip_indices,
+                        new_material=new_material,
+                    )
+                )
+
+            return nodes
+
         node_name = name or self.generate_name()
 
         if len(self.primitives) == 1:
@@ -70,14 +96,18 @@ class GlbNode:
         by_gltf_index[self.gltf_index] = node
 
         for child in self.children:
-            node.add_child(
-                child.instantiate(
-                    by_gltf_index=by_gltf_index,
-                    new_material=new_material,
+            for child_node in child.instantiate(
+                by_gltf_index=by_gltf_index,
+                skip_indices=skip_indices,
+                new_material=new_material,
+            ):
+                node.add_child(
+                    child_node,
                 )
-            )
 
-        return node
+        return [
+            node,
+        ]
 
     def _instantiate_primitive(
         self,
@@ -86,8 +116,13 @@ class GlbNode:
         new_material: bool,
     ) -> Object3D:
         primitive = self.primitives[0]
+        object_type = (
+            SkinnedMesh3D
+            if self.is_skinned
+            else Object3D
+        )
 
-        node = Object3D(
+        node = object_type(
             name=name,
             uid=self.uid,
             geometry=primitive.geometry,
@@ -119,7 +154,13 @@ class GlbNode:
         node.transform = self.transform.copy()
 
         for index, primitive in enumerate(self.primitives):
-            child = Object3D(
+            object_type = (
+                SkinnedMesh3D
+                if self.is_skinned
+                else Object3D
+            )
+
+            child = object_type(
                 name=f"{name}.{index:03d}",
                 geometry=primitive.geometry,
                 material=(
@@ -131,7 +172,9 @@ class GlbNode:
             )
 
             child.asset_name = primitive.name
-            node.add_child(child)
+            node.add_child(
+                child,
+            )
 
         return node
 
@@ -155,7 +198,9 @@ class GlbNode:
             exclude=exclude,
         ):
             if node.is_renderable:
-                node.tags.add(tag)
+                node.tags.add(
+                    tag,
+                )
 
     def untag(
         self,
@@ -169,7 +214,9 @@ class GlbNode:
             exclude=exclude,
         ):
             if node.is_renderable:
-                node.tags.discard(tag)
+                node.tags.discard(
+                    tag,
+                )
 
     def clear_tags(
         self,
@@ -251,7 +298,9 @@ class GlbNode:
         )
 
         if node is None:
-            raise ValueError(f"GlbNode not found: {name!r}")
+            raise ValueError(
+                f"GlbNode not found: {name!r}"
+            )
 
         return node
 
@@ -261,10 +310,14 @@ class GlbNode:
         include: GlbNodeFilter | None = None,
         exclude: GlbNodeFilter | None = None,
     ) -> bool:
-        if include is not None and not include(self):
+        if include is not None and not include(
+            self,
+        ):
             return False
 
-        if exclude is not None and exclude(self):
+        if exclude is not None and exclude(
+            self,
+        ):
             return False
 
         return True

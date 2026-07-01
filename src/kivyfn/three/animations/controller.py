@@ -10,11 +10,6 @@ from kivyfn.three.animations.action import AnimationAction
 from kivyfn.three.animations.binding import AnimationBinding
 from kivyfn.three.animations.clip import AnimationClip
 from kivyfn.three.animations.channel import BoundAnimationChannel
-from kivyfn.three.animations.application import AnimationApplication
-from kivyfn.three.animations.types import (
-    AnimationApplier,
-    AnimationPath,
-)
 
 
 @dataclass(slots=True, weakref_slot=True)
@@ -210,38 +205,25 @@ class AnimationController:
         channels: list[BoundAnimationChannel] = []
 
         for channel in clip.channels:
-            node = self.binding.get(channel.target)
+            target = self.binding.get(
+                channel.target,
+            )
 
-            if node is None:
+            if target is None:
                 continue
 
             channels.append(
                 BoundAnimationChannel(
-                    node=node,
+                    target=target,
                     path=channel.path,
                     sampler=channel.sampler,
-                    applier=self.applier(channel.path),
+
                 )
             )
 
         return tuple(channels)
 
-    def applier(
-        self,
-        path: AnimationPath,
-    ) -> AnimationApplier:
-        match path:
-            case "translation":
-                return AnimationApplication.translation
 
-            case "rotation":
-                return AnimationApplication.rotation
-
-            case "scale":
-                return AnimationApplication.scale
-
-            case "weights":
-                return AnimationApplication.weights
 
 
 

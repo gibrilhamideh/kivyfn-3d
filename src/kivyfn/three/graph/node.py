@@ -22,15 +22,17 @@ from kivy.properties import (
     DictProperty,
 )
 
+from kivyfn.three.types import SceneObject, RenderableObject, WalkFilter
 from kivyfn.three.math.vector import Vector3, Vector2
 from kivyfn.three.math.transform import Transform
 
 if TYPE_CHECKING:
     from kivyfn.three.scene import Scene
-    from kivyfn.three.types import SceneObject, WalkFilter
     from kivyfn.three.math.quaternion import Quaternion
     from kivyfn.three.math.matrix import Matrix4
     from kivyfn.three.assets.object3d import Object3D
+    from kivyfn.three.skinning.skinned_mesh import SkinnedMesh3D
+    from kivyfn.three.skinning.skinned_model import SkinnedModel3D
     from kivyfn.three.lights.sources.base import Light3D
     from kivyfn.three.controls.interaction import InteractionEvent
     from kivyfn.three.behaviors.behavior import Behavior
@@ -43,12 +45,17 @@ NodeFilter = Literal[
     "lights",
     "nodes",
     "objects",
+    "renderables",
+    "skinned_model",
+    "skinned_mesh",
 ]
 
 NodeKind = Literal[
     "light",
     "node",
     "object",
+    "skinned_model",
+    "skinned_mesh",
 ]
 
 NodeSearchField = Literal[
@@ -67,8 +74,8 @@ class Node3D(EventDispatcher):
     asset_name: str = StringProperty("")
     visible: bool = BooleanProperty(True)
 
-    children: list[Node3D | Object3D | Light3D] = ListProperty([])
-    parent: Node3D | Object3D | Light3D | None = ObjectProperty(
+    children: list[SceneObject] = ListProperty([])
+    parent: SceneObject  | None = ObjectProperty(
         None,
         allownone=True,
     )
@@ -459,8 +466,30 @@ class Node3D(EventDispatcher):
         return self.kind == "light"
 
     @property
-    def is_object(self) -> bool:
+    def is_object(
+        self,
+    ) -> bool:
         return self.kind == "object"
+
+    @property
+    def is_skinned_model(
+        self,
+    ) -> bool:
+        return self.kind == "skinned_model"
+
+
+    @property
+    def is_skinned_mesh(
+        self,
+    ) -> bool:
+        return self.kind == "skinned_mesh"
+
+    @property
+    def is_renderable(
+        self,
+    ) -> bool:
+        return self.kind in {"object", "skinned_mesh"}
+
 
     def is_object3d(
         self,
@@ -492,7 +521,7 @@ class Node3D(EventDispatcher):
     # =================================== #
     # Traversal
     # =================================== #
-    def __iter__(self) -> Iterator[Node3D | Object3D | Light3D]:
+    def __iter__(self) -> Iterator[SceneObject]:
         return iter(self.children)
 
     def root(self) -> SceneObject:
@@ -518,11 +547,44 @@ class Node3D(EventDispatcher):
     def walk(
         self,
         *,
+        filter: Literal["renderables"],
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[RenderableObject]:
+        ...
+
+    @overload
+    def walk(
+        self,
+        *,
         filter: Literal["objects"],
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
     ) -> Iterator[Object3D]:
+        ...
+
+    @overload
+    def walk(
+        self,
+        *,
+        filter: Literal["skinned_model"],
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[SkinnedModel3D]:
+        ...
+
+    @overload
+    def walk(
+        self,
+        *,
+        filter: Literal["skinned_mesh"],
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[SkinnedMesh3D]:
         ...
 
     @overload
@@ -586,11 +648,44 @@ class Node3D(EventDispatcher):
     def walk_ancestors(
         self,
         *,
+        filter: Literal["renderables"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[RenderableObject]:
+        ...
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
         filter: Literal["objects"],
         include_self: bool = False,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
     ) -> Iterator[Object3D]:
+        ...
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
+        filter: Literal["skinned_model"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[SkinnedModel3D]:
+        ...
+
+    @overload
+    def walk_ancestors(
+        self,
+        *,
+        filter: Literal["skinned_mesh"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> Iterator[SkinnedMesh3D]:
         ...
 
     @overload
@@ -652,6 +747,22 @@ class Node3D(EventDispatcher):
             )
         )
 
+    def renderables(
+        self,
+        *,
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[RenderableObject]:
+        return list(
+            self.walk(
+                filter="renderables",
+                include_self=include_self,
+                include=include,
+                exclude=exclude,
+            )
+        )
+
     def objects(
         self,
         *,
@@ -662,6 +773,38 @@ class Node3D(EventDispatcher):
         return list(
             self.walk(
                 filter="objects",
+                include_self=include_self,
+                include=include,
+                exclude=exclude,
+            )
+        )
+
+    def skinned_models(
+        self,
+        *,
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedModel3D]:
+        return list(
+            self.walk(
+                filter="skinned_model",
+                include_self=include_self,
+                include=include,
+                exclude=exclude,
+            )
+        )
+
+    def skinned_meshs(
+        self,
+        *,
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedMesh3D]:
+        return list(
+            self.walk(
+                filter="skinned_mesh",
                 include_self=include_self,
                 include=include,
                 exclude=exclude,
@@ -698,10 +841,40 @@ class Node3D(EventDispatcher):
     def descendants(
         self,
         *,
+        filter: Literal["renderables"],
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[RenderableObject]:
+        ...
+
+    @overload
+    def descendants(
+        self,
+        *,
         filter: Literal["objects"],
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
     ) -> list[Object3D]:
+        ...
+
+    @overload
+    def descendants(
+        self,
+        *,
+        filter: Literal["skinned_model"],
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedModel3D]:
+        ...
+
+    @overload
+    def descendants(
+        self,
+        *,
+        filter: Literal["skinned_mesh"],
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedMesh3D]:
         ...
 
     @overload
@@ -755,12 +928,46 @@ class Node3D(EventDispatcher):
     def ancestors(
         self,
         *,
+        filter: Literal["renderables"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[RenderableObject]:
+        ...
+
+    @overload
+    def ancestors(
+        self,
+        *,
         filter: Literal["objects"],
         include_self: bool = False,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
     ) -> list[Object3D]:
         ...
+
+    @overload
+    def ancestors(
+        self,
+        *,
+        filter: Literal["skinned_model"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedModel3D]:
+        ...
+
+    @overload
+    def ancestors(
+        self,
+        *,
+        filter: Literal["skinned_mesh"],
+        include_self: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedMesh3D]:
+        ...
+
 
     @overload
     def ancestors(
@@ -819,12 +1026,52 @@ class Node3D(EventDispatcher):
         self,
         name: str,
         *,
+        filter: Literal["renderables"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> RenderableObject | None:
+        ...
+
+    @overload
+    def find(
+        self,
+        name: str,
+        *,
         filter: Literal["objects"],
         by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
     ) -> Object3D | None:
+        ...
+
+    @overload
+    def find(
+        self,
+        name: str,
+        *,
+        filter: Literal["skinned_model"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> SkinnedModel3D | None:
+        ...
+
+
+    @overload
+    def find(
+        self,
+        name: str,
+        *,
+        filter: Literal["skinned_mesh"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> SkinnedMesh3D | None:
         ...
 
     @overload
@@ -892,12 +1139,51 @@ class Node3D(EventDispatcher):
         self,
         name: str,
         *,
+        filter: Literal["renderables"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[RenderableObject]:
+        ...
+
+    @overload
+    def find_all(
+        self,
+        name: str,
+        *,
         filter: Literal["objects"],
         by: NodeSearchField = "name",
         include_self: bool = True,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
     ) -> list[Object3D]:
+        ...
+
+    @overload
+    def find_all(
+        self,
+        name: str,
+        *,
+        filter: Literal["skinned_model"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedModel3D]:
+        ...
+
+    @overload
+    def find_all(
+        self,
+        name: str,
+        *,
+        filter: Literal["skinned_mesh"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedMesh3D]:
         ...
 
     @overload
@@ -966,6 +1252,20 @@ class Node3D(EventDispatcher):
         self,
         text: str,
         *,
+        filter: Literal["renderables"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> RenderableObject | None:
+        ...
+
+    @overload
+    def fuzzy_find(
+        self,
+        text: str,
+        *,
         filter: Literal["objects"],
         by: NodeSearchField = "name",
         include_self: bool = True,
@@ -973,6 +1273,34 @@ class Node3D(EventDispatcher):
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
     ) -> Object3D | None:
+        ...
+
+    @overload
+    def fuzzy_find(
+        self,
+        text: str,
+        *,
+        filter: Literal["skinned_model"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> SkinnedModel3D | None:
+        ...
+
+    @overload
+    def fuzzy_find(
+        self,
+        text: str,
+        *,
+        filter: Literal["skinned_mesh"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> SkinnedMesh3D | None:
         ...
 
     @overload
@@ -1045,6 +1373,20 @@ class Node3D(EventDispatcher):
         self,
         text: str,
         *,
+        filter: Literal["renderables"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[RenderableObject]:
+        ...
+
+    @overload
+    def fuzzy_find_all(
+        self,
+        text: str,
+        *,
         filter: Literal["objects"],
         by: NodeSearchField = "name",
         include_self: bool = True,
@@ -1052,6 +1394,34 @@ class Node3D(EventDispatcher):
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
     ) -> list[Object3D]:
+        ...
+
+    @overload
+    def fuzzy_find_all(
+        self,
+        text: str,
+        *,
+        filter: Literal["skinned_model"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedMesh3D]:
+        ...
+
+    @overload
+    def fuzzy_find_all(
+        self,
+        text: str,
+        *,
+        filter: Literal["skinned_mesh"],
+        by: NodeSearchField = "name",
+        include_self: bool = True,
+        case_sensitive: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedMesh3D]:
         ...
 
     @overload
@@ -1130,12 +1500,54 @@ class Node3D(EventDispatcher):
         key: str,
         value: Any = None,
         *,
+        filter: Literal["renderables"],
+        include_self: bool = True,
+        require_value: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[RenderableObject]:
+        ...
+
+    @overload
+    def find_by_extra(
+        self,
+        key: str,
+        value: Any = None,
+        *,
         filter: Literal["objects"],
         include_self: bool = True,
         require_value: bool = False,
         include: WalkFilter | None = None,
         exclude: WalkFilter | None = None,
     ) -> list[Object3D]:
+        ...
+
+    @overload
+    def find_by_extra(
+        self,
+        key: str,
+        value: Any = None,
+        *,
+        filter: Literal["skinned_model"],
+        include_self: bool = True,
+        require_value: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedModel3D]:
+        ...
+
+    @overload
+    def find_by_extra(
+        self,
+        key: str,
+        value: Any = None,
+        *,
+        filter: Literal["skinned_mesh"],
+        include_self: bool = True,
+        require_value: bool = False,
+        include: WalkFilter | None = None,
+        exclude: WalkFilter | None = None,
+    ) -> list[SkinnedMesh3D]:
         ...
 
     @overload
@@ -1303,19 +1715,23 @@ class Node3D(EventDispatcher):
         node: SceneObject,
         filter: NodeFilter,
     ) -> bool:
-        if filter == "all":
-            return True
+        match filter:
+            case "all":
+                return True
+            case "nodes":
+                return node.is_node
+            case "objects":
+                return node.is_object
+            case "renderables":
+                return node.is_renderable
+            case "lights":
+                return node.is_light
+            case "skinned_model":
+                return node.is_skinned_model
+            case "skinned_mesh":
+                return node.is_skinned_mesh
 
-        if filter == "objects":
-            return node.is_object
 
-        if filter == "lights":
-            return node.is_light
-
-        if filter == "nodes":
-            return node.kind == "node"
-
-        return False
 
     def _matches_walk(
         self,

@@ -88,6 +88,13 @@ class GlbParser:
         scenes.finalize()
 
         context.blueprint.skins = skins.load()
+
+        for skin in context.blueprint.skins:
+            context.blueprint.joint_indices.update(
+                skin.joint_indices,
+            )
+
+
         skins.validate()
 
         context.blueprint.animations = animations.load()

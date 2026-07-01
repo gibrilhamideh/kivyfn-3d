@@ -4,20 +4,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from kivy.graphics import InstructionGroup, Callback
+from kivy.graphics.context_instructions import ChangeState
 from kivy.graphics.opengl import (
-    GL_FALSE,
     GL_CURRENT_PROGRAM,
+    GL_FALSE,
     glGetUniformLocation,
     glUniformMatrix4fv,
 )
 
-from kivy.graphics import InstructionGroup, Callback
-from kivy.graphics.context_instructions import ChangeState
 from kivyfn.three.graphics.gl.core import GL
 from kivyfn.three.math.matrix import Matrix3, Matrix4
 
 if TYPE_CHECKING:
-    from kivyfn.three.assets.deformation import Deformation
     from kivyfn.three.assets.material import Material
     from kivyfn.three.graphics.gl.texture import Texture2D, TextureCube
 
@@ -26,7 +25,8 @@ __all__ = (
     "BindUniform",
     "BindTransform",
     "BindGeometry",
-    "BindDeformation",
+    "BindMorph",
+    "BindSkin",
     "BindMaterial",
     "BindObjectId",
     "BindTexture",
@@ -165,43 +165,34 @@ class BindMatrix4Array(InstructionGroup):
 
 
 # =================================== #
-# Bind Deformation
+# Bind Morph
 # =================================== #
 
-class BindDeformation(InstructionGroup):
 
+class BindMorph(InstructionGroup):
     def __init__(
         self,
         *,
-        deformation: Deformation,
+        weights: tuple[float, ...] = (),
     ) -> None:
         super().__init__()
 
         self.use_morphing = BindUniform(
             "use_morphing",
-            self._encode_bool(deformation.has_morph_weights),
-        )
-
-        self.use_skinning = BindUniform(
-            "use_skinning",
-            self._encode_bool(deformation.has_skin),
+            self._encode_bool(bool(weights)),
         )
 
         self.morph_weights = BindUniform(
             "morph_weights",
-            list(deformation.morph_weights),
+            list(weights),
         )
 
-        self.joint_matrices = BindMatrix4Array(
-            uniform="joint_matrices",
-            data=deformation.joint_palette_bytes,
-            count=deformation.joint_count,
+        self.add(
+            self.use_morphing,
         )
-
-        self.add(self.use_morphing)
-        self.add(self.use_skinning)
-        self.add(self.morph_weights)
-        self.add(self.joint_matrices)
+        self.add(
+            self.morph_weights,
+        )
 
     @staticmethod
     def _encode_bool(
@@ -212,23 +203,68 @@ class BindDeformation(InstructionGroup):
     def sync(
         self,
         *,
-        deformation: Deformation,
+        weights: tuple[float, ...],
     ) -> None:
         self.use_morphing.sync(
-            self._encode_bool(deformation.has_morph_weights),
-        )
-
-        self.use_skinning.sync(
-            self._encode_bool(deformation.has_skin),
+            self._encode_bool(bool(weights)),
         )
 
         self.morph_weights.sync(
-            list(deformation.morph_weights),
+            list(weights),
+        )
+
+
+# =================================== #
+# Bind Skin
+# =================================== #
+
+
+class BindSkin(InstructionGroup):
+    def __init__(
+        self,
+        *,
+        data: bytes = b"",
+        count: int = 0,
+    ) -> None:
+        super().__init__()
+
+        self.use_skinning = BindUniform(
+            "use_skinning",
+            self._encode_bool(count > 0),
+        )
+
+        self.joint_matrices = BindMatrix4Array(
+            uniform="joint_matrices",
+            data=data,
+            count=count,
+        )
+
+        self.add(
+            self.use_skinning,
+        )
+        self.add(
+            self.joint_matrices,
+        )
+
+    @staticmethod
+    def _encode_bool(
+        value: bool,
+    ) -> int:
+        return 1 if value else 0
+
+    def sync(
+        self,
+        *,
+        data: bytes,
+        count: int,
+    ) -> None:
+        self.use_skinning.sync(
+            self._encode_bool(count > 0),
         )
 
         self.joint_matrices.sync(
-            data=deformation.joint_palette_bytes,
-            count=deformation.joint_count,
+            data=data,
+            count=count,
         )
 
 
@@ -272,8 +308,6 @@ class BindTransform(InstructionGroup):
         self.normal_mat.sync(
             normal_mat.to_uniform(),
         )
-
-
 
 
 # =================================== #
@@ -455,6 +489,7 @@ class BindObjectId(InstructionGroup):
 # =================================== #
 # Bind Texture
 # =================================== #
+
 
 class BindTextureCallback(Callback):
     def __init__(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import NoReturn, TYPE_CHECKING
+from typing import Literal, NoReturn, TYPE_CHECKING
 
 from kivy.properties import (
     NumericProperty,
@@ -12,12 +12,10 @@ from kivy.properties import (
 
 from kivyfn.three.collision import Collider
 from kivyfn.three.graph.node import Node3D
-from kivyfn.three.assets.deformation import Deformation
 
 if TYPE_CHECKING:
     from kivyfn.three.assets.geometry import Geometry
     from kivyfn.three.assets.material import Material
-    from kivyfn.three.assets.skin import Skin
 
 
 class Object3D(Node3D):
@@ -26,12 +24,11 @@ class Object3D(Node3D):
 
     geometry: Geometry = ObjectProperty()
     material: Material = ObjectProperty()
-    deformation: Deformation = ObjectProperty()
 
     pickable: bool = BooleanProperty(False)
 
     __events__ = (
-        "on_deformation_dirty",
+        "on_morph_dirty",
         "on_material_dirty",
         "on_tag_dirty",
     )
@@ -40,7 +37,6 @@ class Object3D(Node3D):
         self,
         geometry: Geometry,
         material: Material,
-        deformation: Deformation | None = None,
         name: str = "",
         uid: str | None = None,
         *,
@@ -56,7 +52,7 @@ class Object3D(Node3D):
         self._tags = set(tags or ())
 
         self.geometry = geometry
-        self.deformation = deformation or Deformation()
+        self.morph_weights: list[float] = []
 
         self.collider = Collider(self)
 
@@ -91,28 +87,13 @@ class Object3D(Node3D):
     # =================================== #
 
     @property
-    def kind(self):
+    def kind(self) -> Literal["object", "skinned_mesh"]:
         return "object"
 
     @property
     def tags(self) -> set[str]:
         return set(self._tags)
 
-    @property
-    def morph_weights(self) -> list[float]:
-        return list(self.deformation.morph_weights)
-
-    @property
-    def skin(self) -> Skin | None:
-        return self.deformation.skin
-
-    @property
-    def joint_count(self) -> int:
-        return self.deformation.joint_count
-
-    @property
-    def joint_palette_bytes(self) -> bytes:
-        return self.deformation.joint_palette_bytes
 
     # =================================== #
     # Requirements
@@ -142,38 +123,20 @@ class Object3D(Node3D):
         )
 
     # =================================== #
-    # Deformation
+    # Morph
     # =================================== #
     def set_morph_weights(
-            self,
-            weights: tuple[float, ...],
-        ) -> None:
+        self,
+        weights: tuple[float, ...],
+    ) -> None:
         new_weights = list(weights)
 
-        if self.deformation.morph_weights == new_weights:
+        if self.morph_weights == new_weights:
             return
 
-        self.deformation.morph_weights = new_weights
-        self.mark_deformation_dirty()
+        self.morph_weights = new_weights
+        self.mark_morph_dirty()
 
-    def set_skin(
-        self,
-        skin: Skin | None,
-    ) -> None:
-        if self.deformation.skin is skin:
-            return
-
-        scene = self.scene
-
-        if scene is not None:
-            scene.registry.skins.unregister(self)
-
-        self.deformation.skin = skin
-
-        if scene is not None:
-            scene.registry.skins.register(self)
-
-        self.mark_deformation_dirty()
 
     # =================================== #
     # Material
@@ -253,15 +216,15 @@ class Object3D(Node3D):
             )
 
 
-    def mark_deformation_dirty(
+    def mark_morph_dirty(
         self,
     ) -> None:
 
         if self.scene is not None:
-            self.scene.renderer.queue_deformation(self)
+            self.scene.renderer.queue_morph(self)
 
         self.dispatch(
-            "on_deformation_dirty",
+            "on_morph_dirty",
         )
 
 
@@ -309,7 +272,7 @@ class Object3D(Node3D):
     # Events
     # =================================== #
 
-    def on_deformation_dirty(
+    def on_morph_dirty(
         self,
     ) -> None:
         pass

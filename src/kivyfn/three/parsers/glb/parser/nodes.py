@@ -95,6 +95,8 @@ class GlbNodes:
             )
 
         for child_index in data.children:
+            child = self.cached(child_index)
+            child.parent = node
             node.children.append(
                 self.cached(child_index),
             )
