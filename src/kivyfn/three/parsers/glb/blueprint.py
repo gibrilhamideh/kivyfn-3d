@@ -87,14 +87,6 @@ class GlbBlueprint:
 
         skip_indices = classification.skin_only_indices
 
-        print("glb classification:")
-        print("  runtime_indices:", len(classification.runtime_indices))
-        print("  skin_only_indices:", len(classification.skin_only_indices))
-        print("  skin_owner_indices:", len(classification.skin_owner_indices))
-        print("  animated_targets:", len(classification.animated_targets))
-        print("  animated_skin_targets:", len(classification.animated_skin_targets))
-        print("  animated_scene_targets:", len(classification.animated_scene_targets))
-
         for node in glb_scene.roots:
             for child in node.instantiate(
                 by_gltf_index=by_gltf_index,

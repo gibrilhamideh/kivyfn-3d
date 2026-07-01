@@ -193,22 +193,12 @@ class Skin:
             value,
         )
 
+
     def sync_skin(
         self,
     ) -> None:
-        bone_world_array = self.skeleton.bone_world_array
-        joint_bone_indices = self.joint_bone_indices
-        inverse_bind_array = self.inverse_bind_array
-        skin_array = self.skin_array
-
-        for joint_index in range(
-            self.joint_count,
-        ):
-            bone_index = int(
-                joint_bone_indices[joint_index],
-            )
-
-            skin_array[joint_index] = (
-                bone_world_array[bone_index]
-                @ inverse_bind_array[joint_index]
-            )
+        np.matmul(
+            self.skeleton.bone_world_array[self.joint_bone_indices],
+            self.inverse_bind_array,
+            out=self.skin_array,
+        )

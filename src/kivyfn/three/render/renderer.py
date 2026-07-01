@@ -23,8 +23,6 @@ from kivyfn.three.render.registry import (
     RenderObjectRegistry,
 )
 
-from kivyfn.three.utils.stopwatch import Stopwatch
-
 
 if TYPE_CHECKING:
     from kivyfn.three.scene.scene import Scene
@@ -85,9 +83,6 @@ class Renderer(EventDispatcher):
         self._flush_scheduled = False
         self._trigger_dirty = Clock.create_trigger(self.flush, -1)
 
-        self.profile_flush = True
-        self.profile_flush_every = 60
-        self._profile_flush_count = 0
 
     def __repr__(self) -> str:
         return (
@@ -302,72 +297,12 @@ class Renderer(EventDispatcher):
 
         self._flush_scheduled = False
 
-        if not self.profile_flush:
-            self.flush_lifecycle()
-            self.flush_transform()
-            self.flush_skinned_models()
-            self.flush_skinned_meshes()
-            self.flush_material()
-            self.flush_visibility()
-            return
-
-        self._profile_flush_count += 1
-
-        with Stopwatch.section("flush.total"):
-
-            Stopwatch.add_count(
-                "queue.lifecycle",
-                len(self._lifecycle_queue),
-            )
-            with Stopwatch.section("flush.lifecycle"):
-                self.flush_lifecycle()
-
-            Stopwatch.add_count(
-                "queue.transform",
-                len(self._transform_queue),
-            )
-
-            with Stopwatch.section("flush.transform"):
-                self.flush_transform()
-
-            Stopwatch.add_count(
-                "queue.skinned-models",
-                len(self._skinned_model_queue),
-            )
-
-            with Stopwatch.section("flush.skinned-models"):
-                self.flush_skinned_models()
-
-            Stopwatch.add_count(
-                "queue.skinned-meshes",
-                len(self._skinned_mesh_queue),
-            )
-
-            with Stopwatch.section("flush.skinned-meshes"):
-                self.flush_skinned_meshes()
-
-            Stopwatch.add_count(
-                "queue.material",
-                len(self._material_queue),
-            )
-
-            with Stopwatch.section("flush.material"):
-                self.flush_material()
-
-            Stopwatch.add_count(
-                "queue.visibility",
-                len(self._visibility_queue),
-            )
-
-            with Stopwatch.section("flush.visibility"):
-                self.flush_visibility()
-
-        if self._profile_flush_count % self.profile_flush_every == 0:
-            Stopwatch.summary(
-                clear=True,
-                min_ms=0.01,
-            )
-
+        self.flush_lifecycle()
+        self.flush_transform()
+        self.flush_skinned_models()
+        self.flush_skinned_meshes()
+        self.flush_material()
+        self.flush_visibility()
 
 
     def flush_lifecycle(
