@@ -23,6 +23,7 @@ from kivy.properties import (
 )
 
 from kivyfn.three.types import SceneObject, RenderableObject, WalkFilter
+from kivyfn.three.overlays.overlay import Overlay
 from kivyfn.three.math.vector import Vector3, Vector2
 from kivyfn.three.math.transform import Transform
 
@@ -36,7 +37,6 @@ if TYPE_CHECKING:
     from kivyfn.three.lights.sources.base import Light3D
     from kivyfn.three.controls.interaction import InteractionEvent
     from kivyfn.three.behaviors.behavior import Behavior
-    from kivyfn.three.overlays.overlay import Overlay
 
 
 
@@ -108,7 +108,9 @@ class Node3D(EventDispatcher):
         self.uid = uid
         self.name = name
         self.transform = transform or Transform()
+
         self.behaviors: dict[str, Behavior] = {}
+        self._overlays: dict[str, Overlay] = {}
 
         self._local_matrix = self.transform.to_matrix4(
             origin=self.origin,
@@ -334,39 +336,56 @@ class Node3D(EventDispatcher):
         world_offset: Vector3 | None = None,
         hide_when_offscreen: bool = True,
     ) -> Overlay:
-        if self.scene is None:
-            raise RuntimeError(
-                f"Cannot attach overlay {name!r} to node {self.name!r}: "
-                "node is not in a scene."
+        if name in self._overlays:
+            raise ValueError(
+                f"Overlay {name!r} already exists on node {self.name!r}."
             )
 
-        return self.scene.overlays.attach(
+        overlay = Overlay(
+            name=name,
             anchor=self,
             widget=widget,
-            name=name,
             stage=stage,
             offset=offset,
             world_offset=world_offset,
             hide_when_offscreen=hide_when_offscreen,
         )
 
+        self._overlays[name] = overlay
+
+        if self.scene is not None:
+            self.scene.overlays.activate(overlay)
+        else:
+            overlay.hide()
+
+        return overlay
+
+
     def detach_overlay(
         self,
         name: str,
     ) -> None:
-        if self.scene is None:
-            return
+        overlay = self._overlays.get(name)
 
-        self.scene.overlays.detach(self, name)
+        if overlay is None:
+            raise ValueError(
+                f"Overlay {name!r} not found on node {self.name!r}."
+            )
+
+        if self.scene is not None:
+            self.scene.overlays.deactivate(overlay)
+        else:
+            overlay.hide()
+
+        self._overlays.pop(name)
+
 
     def get_overlay(
         self,
         name: str,
     ) -> Overlay | None:
-        if self.scene is None:
-            return None
+        return self._overlays.get(name)
 
-        return self.scene.overlays.get(self, name)
 
     def require_overlay(
         self,
@@ -381,23 +400,25 @@ class Node3D(EventDispatcher):
 
         return overlay
 
+
     def has_overlay(
         self,
         name: str,
     ) -> bool:
-        return self.get_overlay(name) is not None
+        return name in self._overlays
 
-    def overlays(self) -> dict[str, Overlay]:
-        if self.scene is None:
-            return {}
 
-        return self.scene.overlays.overlays_of(anchor=self)
+    def overlays(
+        self,
+    ) -> dict[str, Overlay]:
+        return dict(self._overlays)
 
-    def clear_overlays(self) -> None:
-        if self.scene is None:
-            return
 
-        self.scene.overlays.clear_anchor(self)
+    def clear_overlays(
+        self,
+    ) -> None:
+        for name in list(self._overlays):
+            self.detach_overlay(name)
 
     # =================================== #
     # Scene context
@@ -415,6 +436,9 @@ class Node3D(EventDispatcher):
             self._leave_scene()
 
         self.scene = scene
+
+        for overlay in self._overlays.values():
+            scene.overlays.activate(overlay)
 
         for child in self.children:
             child._enter_scene(
@@ -439,7 +463,8 @@ class Node3D(EventDispatcher):
             scene,
         )
 
-        scene.overlays.clear_anchor(self)
+        scene.overlays.deactivate_anchor(self)
+
         if render:
             scene.renderer.queue_remove(self)
 

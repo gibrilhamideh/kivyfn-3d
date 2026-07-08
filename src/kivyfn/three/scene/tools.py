@@ -31,6 +31,7 @@ from kivyfn.three.views.rect import ViewRect
 
 if TYPE_CHECKING:
     from kivyfn.three import Scene
+    from kivyfn.three.graph.node import Node3D
 
 
 TexturePreviewKind = Literal[
@@ -868,3 +869,119 @@ class SceneTools:
             canvas.remove(
                 instruction,
             )
+
+
+    # =================================== #
+    # Scene Tree Debug
+    # =================================== #
+
+    def print_tree(
+        self,
+        node: Node3D | None = None,
+        *,
+        include_kind: bool = True,
+        include_asset_name: bool = True,
+        include_uid: bool = False,
+        include_visibility: bool = False,
+    ) -> None:
+        root = node or self.scene.root
+
+        lines: list[str] = []
+
+        self._build_tree_lines(
+            node=root,
+            lines=lines,
+            prefix="",
+            is_last=True,
+            is_root=True,
+            include_kind=include_kind,
+            include_asset_name=include_asset_name,
+            include_uid=include_uid,
+            include_visibility=include_visibility,
+        )
+
+        print("\n".join(lines))
+
+    def _build_tree_lines(
+        self,
+        *,
+        node: Node3D,
+        lines: list[str],
+        prefix: str,
+        is_last: bool,
+        is_root: bool,
+        include_kind: bool,
+        include_asset_name: bool,
+        include_uid: bool,
+        include_visibility: bool,
+    ) -> None:
+        if is_root:
+            connector = ""
+            child_prefix = ""
+        else:
+            connector = "└── " if is_last else "├── "
+            child_prefix = "    " if is_last else "│   "
+
+        lines.append(
+            f"{prefix}{connector}"
+            f"{self._tree_node_label(
+                node,
+                include_kind=include_kind,
+                include_asset_name=include_asset_name,
+                include_uid=include_uid,
+                include_visibility=include_visibility,
+            )}"
+        )
+
+        children = list(node.children)
+
+        for index, child in enumerate(children):
+            self._build_tree_lines(
+                node=child,
+                lines=lines,
+                prefix=prefix + child_prefix,
+                is_last=index == len(children) - 1,
+                is_root=False,
+                include_kind=include_kind,
+                include_asset_name=include_asset_name,
+                include_uid=include_uid,
+                include_visibility=include_visibility,
+            )
+
+    def _tree_node_label(
+        self,
+        node: Node3D,
+        *,
+        include_kind: bool,
+        include_asset_name: bool,
+        include_uid: bool,
+        include_visibility: bool,
+    ) -> str:
+        name = node.name or type(node).__name__
+
+        parts = [name]
+
+        if include_kind:
+            parts.append(
+                f"kind={node.kind}"
+            )
+
+        if include_asset_name and node.asset_name:
+            parts.append(
+                f"asset={node.asset_name}"
+            )
+
+        if include_uid and node.uid:
+            parts.append(
+                f"uid={node.uid}"
+            )
+
+        if include_visibility:
+            parts.append(
+                f"visible={node.visible}"
+            )
+
+        if len(parts) == 1:
+            return parts[0]
+
+        return f"{parts[0]} ({', '.join(parts[1:])})"

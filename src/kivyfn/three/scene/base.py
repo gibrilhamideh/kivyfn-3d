@@ -15,6 +15,7 @@ from kivy.input.providers.mouse import MouseMotionEvent
 from kivy.properties import NumericProperty
 from kivy.uix.widget import Widget
 
+from kivyfn.ui.widget import FnWidget
 from kivyfn.three.views.viewport import SceneViewport
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
     from kivyfn.three.controls.base import BaseController
 
 
-class SceneBase(Widget):
+class SceneBase(FnWidget, Widget):
 
     origin_x: int = NumericProperty(0)
     origin_y: int = NumericProperty(0)

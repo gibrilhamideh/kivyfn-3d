@@ -20,7 +20,6 @@ from kivyfn.three.animations.types import (
     AnimationTarget,
     AnimationTargetProtocol,
 )
-from kivyfn.three.assets.object3d import Object3D
 from kivyfn.three.graph.node import Node3D
 from kivyfn.three.math.transform import Transform
 from kivyfn.three.parsers.glb.instance import GlbInstance

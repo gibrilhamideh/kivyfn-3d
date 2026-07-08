@@ -19,23 +19,22 @@ from kivyfn.three.parsers.glb.parser.textures import GlbTextures
 
 
 class GlbParser:
-    def __init__(
-        self,
+    @classmethod
+    def parse(
+        cls,
+        filename: str | Path,
+        *,
         flip_v: bool = False,
         flip_winding: bool = False,
-    ) -> None:
-        self.options = GlbOptions(
+    ) -> GlbBlueprint:
+        options = GlbOptions(
             flip_v=flip_v,
             flip_winding=flip_winding,
         )
 
-    def parse(
-        self,
-        filename: str | Path,
-    ) -> GlbBlueprint:
         context = GlbLoader().load(
             filename=filename,
-            options=self.options,
+            options=options,
         )
 
         accessor = GlbAccessor(
@@ -93,7 +92,6 @@ class GlbParser:
             context.blueprint.joint_indices.update(
                 skin.joint_indices,
             )
-
 
         skins.validate()
 

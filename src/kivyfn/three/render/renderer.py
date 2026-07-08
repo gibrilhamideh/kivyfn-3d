@@ -513,59 +513,86 @@ class Renderer(EventDispatcher):
         self,
         node: SceneObject,
     ) -> None:
-        for child in node.walk():
+        registry = self.scene.registry
 
-            self.scene.registry.register(child)
+        for child in node.walk():
+            child_id = id(child)
+
+            if registry.get_by_id(child_id) is not None:
+                continue
+
+            registry.register(child)
 
             if child.is_light:
                 light = cast(LightSource, child)
                 self.lights.attach(light)
                 continue
 
-            if child.is_renderable:
-                object3d = cast(RenderableObject, child)
-                self.objects.register(object3d)
-                tags = self.objects.tags_of(object3d)
+            if not child.is_renderable:
+                continue
 
-                desired_stages = self.stages_for_tags(tags)
-                current_stages = self.memberships.stages_of(object3d)
+            object3d = cast(RenderableObject, child)
 
-                for stage_name in current_stages - desired_stages:
-                    self.remove_membership(object3d, stage_name)
+            self.objects.register(object3d)
 
-                for stage_name in desired_stages - current_stages:
-                    self.add_membership(object3d, stage_name)
+            tags = self.objects.tags_of(object3d)
+            desired_stages = self.stages_for_tags(tags)
+            current_stages = self.memberships.stages_of(object3d)
 
-                self.instances.sync_transform(object3d)
-                self.instances.sync_material(object3d)
-                self.instances.sync_morph(object3d)
-                self.instances.sync_visibility(object3d)
+            for stage_name in current_stages - desired_stages:
+                self.remove_membership(
+                    object3d,
+                    stage_name,
+                )
 
-                if object3d.is_skinned_mesh:
-                    self._skinned_mesh_queue.add(
-                        id(object3d),
-                    )
+            for stage_name in desired_stages - current_stages:
+                self.add_membership(
+                    object3d,
+                    stage_name,
+                )
+
+            self.instances.sync_transform(object3d)
+            self.instances.sync_material(object3d)
+            self.instances.sync_morph(object3d)
+            self.instances.sync_visibility(object3d)
+
+            if object3d.is_skinned_mesh:
+                self._skinned_mesh_queue.add(
+                    child_id,
+                )
 
     def remove(
         self,
         node: SceneObject,
     ) -> None:
+        registry = self.scene.registry
 
         for child in node.walk():
-            self.scene.registry.unregister(child)
+            child_id = id(child)
+
+            if registry.get_by_id(child_id) is None:
+                continue
 
             if child.is_light:
                 light = cast(LightSource, child)
                 self.lights.detach(light)
-                continue
 
-            if child.is_renderable:
+            elif child.is_renderable:
                 object3d = cast(RenderableObject, child)
-                active_stages = self.memberships.stages_of(object3d)
+
+                active_stages = set(
+                    self.memberships.stages_of(object3d)
+                )
+
                 for stage_name in active_stages:
-                    self.remove_membership(object3d, stage_name)
+                    self.remove_membership(
+                        object3d,
+                        stage_name,
+                    )
 
                 self.objects.unregister(object3d)
+
+            registry.unregister(child)
 
     def retag(
         self,

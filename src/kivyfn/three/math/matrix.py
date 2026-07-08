@@ -158,6 +158,14 @@ class Matrix3:
     ) -> list[list[float]]:
         return self.values.tolist()
 
+    def __matmul__(
+        self,
+        other: Matrix3,
+    ) -> Matrix3:
+        return Matrix3(
+            self.values @ other.values,
+        )
+
     def __repr__(
         self,
     ) -> str:
@@ -501,6 +509,14 @@ class Matrix4:
         self,
     ) -> list[list[float]]:
         return self.values.tolist()
+
+    def __matmul__(
+        self,
+        other: Matrix4,
+    ) -> Matrix4:
+        return Matrix4(
+            self.values @ other.values,
+        )
 
     def __repr__(
         self,
