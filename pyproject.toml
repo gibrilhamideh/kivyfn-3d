@@ -1,5 +1,8 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = [
+    "setuptools>=68",
+    "wheel",
+]
 build-backend = "setuptools.build_meta"
 
 
@@ -11,7 +14,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 
 authors = [
-    { name = "Gibril Hamideh", email = "gibrilhamideh@gmail.com" }
+    { name = "Gibril Hamideh", email = "gibrilhamideh@gmail.com" },
 ]
 
 dependencies = [
@@ -24,24 +27,31 @@ dependencies = [
 ]
 
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-
-[tool.setuptools.packages.find]
-where = ["src"]
-namespaces = true
-
-
 [project.optional-dependencies]
-dev = [
-    "kivy-stubs>=0.1.0",
-    "watchdog",
-]
-
 modifiers = [
     "trimesh",
     "manifold3d",
     "networkx",
     "scipy",
-    "xxhash",
 ]
+
+
+[dependency-groups]
+dev = [
+    "kivy-stubs",
+    "watchdog",
+]
+
+
+[tool.uv.sources]
+kivyfn = { path = "../kivyfn", editable = true }
+kivy-stubs = { path = "../kivy-stubs", editable = true }
+
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true

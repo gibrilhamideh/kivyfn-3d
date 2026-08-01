@@ -1,11 +1,10 @@
 # kivyfn/bootstrap.py
 from __future__ import annotations
-from kivyfn.runtime.context import FnBootstrapContext
 
 _bootstrapped = False
 
 
-def bootstrap(ctx: FnBootstrapContext) -> None:
+def bootstrap() -> None:
     global _bootstrapped
 
     if _bootstrapped:
