@@ -15,6 +15,7 @@ from kivy.input.providers.mouse import MouseMotionEvent
 from kivy.properties import NumericProperty
 from kivy.uix.widget import Widget
 
+from kivyfn.logging import get_logger
 from kivyfn.ui.widget import FnWidget
 from kivyfn.three.views.viewport import SceneViewport
 
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
     from kivyfn.three.scene.scene import Scene
     from kivyfn.three.controls.base import BaseController
 
+
+logger = get_logger(__name__)
 
 class SceneBase(FnWidget, Widget):
 
@@ -47,11 +50,28 @@ class SceneBase(FnWidget, Widget):
             origin_y=self._sync_scene_viewport,
         )
 
-    def _sync_scene_viewport(self, *_):
-        self.scene_viewport.x = int(self.x + self.origin_x)
-        self.scene_viewport.y = int(self.y + self.origin_y)
-        self.scene_viewport.width = int(self.width)
-        self.scene_viewport.height = int(self.height)
+    def _sync_scene_viewport(self, *_) -> None:
+        width = int(self.width)
+        height = int(self.height)
+
+        if width <= 0 or height <= 0:
+            logger.warning(
+                "Skipped scene viewport update because the size is invalid: %sx%s.",
+                width,
+                height,
+            )
+            return
+
+        self.scene_viewport.pos = (
+            int(self.x + self.origin_x),
+            int(self.y + self.origin_y),
+        )
+
+        self.scene_viewport.size = (
+            width,
+            height,
+        )
+
 
     def _restore_viewport(self, *_) -> None:
         glViewport(
