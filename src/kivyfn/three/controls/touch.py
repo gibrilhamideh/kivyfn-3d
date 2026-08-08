@@ -24,19 +24,17 @@ Camera navigation needs continuous multitouch tracking instead.
 
 
 from __future__ import annotations
-from typing import TYPE_CHECKING
 
 import math
 from dataclasses import dataclass
 
+from kivy.input.motionevent import MotionEvent
+
 from kivyfn.three.controls.base import BaseController
 from kivyfn.three.controls.orbit import OrbitCameraController
 from kivyfn.three.math.vector import Vector3
-from kivyfn.three.views import camera
 from kivyfn.three.views.camera import Camera
 
-if TYPE_CHECKING:
-    from kivyfn.three.views.view import View
 
 
 @dataclass(slots=True)
@@ -55,12 +53,17 @@ class TouchCameraControls(BaseController):
     MODE_ORBIT_PENDING = "orbit_pending"
     MODE_ORBIT = "orbit"
     MODE_TWO_PENDING = "two_pending"
-    MODE_TWO = "two"
+    MODE_TWO_PAN = "two_pan"
+    MODE_TWO_ZOOM = "two_zoom"
+    MODE_TWO_COMBINED = "two_combined"
 
     def __init__(
         self,
         camera: Camera,
         *,
+        pan_zoom_threshold: float = 8.0,
+        zoom_pan_threshold: float = 6.0,
+        gesture_dominance: float = 1.25,
         zoom_sensitivity: float = 0.20,
         orbit_sensitivity: float = 0.75,
         pan_sensitivity: float = 0.75,
@@ -104,14 +107,23 @@ class TouchCameraControls(BaseController):
         self.min_bounds = min_bounds
         self.max_bounds = max_bounds
 
+        self.pan_zoom_threshold = max(float(pan_zoom_threshold), 0.0)
+        self.zoom_pan_threshold = max(float(zoom_pan_threshold), 0.0)
+        self.gesture_dominance = max(float(gesture_dominance), 1.0)
+
+        self._last_two_center: tuple[float, float] | None = None
+        self._last_two_distance: float | None = None
+
+        self._locked_two_center: tuple[float, float] | None = None
+        self._locked_two_distance: float | None = None
+
         self._points: dict[object, TouchPoint] = {}
 
         self._mode = self.MODE_IDLE
 
         self._last_single_pos: tuple[float, float] | None = None
 
-        self._last_two_center: tuple[float, float] | None = None
-        self._last_two_distance: float | None = None
+        self._touches: dict[object, MotionEvent] = {}
 
         self._smooth_orbit_dx = 0.0
         self._smooth_orbit_dy = 0.0
@@ -119,6 +131,9 @@ class TouchCameraControls(BaseController):
         self._smooth_pan_dx = 0.0
         self._smooth_pan_dy = 0.0
         self._smooth_pinch_delta = 0.0
+
+        self._initial_two_center: tuple[float, float] | None = None
+        self._initial_two_distance: float | None = None
 
         self._suppress_single_until_release = False
 
@@ -138,23 +153,31 @@ class TouchCameraControls(BaseController):
             return False
 
         self._points[touch.uid] = self._make_point(touch)
-        touch.grab(self.scene)
+        self._touches[touch.uid] = touch
+
+        touch.ud["scene_camera_gesture"] = False
 
         if len(self._points) == 1:
             if self._suppress_single_until_release:
                 self._mode = self.MODE_IDLE
-                return True
+                return False
 
             point = self._only_point()
+
             self._last_single_pos = point.pos
             self._mode = self.MODE_ORBIT_PENDING
-            return True
 
-        if len(self._points) == 2:
-            self._begin_two_finger_gesture()
-            return True
+            return False
+
+        self._mark_camera_gesture()
+        self._begin_two_finger_gesture()
+
+        for active_touch in self._touches.values():
+            if active_touch.grab_current is not self.scene:
+                active_touch.grab(self.scene)
 
         return True
+
 
     def on_touch_move(self, touch) -> bool:
         if self.scene is None:
@@ -169,29 +192,51 @@ class TouchCameraControls(BaseController):
             if self._suppress_single_until_release:
                 return True
 
+            was_pending = self._mode == self.MODE_ORBIT_PENDING
+
             self._handle_one_finger()
-            return True
+
+            if (
+                was_pending
+                and self._mode == self.MODE_ORBIT
+            ):
+                self._mark_camera_gesture()
+
+                if touch.grab_current is not self.scene:
+                    touch.grab(self.scene)
+
+            return self._mode == self.MODE_ORBIT
 
         if len(self._points) == 2:
+            self._mark_camera_gesture()
             self._handle_two_finger()
             return True
 
-        return True
+        return False
+
 
     def on_touch_up(self, touch) -> bool:
         if touch.uid not in self._points:
             return False
 
+        camera_gesture = bool(
+            touch.ud.get(
+                "scene_camera_gesture",
+                False,
+            )
+        )
+
         was_two_finger = len(self._points) == 2
 
         self._points.pop(touch.uid, None)
+        self._touches.pop(touch.uid, None)
 
         if touch.grab_current is self.scene:
             touch.ungrab(self.scene)
 
         if len(self._points) == 0:
             self._reset_all()
-            return True
+            return camera_gesture
 
         if was_two_finger and len(self._points) == 1:
             self._suppress_single_until_release = True
@@ -199,7 +244,7 @@ class TouchCameraControls(BaseController):
             self._last_single_pos = self._only_point().pos
             return True
 
-        return True
+        return camera_gesture
 
     # =================================== #
     # Gesture Handling
@@ -247,6 +292,13 @@ class TouchCameraControls(BaseController):
         distance = self._two_distance()
 
         self._mode = self.MODE_TWO_PENDING
+
+        self._initial_two_center = center
+        self._initial_two_distance = distance
+
+        self._locked_two_center = None
+        self._locked_two_distance = None
+
         self._last_two_center = center
         self._last_two_distance = distance
 
@@ -261,7 +313,14 @@ class TouchCameraControls(BaseController):
         center = self._two_center()
         distance = self._two_distance()
 
-        if self._last_two_center is None or self._last_two_distance is None:
+        if (
+            self._last_two_center is None
+            or self._last_two_distance is None
+            or self._initial_two_center is None
+            or self._initial_two_distance is None
+        ):
+            self._initial_two_center = center
+            self._initial_two_distance = distance
             self._last_two_center = center
             self._last_two_distance = distance
             return
@@ -272,42 +331,100 @@ class TouchCameraControls(BaseController):
         pan_dy = center[1] - last_center_y
         pinch_delta = distance - self._last_two_distance
 
-        pan_distance = math.hypot(pan_dx, pan_dy)
-        pinch_distance = abs(pinch_delta)
+        initial_center_x, initial_center_y = self._initial_two_center
 
-        if self._mode == self.MODE_TWO_PENDING:
-            if (
-                pan_distance < self.pan_deadzone
-                and pinch_distance < self.pinch_deadzone
-            ):
-                return
+        total_pan_distance = math.hypot(
+            center[0] - initial_center_x,
+            center[1] - initial_center_y,
+        )
 
-            self._mode = self.MODE_TWO
-            self._last_two_center = center
-            self._last_two_distance = distance
-            return
+        total_pinch_distance = abs(
+            distance - self._initial_two_distance
+        )
 
         self._last_two_center = center
         self._last_two_distance = distance
 
-        if self._mode != self.MODE_TWO:
+        if self._mode == self.MODE_TWO_PENDING:
+            pan_ready = total_pan_distance >= self.pan_deadzone
+            zoom_ready = total_pinch_distance >= self.pinch_deadzone
+
+            if not pan_ready and not zoom_ready:
+                return
+
+            pan_dominates = (
+                pan_ready
+                and total_pan_distance
+                >= total_pinch_distance * self.gesture_dominance
+            )
+
+            zoom_dominates = (
+                zoom_ready
+                and total_pinch_distance
+                >= total_pan_distance * self.gesture_dominance
+            )
+
+            if pan_dominates:
+                self._mode = self.MODE_TWO_PAN
+
+            elif zoom_dominates:
+                self._mode = self.MODE_TWO_ZOOM
+
+            elif pan_ready and not zoom_ready:
+                self._mode = self.MODE_TWO_PAN
+
+            elif zoom_ready and not pan_ready:
+                self._mode = self.MODE_TWO_ZOOM
+
+            else:
+                return
+
+            self._locked_two_center = center
+            self._locked_two_distance = distance
+
+            self._smooth_pan_dx = 0.0
+            self._smooth_pan_dy = 0.0
+            self._smooth_pinch_delta = 0.0
             return
 
-        if pan_distance >= self.pan_deadzone:
-            pan_dx, pan_dy = self._smooth_pair(
-                pan_dx,
-                pan_dy,
-                "_smooth_pan_dx",
-                "_smooth_pan_dy",
-            )
-            self._pan(pan_dx, pan_dy)
+        if self._mode == self.MODE_TWO_PAN:
+            if self._locked_two_distance is not None:
+                secondary_pinch = abs(
+                    distance - self._locked_two_distance
+                )
 
-        if pinch_distance >= self.pinch_deadzone:
-            pinch_delta = self._smooth_value(
-                pinch_delta,
-                "_smooth_pinch_delta",
-            )
-            self._zoom(pinch_delta * self.zoom_sensitivity)
+                if secondary_pinch >= self.pan_zoom_threshold:
+                    self._mode = self.MODE_TWO_COMBINED
+
+            self._apply_pan(pan_dx, pan_dy)
+
+            if self._mode == self.MODE_TWO_COMBINED:
+                self._apply_pinch(pinch_delta)
+
+            return
+
+        if self._mode == self.MODE_TWO_ZOOM:
+            if self._locked_two_center is not None:
+                locked_x, locked_y = self._locked_two_center
+
+                secondary_pan = math.hypot(
+                    center[0] - locked_x,
+                    center[1] - locked_y,
+                )
+
+                if secondary_pan >= self.zoom_pan_threshold:
+                    self._mode = self.MODE_TWO_COMBINED
+
+            self._apply_pinch(pinch_delta)
+
+            if self._mode == self.MODE_TWO_COMBINED:
+                self._apply_pan(pan_dx, pan_dy)
+
+            return
+
+        if self._mode == self.MODE_TWO_COMBINED:
+            self._apply_pan(pan_dx, pan_dy)
+            self._apply_pinch(pinch_delta)
 
     # =================================== #
     # View Controls
@@ -429,6 +546,40 @@ class TouchCameraControls(BaseController):
             b.y - a.y,
         )
 
+
+    def _mark_camera_gesture(self) -> None:
+        for touch in self._touches.values():
+            touch.ud["scene_camera_gesture"] = True
+
+    def _apply_pan(self, dx: float, dy: float) -> None:
+        if math.hypot(dx, dy) < self.pan_deadzone:
+            return
+
+        dx, dy = self._smooth_pair(
+            dx,
+            dy,
+            "_smooth_pan_dx",
+            "_smooth_pan_dy",
+        )
+
+        self._pan(dx, dy)
+
+    def _apply_pinch(self, delta: float) -> None:
+        if abs(delta) < self.pinch_deadzone:
+            return
+
+        delta = self._smooth_value(
+            delta,
+            "_smooth_pinch_delta",
+        )
+
+        self._zoom(
+            delta * self.zoom_sensitivity
+        )
+
+
+
+
     # =================================== #
     # Smoothing
     # =================================== #
@@ -473,10 +624,18 @@ class TouchCameraControls(BaseController):
 
     def _reset_all(self) -> None:
         self._points.clear()
+        self._touches.clear()
 
         self._mode = self.MODE_IDLE
 
         self._last_single_pos = None
+
+        self._initial_two_center = None
+        self._initial_two_distance = None
+
+        self._locked_two_center = None
+        self._locked_two_distance = None
+
         self._last_two_center = None
         self._last_two_distance = None
 
