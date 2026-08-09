@@ -29,6 +29,7 @@ import math
 from dataclasses import dataclass
 
 from kivy.input.motionevent import MotionEvent
+from kivy.input.providers.mouse import MouseMotionEvent
 
 from kivyfn.three.controls.base import BaseController
 from kivyfn.three.controls.orbit import OrbitCameraController
@@ -504,17 +505,14 @@ class TouchCameraControls(BaseController):
     # =================================== #
     # Touch Helpers
     # =================================== #
+    def _accept_touch(self, touch: MotionEvent) -> bool:
+        if not isinstance(touch, MouseMotionEvent):
+            return True
 
-    def _accept_touch(self, touch) -> bool:
         button = getattr(touch, "button", None)
 
-        if button is None:
-            return True
+        return self.accept_mouse and button == "left"
 
-        if self.accept_mouse and button == "left":
-            return True
-
-        return False
 
     def _make_point(self, touch) -> TouchPoint:
         return TouchPoint(
