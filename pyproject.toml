@@ -50,6 +50,7 @@ kivy-stubs = { path = "../kivy-stubs", editable = true }
 
 [tool.setuptools]
 package-dir = { "" = "src" }
+include-package-data = true
 
 
 [tool.setuptools.packages.find]

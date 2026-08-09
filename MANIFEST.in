@@ -1,0 +1,2 @@
+recursive-include src/kivyfn/three/resources *.frag
+recursive-include src/kivyfn/three/resources *.vert
