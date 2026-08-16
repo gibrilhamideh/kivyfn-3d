@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from kivy.clock import Clock, ClockEvent
-
 from kivyfn.three.animations.action import AnimationAction
 from kivyfn.three.animations.binding import AnimationBinding
-from kivyfn.three.animations.clip import AnimationClip
 from kivyfn.three.animations.channel import BoundAnimationChannel
+from kivyfn.three.animations.clip import AnimationClip
+from kivyfn.three.time import Scheduler
 
 
 @dataclass(slots=True, weakref_slot=True)
@@ -18,11 +17,9 @@ class AnimationController:
     clips: dict[str, AnimationClip]
     actions: dict[str, AnimationAction] = field(default_factory=dict)
 
-    _event: ClockEvent | None = field(
-        default=None,
-        init=False,
-        repr=False,
-    )
+    # =================================== #
+    # Clips
+    # =================================== #
 
     def get(
         self,
@@ -42,6 +39,10 @@ class AnimationController:
             )
 
         return clip
+
+    # =================================== #
+    # Actions
+    # =================================== #
 
     def create(
         self,
@@ -73,10 +74,7 @@ class AnimationController:
         )
 
         self.actions[name] = action
-
-        action.bind(
-            on_destroy=lambda *_: self.actions.pop(name, None),
-        )
+        self._bind_action(action)
 
         return action
 
@@ -102,26 +100,9 @@ class AnimationController:
             restart=restart,
         )
 
-        self._ensure_event()
+        self._sync_scheduler()
+
         return action
-
-    def tick(
-        self,
-        dt: float,
-    ) -> None:
-        alive = False
-
-        for action in tuple(self.actions.values()):
-            if action.destroyed:
-                continue
-
-            action.tick(dt)
-
-            if action.playing and not action.paused and not action.finished:
-                alive = True
-
-        if not alive:
-            self._cancel_event()
 
     def stop(
         self,
@@ -133,6 +114,7 @@ class AnimationController:
             return
 
         action.stop()
+        self._sync_scheduler()
 
     def remove(
         self,
@@ -144,29 +126,40 @@ class AnimationController:
             return
 
         action.destroy()
+        self._sync_scheduler()
+
+    # =================================== #
+    # Group actions
+    # =================================== #
 
     def pause_all(self) -> None:
         for action in tuple(self.actions.values()):
             action.pause()
 
+        self._sync_scheduler()
+
     def resume_all(self) -> None:
         for action in tuple(self.actions.values()):
             action.resume()
 
-        self._ensure_event()
+        self._sync_scheduler()
 
     def stop_all(self) -> None:
         for action in tuple(self.actions.values()):
             action.stop()
 
-        self._cancel_event()
+        self._sync_scheduler()
 
     def clear(self) -> None:
         for action in tuple(self.actions.values()):
             action.destroy()
 
         self.actions.clear()
-        self._cancel_event()
+        Scheduler.unregister(self)
+
+    # =================================== #
+    # State
+    # =================================== #
 
     def is_playing(
         self,
@@ -182,21 +175,83 @@ class AnimationController:
             and not action.destroyed
         )
 
-    def _ensure_event(self) -> None:
-        if self._event is not None:
-            return
-
-        self._event = Clock.schedule_interval(
-            self.tick,
-            0.0,
+    def _has_active_actions(self) -> bool:
+        return any(
+            action.playing
+            and not action.paused
+            and not action.finished
+            and not action.destroyed
+            for action in self.actions.values()
         )
 
-    def _cancel_event(self) -> None:
-        if self._event is None:
-            return
+    # =================================== #
+    # Scheduling
+    # =================================== #
 
-        self._event.cancel()
-        self._event = None
+    def tick(
+        self,
+        dt: float,
+    ) -> bool:
+        for action in tuple(self.actions.values()):
+            if action.destroyed:
+                continue
+
+            action.tick(dt)
+
+        return self._has_active_actions()
+
+    def _sync_scheduler(self) -> None:
+        if self._has_active_actions():
+            Scheduler.register(self)
+        else:
+            Scheduler.unregister(self)
+
+    # =================================== #
+    # Action events
+    # =================================== #
+
+    def _bind_action(
+        self,
+        action: AnimationAction,
+    ) -> None:
+        action.bind(
+            on_play=self._on_action_started,
+            on_resume=self._on_action_started,
+            on_pause=self._on_action_state_changed,
+            on_stop=self._on_action_state_changed,
+            on_finish=self._on_action_state_changed,
+            on_destroy=self._on_action_destroyed,
+        )
+
+    def _on_action_started(
+        self,
+        *_: object,
+    ) -> None:
+        Scheduler.register(self)
+
+    def _on_action_state_changed(
+        self,
+        *_: object,
+    ) -> None:
+        self._sync_scheduler()
+
+    def _on_action_destroyed(
+        self,
+        action: AnimationAction,
+        *_: object,
+    ) -> None:
+        for name, current in tuple(self.actions.items()):
+            if current is not action:
+                continue
+
+            self.actions.pop(name, None)
+            break
+
+        self._sync_scheduler()
+
+    # =================================== #
+    # Channel binding
+    # =================================== #
 
     def _bind_channels(
         self,
@@ -217,13 +272,10 @@ class AnimationController:
                     target=target,
                     path=channel.path,
                     sampler=channel.sampler,
-
                 )
             )
 
         return tuple(channels)
-
-
 
 
 

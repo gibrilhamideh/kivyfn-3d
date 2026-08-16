@@ -1,18 +1,16 @@
 # kivyfn/three/scene/timeline/timeline.py
+
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Literal
 
-from kivy.clock import Clock
-from kivy.clock import ClockEvent
 from kivy.event import EventDispatcher
 
+from kivyfn.three.time import Scheduler
 
-TimelineMode = Literal[
-    "loop",
-    "tween",
-]
+
+TimelineMode = Literal["loop", "tween"]
 
 TimelineState = Literal[
     "idle",
@@ -20,7 +18,6 @@ TimelineState = Literal[
     "paused",
     "completed",
 ]
-
 
 Transition = str | Callable[[float], float]
 TimelineCallback = Callable[[float], None]
@@ -95,10 +92,14 @@ class Timeline(EventDispatcher):
         super().__init__()
 
         if duration <= 0.0:
-            raise ValueError("Timeline duration must be greater than 0.")
+            raise ValueError(
+                "Timeline duration must be greater than 0."
+            )
 
         if interval < 0.0:
-            raise ValueError("Timeline interval cannot be negative.")
+            raise ValueError(
+                "Timeline interval cannot be negative."
+            )
 
         self.name = name
         self.callback = callback
@@ -113,8 +114,14 @@ class Timeline(EventDispatcher):
         self.elapsed = 0.0
         self.direction = 1.0
 
-        self._event: ClockEvent | None = None
-        self._transition = self._resolve_transition(transition)
+        self._accumulator = 0.0
+        self._transition = self._resolve_transition(
+            transition,
+        )
+
+    # =================================== #
+    # Construction
+    # =================================== #
 
     @classmethod
     def loop(
@@ -159,48 +166,59 @@ class Timeline(EventDispatcher):
             yoyo=yoyo,
         )
 
+    # =================================== #
+    # Lifecycle
+    # =================================== #
+
     def start(
         self,
         *,
         restart: bool = True,
     ) -> None:
+        self.stop(
+            dispatch_event=False,
+        )
+
         if restart:
             self.elapsed = 0.0
             self.direction = 1.0
 
-        self.stop(dispatch_event=False)
-
         self.state = "running"
-        self._event = Clock.schedule_interval(
-            self._tick,
-            self.interval,
+
+        Scheduler.register(
+            self,
         )
 
-        self.dispatch("on_start")
+        self.dispatch(
+            "on_start",
+        )
 
     def stop(
         self,
         *,
         dispatch_event: bool = True,
     ) -> None:
-        if self._event is not None:
-            self._event.cancel()
-            self._event = None
-
         was_running = self.state == "running"
 
+        Scheduler.unregister(
+            self,
+        )
+
         self.state = "idle"
+        self._accumulator = 0.0
 
         if dispatch_event and was_running:
-            self.dispatch("on_stop")
+            self.dispatch(
+                "on_stop",
+            )
 
     def pause(self) -> None:
         if self.state != "running":
             return
 
-        if self._event is not None:
-            self._event.cancel()
-            self._event = None
+        Scheduler.unregister(
+            self,
+        )
 
         self.state = "paused"
 
@@ -209,16 +227,24 @@ class Timeline(EventDispatcher):
             return
 
         self.state = "running"
-        self._event = Clock.schedule_interval(
-            self._tick,
-            self.interval,
+
+        Scheduler.register(
+            self,
         )
 
     def cancel(self) -> None:
-        self.stop(dispatch_event=False)
+        self.stop(
+            dispatch_event=False,
+        )
+
         self.elapsed = 0.0
         self.direction = 1.0
+        self._accumulator = 0.0
         self.state = "idle"
+
+    # =================================== #
+    # State
+    # =================================== #
 
     def is_running(self) -> bool:
         return self.state == "running"
@@ -226,37 +252,95 @@ class Timeline(EventDispatcher):
     def is_paused(self) -> bool:
         return self.state == "paused"
 
-    def _tick(
+    # =================================== #
+    # Tick
+    # =================================== #
+
+    def tick(
         self,
         dt: float,
     ) -> bool:
         if self.state != "running":
             return False
 
-        scaled_dt = dt * self.speed
+        update_dt = self._consume_interval(
+            dt,
+        )
+
+        if update_dt is None:
+            return True
+
+        scaled_dt = update_dt * self.speed
 
         if self.mode == "loop":
-            self.callback(scaled_dt)
-            self.dispatch("on_update", scaled_dt)
-            return True
+            self.callback(
+                scaled_dt,
+            )
+
+            self.dispatch(
+                "on_update",
+                scaled_dt,
+            )
+
+            return self.state == "running"
 
         self.elapsed += scaled_dt * self.direction
 
         raw_progress = self.elapsed / self.duration
-        raw_progress = max(0.0, min(1.0, raw_progress))
+        raw_progress = max(
+            0.0,
+            min(
+                1.0,
+                raw_progress,
+            ),
+        )
 
-        progress = self._transition(raw_progress)
+        progress = self._transition(
+            raw_progress,
+        )
 
-        self.callback(progress)
-        self.dispatch("on_update", progress)
+        self.callback(
+            progress,
+        )
 
-        if self.direction > 0.0 and self.elapsed >= self.duration:
+        self.dispatch(
+            "on_update",
+            progress,
+        )
+
+        if self.state != "running":
+            return False
+
+        if (
+            self.direction > 0.0
+            and self.elapsed >= self.duration
+        ):
             self._finish_tween()
 
-        elif self.direction < 0.0 and self.elapsed <= 0.0:
+        elif (
+            self.direction < 0.0
+            and self.elapsed <= 0.0
+        ):
             self._finish_tween()
 
-        return True
+        return self.state == "running"
+
+    def _consume_interval(
+        self,
+        dt: float,
+    ) -> float | None:
+        if self.interval == 0.0:
+            return dt
+
+        self._accumulator += dt
+
+        if self._accumulator < self.interval:
+            return None
+
+        update_dt = self._accumulator
+        self._accumulator = 0.0
+
+        return update_dt
 
     def _finish_tween(self) -> None:
         if self.repeat:
@@ -269,11 +353,13 @@ class Timeline(EventDispatcher):
 
         self.state = "completed"
 
-        if self._event is not None:
-            self._event.cancel()
-            self._event = None
+        self.dispatch(
+            "on_complete",
+        )
 
-        self.dispatch("on_complete")
+    # =================================== #
+    # Transition
+    # =================================== #
 
     def _resolve_transition(
         self,
@@ -294,6 +380,10 @@ class Timeline(EventDispatcher):
             )
 
         return method
+
+    # =================================== #
+    # Events
+    # =================================== #
 
     def on_start(self) -> None:
         pass
