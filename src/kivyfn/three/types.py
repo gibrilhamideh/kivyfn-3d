@@ -63,3 +63,14 @@ MeshMode = Literal[
     "triangle_strip",
     "triangle_fan",
 ]
+
+OverlayAnchor = Literal[
+    "origin",
+    "center",
+    "top",
+    "bottom",
+    "left",
+    "right",
+    "front",
+    "back",
+]

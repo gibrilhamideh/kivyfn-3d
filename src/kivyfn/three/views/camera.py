@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
 from weakref import WeakSet
 
 from kivy.event import EventDispatcher

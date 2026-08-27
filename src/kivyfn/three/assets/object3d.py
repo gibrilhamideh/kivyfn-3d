@@ -16,7 +16,8 @@ from kivyfn.three.graph.node import Node3D
 if TYPE_CHECKING:
     from kivyfn.three.assets.geometry import Geometry
     from kivyfn.three.assets.material import Material
-
+    from kivyfn.three.math.vector import Vector3
+    from kivyfn.three.types import OverlayAnchor
 
 class Object3D(Node3D):
 
@@ -288,6 +289,16 @@ class Object3D(Node3D):
         new: set[str],
     ) -> None:
         pass
+
+    # =================================== #
+    # Overlay Anchors
+    # =================================== #
+
+    def get_anchor_position(
+        self,
+        anchor: OverlayAnchor,
+    ) -> Vector3:
+        return self.geometry.bounds.get_anchor(anchor)
 
 
 

@@ -22,7 +22,7 @@ from kivy.properties import (
     DictProperty,
 )
 
-from kivyfn.three.types import SceneObject, RenderableObject, WalkFilter
+from kivyfn.three.types import SceneObject, RenderableObject, WalkFilter, OverlayAnchor
 from kivyfn.three.overlays.overlay import Overlay
 from kivyfn.three.math.vector import Vector3, Vector2
 from kivyfn.three.math.transform import Transform
@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from kivyfn.three.lights.sources.base import Light3D
     from kivyfn.three.controls.interaction import InteractionEvent
     from kivyfn.three.behaviors.behavior import Behavior
+    from kivyfn.three.assets.geometry import GeometryBounds
 
 
 
@@ -332,8 +333,10 @@ class Node3D(EventDispatcher):
         *,
         name: str,
         stage: str,
-        offset: Vector2 | None = None,
+        anchor: OverlayAnchor = "origin",
+        anchor_hint: Vector2 | None = None,
         world_offset: Vector3 | None = None,
+        screen_offset: Vector2 | None = None,
         hide_when_offscreen: bool = True,
     ) -> Overlay:
         if name in self._overlays:
@@ -343,11 +346,13 @@ class Node3D(EventDispatcher):
 
         overlay = Overlay(
             name=name,
-            anchor=self,
+            target=self,
             widget=widget,
             stage=stage,
-            offset=offset,
+            anchor=anchor,
+            anchor_hint=anchor_hint,
             world_offset=world_offset,
+            screen_offset=screen_offset,
             hide_when_offscreen=hide_when_offscreen,
         )
 
@@ -421,6 +426,58 @@ class Node3D(EventDispatcher):
             self.detach_overlay(name)
 
     # =================================== #
+    # Overlay Anchors
+    # =================================== #
+
+    def get_local_bounds(
+        self,
+    ) -> GeometryBounds | None:
+
+        from kivyfn.three.assets.geometry import GeometryBounds
+        world_to_local = self.world_matrix.copy().inverse()
+        points: list[Vector3] = []
+
+        for renderable in self.walk(
+            filter="renderables",
+        ):
+            bounds = renderable.geometry.bounds
+
+            for corner in bounds.corners():
+                world_position = (
+                    renderable.world_matrix.transform_point(
+                        corner,
+                    )
+                )
+
+                local_position = world_to_local.transform_point(
+                    world_position,
+                )
+
+                points.append(local_position)
+
+        if not points:
+            return None
+
+        return GeometryBounds.from_points(points)
+
+    def get_anchor_position(
+        self,
+        anchor: OverlayAnchor,
+    ) -> Vector3:
+        if anchor == "origin":
+            return Vector3.zero()
+
+        bounds = self.get_local_bounds()
+
+        if bounds is None:
+            raise ValueError(
+                f"Node3D {self.name!r} has no renderable geometry "
+                f"for anchor {anchor!r}."
+            )
+
+        return bounds.get_anchor(anchor)
+
+    # =================================== #
     # Scene context
     # =================================== #
     def _enter_scene(
@@ -463,7 +520,7 @@ class Node3D(EventDispatcher):
             scene,
         )
 
-        scene.overlays.deactivate_anchor(self)
+        scene.overlays.deactivate_target(self)
 
         if render:
             scene.renderer.queue_remove(self)

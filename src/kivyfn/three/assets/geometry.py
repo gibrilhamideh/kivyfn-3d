@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -10,6 +11,7 @@ from numpy.typing import NDArray
 from kivyfn.three.types import MeshMode
 from kivyfn.three.graphics.gl.texture import Texture2D
 from kivyfn.three.math.vector import Vector3
+from kivyfn.three.types import OverlayAnchor
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +91,66 @@ class GeometryBounds:
             front=Vector3(float(center_x), float(center_y), float(z_max)),
             back=Vector3(float(center_x), float(center_y), float(z_min)),
         )
+
+    def get_anchor(
+        self,
+        anchor: OverlayAnchor,
+    ) -> Vector3:
+        match anchor:
+            case "origin":
+                return Vector3.zero()
+
+            case "center":
+                return self.center.copy()
+
+            case "top":
+                return self.top.copy()
+
+            case "bottom":
+                return self.bottom.copy()
+
+            case "left":
+                return self.left.copy()
+
+            case "right":
+                return self.right.copy()
+
+            case "front":
+                return self.front.copy()
+
+            case "back":
+                return self.back.copy()
+
+        raise ValueError(
+            f"Unsupported geometry anchor: {anchor!r}."
+        )
+
+    def corners(self) -> tuple[Vector3, ...]:
+        return (
+            Vector3(self.min.x, self.min.y, self.min.z),
+            Vector3(self.min.x, self.min.y, self.max.z),
+            Vector3(self.min.x, self.max.y, self.min.z),
+            Vector3(self.min.x, self.max.y, self.max.z),
+            Vector3(self.max.x, self.min.y, self.min.z),
+            Vector3(self.max.x, self.min.y, self.max.z),
+            Vector3(self.max.x, self.max.y, self.min.z),
+            Vector3(self.max.x, self.max.y, self.max.z),
+        )
+
+    @classmethod
+    def from_points(
+        cls,
+        points: Iterable[Vector3],
+    ) -> GeometryBounds:
+        positions = np.asarray(
+            [
+                [point.x, point.y, point.z]
+                for point in points
+            ],
+            dtype=np.float32,
+        )
+
+        return cls.from_positions(positions)
 
 
 @dataclass(slots=True)
@@ -210,6 +272,8 @@ class Geometry:
 
         return vertex_data[:, :3]
 
+
+
     def compute_bounds(self) -> GeometryBounds:
         self.bounds = GeometryBounds.from_positions(
             self.get_positions()
@@ -223,7 +287,7 @@ class Geometry:
         merge_vertices: bool = False,
     ) -> GeometryStats:
         try:
-            import trimesh
+            import trimesh # pyright: ignore
 
         except ImportError as error:
             raise ImportError(
