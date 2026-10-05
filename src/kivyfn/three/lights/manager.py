@@ -346,7 +346,9 @@ class LightManager(EventDispatcher):
             self._apply_uniforms_to_tags(
                 tags=set(config.receiver_tags),
                 uniforms={
-                    config.view_uniform: view.get_view_matrix(mode="planar").to_uniform(),
+                    config.view_uniform: view.get_view_matrix(
+                        mode="planar"
+                    ).to_uniform(),
                     config.projection_uniform: view.get_projection_matrix(
                         mode="planar",
                         aspect=shadow_stage.target.viewport.aspect, #NOTE: Here
@@ -482,6 +484,10 @@ class LightManager(EventDispatcher):
         self,
         lights: CulledLights,
     ) -> dict[str, Any]:
+        # Stages and Kivy retain these arrays, including their nested vectors.
+        # Each update needs its own snapshot, independent of other passes.
+        self.uniforms = LightUniformBuffer(self.culler.limits)
+
         directional = lights.directional
         point = lights.point
         spot = lights.spot
@@ -492,9 +498,13 @@ class LightManager(EventDispatcher):
 
         return {
             "directional_light_count": len(directional),
-            "directional_light_directions": self.uniforms.directional_directions,
+            "directional_light_directions": (
+                self.uniforms.directional_directions
+            ),
             "directional_light_colors": self.uniforms.directional_colors,
-            "directional_light_intensities": self.uniforms.directional_intensities,
+            "directional_light_intensities": (
+                self.uniforms.directional_intensities
+            ),
             "point_light_count": len(point),
             "point_light_positions": self.uniforms.point_positions,
             "point_light_colors": self.uniforms.point_colors,
